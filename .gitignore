@@ -1,0 +1,18 @@
+# Environments and API Keys (CRITICAL)
+.env
+venv/
+env/
+__pycache__/
+
+# Node/React
+node_modules/
+dist/
+build/
+.npm/
+
+# Mac/Windows System Files
+.DS_Store
+Thumbs.db
+
+# SCORM/xAPI Exports
+*.zip

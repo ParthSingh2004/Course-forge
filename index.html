@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CourseForge | Authoring Canvas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-[#f3f4f6] min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function App() {
+            const [courseTitle, setCourseTitle] = useState("Untitled Course");
+            const [blocks, setBlocks] = useState([
+                { id: 1, type: 'text', content: 'Welcome to your new course. Click the AI Assistant to get started!' }
+            ]);
+            const [isGenerating, setIsGenerating] = useState(false);
+
+            // Function to call your Gemini Backend
+            const generateAIBlock = async () => {
+                const prompt = window.prompt("What should this lesson block be about?");
+                if (!prompt) return;
+
+                setIsGenerating(true);
+                try {
+                    const formData = new FormData();
+                    formData.append('prompt', prompt);
+                    formData.append('block_type', 'Lesson Content');
+
+                    const response = await fetch('http://127.0.0.1:8000/api/ai/generate', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    const newBlock = {
+                        id: Date.now(),
+                        type: 'ai-generated',
+                        content: data.data.content || data.data // Adjust based on your backend JSON
+                    };
+                    
+                    setBlocks([...blocks, newBlock]);
+                } catch (error) {
+                    console.error("Error calling backend:", error);
+                    alert("Backend not reached. Make sure main.py is running!");
+                } finally {
+                    setIsGenerating(false);
+                }
+            };
+
+            return (
+                <div class="max-w-5xl mx-auto p-8">
+                    {/* Top Header Bar */}
+                    <div class="flex justify-between items-center mb-12 bg-white p-4 rounded-xl shadow-sm">
+                        <input 
+                            value={courseTitle} 
+                            onChange={(e) => setCourseTitle(e.target.value)}
+                            class="text-2xl font-bold text-gray-800 focus:outline-none w-full"
+                        />
+                        <div class="flex gap-3">
+                            <button onClick={generateAIBlock} disabled={isGenerating} class="bg-purple-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-purple-700 transition flex items-center gap-2">
+                                {isGenerating ? "Gemini is thinking..." : "✨ AI Assistant"}
+                            </button>
+                            <button class="bg-black text-white px-6 py-2 rounded-lg font-medium">Export SCORM</button>
+                        </div>
+                    </div>
+
+                    {/* The Authoring Canvas */}
+                    <div class="bg-white min-h-[60vh] rounded-2xl shadow-xl p-12 relative border border-gray-100">
+                        <div class="space-y-8">
+                            {blocks.map(block => (
+                                <div key={block.id} class="group relative p-4 hover:bg-gray-50 rounded-lg transition border-l-4 border-transparent hover:border-purple-300">
+                                    <div class="prose max-w-none text-gray-700 text-lg whitespace-pre-wrap">
+                                        {block.content}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Floating "Add Content" Menu inspired by Articulate */}
+                        <div class="mt-12 flex justify-center border-t pt-8">
+                             <div class="flex gap-4 bg-white shadow-lg border rounded-full px-6 py-3">
+                                <button class="flex flex-col items-center text-[10px] text-gray-500 hover:text-purple-600">
+                                    <div class="p-2 bg-gray-50 rounded-full mb-1">📄</div> Text
+                                </button>
+                                <button class="flex flex-col items-center text-[10px] text-gray-500 hover:text-purple-600">
+                                    <div class="p-2 bg-gray-50 rounded-full mb-1">🖼️</div> Image
+                                </button>
+                                <button class="flex flex-col items-center text-[10px] text-gray-500 hover:text-purple-600">
+                                    <div class="p-2 bg-gray-50 rounded-full mb-1">❓</div> Quiz
+                                </button>
+                             </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
