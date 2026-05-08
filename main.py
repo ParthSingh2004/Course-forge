@@ -2,18 +2,32 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router  
 from fastapi.responses import HTMLResponse
+import os
 
 app = FastAPI(title="CourseForge API", version="1.0.0")
 
+default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://course-forge-frontend.onrender.com",
+]
+
+extra_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
+allowed_origins = list(dict.fromkeys(default_origins + extra_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-import os
 from fastapi.staticfiles import StaticFiles
 
 os.makedirs("media", exist_ok=True)
