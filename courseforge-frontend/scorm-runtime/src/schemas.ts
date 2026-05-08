@@ -183,6 +183,13 @@ export const ComponentSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...BaseComponentProps,
+    type: z.literal("table"),
+    id: z.string(),
+    headers: z.array(z.string()),
+    rows: z.array(z.array(z.string())),
+  }),
+  z.object({
+    ...BaseComponentProps,
     type: z.literal("audio"),
     id: z.string(),
     src: z.string(),

@@ -769,6 +769,35 @@ def _extract_media_from_course(course_def: Dict[str, Any], media_files: Dict[str
     """Walk through slides/layers/components, extract data URIs and resolve audio mediaIds."""
     media_counter = 0
 
+    def package_audio_source(raw_src: str | None, fallback_name: str) -> str | None:
+        if not raw_src:
+            return None
+
+        if raw_src.startswith("data:"):
+            match = re.match(r"data:([\w/+.-]+);base64,(.*)", raw_src, re.DOTALL)
+            if not match:
+                return None
+            mime, b64_data = match.group(1), match.group(2)
+            fname = f"media/{fallback_name}.{_mime_to_ext(mime)}"
+            try:
+                media_files[fname] = base64.b64decode(b64_data)
+                return fname
+            except Exception:
+                return None
+
+        if raw_src.startswith("http://") or raw_src.startswith("https://"):
+            try:
+                response = requests.get(raw_src, timeout=20)
+                response.raise_for_status()
+                mime = response.headers.get("Content-Type", "audio/mpeg").split(";")[0]
+                fname = f"media/{fallback_name}.{_mime_to_ext(mime)}"
+                media_files[fname] = response.content
+                return fname
+            except Exception:
+                return None
+
+        return None
+
     for slide_idx, slide in enumerate(course_def.get("slides", [])):
         bg = slide.get("background") or {}
         if bg.get("type") == "image" and bg.get("value", "").startswith("data:"):
@@ -794,6 +823,13 @@ def _extract_media_from_course(course_def: Dict[str, Any], media_files: Dict[str
                     fname = f"media/{media_id}.{ext}"
                     media_files[fname] = entry["bytes"]
                     bg_audio["src"] = fname
+            if not bg_audio.get("src"):
+                packaged_src = package_audio_source(
+                    bg_audio.get("src") or bg_audio.get("url"),
+                    f"bg_audio_slide_{slide_idx}",
+                )
+                if packaged_src:
+                    bg_audio["src"] = packaged_src
 
         for layer in slide.get("layers", []):
             for comp in layer.get("components", []):
@@ -808,6 +844,10 @@ def _extract_media_from_course(course_def: Dict[str, Any], media_files: Dict[str
                         fname = f"media/{media_id}.{ext}"
                         media_files[fname] = entry["bytes"]
                         comp["src"] = fname          # relative path for runtime
+                    else:
+                        packaged_src = package_audio_source(comp.get("src"), f"audio_{media_id or media_counter}")
+                        if packaged_src:
+                            comp["src"] = packaged_src
                     continue
 
                 # ── Video data URIs

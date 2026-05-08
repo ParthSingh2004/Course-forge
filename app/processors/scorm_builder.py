@@ -566,6 +566,7 @@ def _get_fallback_runtime_js() -> str:
   var currentSlide    = 0;
   var slides          = courseData.slides || [];
   var visitedSlides   = {};
+  var bgAudioElement  = null;
  
   // FIX: Single flag that gates status writes — set to true the moment the
   //      LMS receives 'passed'. Prevents renderSlide() from overwriting it
@@ -585,7 +586,7 @@ def _get_fallback_runtime_js() -> str:
       for (var ci2 = 0; ci2 < sComps.length; ci2++) {
         var c = sComps[ci2];
         if (c.mandatory) mandatoryIds[c.id] = true;
-        if (c.type === 'quiz' || c.type === 'true_false' || c.type === 'fill_blanks') {
+        if (c.type === 'quiz' || c.type === 'true_false' || c.type === 'fill_blanks' || c.type === 'multi_select' || c.type === 'matching') {
           weightageMap[c.id] = (typeof c.marks === 'number' && c.marks > 0) ? c.marks : 1;
         }
       }
@@ -703,6 +704,25 @@ def _get_fallback_runtime_js() -> str:
     if (!slide) return;
     var container = document.getElementById('cf-slide-container');
     if (!container) return;
+
+    var bgAudio = slide.bgAudio || null;
+    var bgAudioSrc = bgAudio ? (bgAudio.src || bgAudio.url || '') : '';
+    if (bgAudioSrc) {
+      if (!bgAudioElement) {
+        bgAudioElement = document.createElement('audio');
+        bgAudioElement.loop = true;
+      }
+      var resolvedBgAudioSrc = new URL(bgAudioSrc, window.location.href).href;
+      if (bgAudioElement.src !== resolvedBgAudioSrc) {
+        bgAudioElement.src = resolvedBgAudioSrc;
+      }
+      bgAudioElement.play().catch(function() {});
+    } else if (bgAudioElement) {
+      bgAudioElement.pause();
+      bgAudioElement.removeAttribute('src');
+      bgAudioElement.load();
+    }
+
     container.innerHTML = '';
  
     var title = document.createElement('h2');
@@ -732,7 +752,38 @@ def _get_fallback_runtime_js() -> str:
           for (var oi = 0; oi < (comp.options||[]).length; oi++) {
             opts += '<label class="cf-rt-quiz-option"><input type="radio" name="q-' + comp.id + '" value="' + oi + '"/><span>' + comp.options[oi] + '</span></label>';
           }
-          el.innerHTML = '<div class="cf-rt-quiz-badge">QUIZ</div><div class="cf-rt-quiz-question">' + comp.question + '</div><div class="cf-rt-quiz-options">' + opts + '</div><div id="fb-' + comp.id + '" style="margin-top:10px;font-size:13px;font-weight:600;"></div><button class="cf-rt-quiz-submit" onclick="(function(btn){var sel=document.querySelector(\'input[name=q-' + comp.id + ']:checked\');if(sel){var correct=(Number(sel.value)===' + (comp.correctAnswer||0) + ');scorableComps[\'' + comp.id + '\']=correct;mandatoryCompleted[\'' + comp.id + '\']=true;if(correct){btn.disabled=true;btn.textContent=\'Submitted\';document.querySelectorAll(\'input[name=q-' + comp.id + ']\').forEach(function(r){r.disabled=true;});}document.getElementById(\'fb-' + comp.id + '\').innerHTML=correct?\'<span style=color:#4ade80>\' + (comp.feedback&&comp.feedback.correct||\'Correct!\') + \'</span>\':\'<span style=color:#f87171>\' + (comp.feedback&&comp.feedback.incorrect||\'Incorrect. Try again.\') + \'</span>\';checkCompletion();})(this)">Submit</button>';
+          el.innerHTML = '<div class="cf-rt-quiz-badge">QUIZ</div><div class="cf-rt-quiz-question">' + comp.question + '</div><div class="cf-rt-quiz-options">' + opts + '</div><div id="fb-' + comp.id + '" style="margin-top:10px;font-size:13px;font-weight:600;"></div><button id="quiz-btn-' + comp.id + '" class="cf-rt-quiz-submit" disabled>Submit</button>';
+          (function(q) {
+            setTimeout(function() {
+              var btn = document.getElementById('quiz-btn-' + q.id);
+              var radios = document.querySelectorAll('input[name="q-' + q.id + '"]');
+              radios.forEach(function(radio) {
+                radio.addEventListener('change', function() {
+                  if (btn) btn.disabled = false;
+                });
+              });
+              if (!btn) return;
+              btn.addEventListener('click', function() {
+                var sel = document.querySelector('input[name="q-' + q.id + '"]:checked');
+                if (!sel) return;
+                var correct = (Number(sel.value) === (q.correctAnswer || 0));
+                scorableComps[q.id] = correct;
+                mandatoryCompleted[q.id] = true;
+                if (correct) {
+                  btn.disabled = true;
+                  btn.textContent = 'Submitted';
+                  radios.forEach(function(r) { r.disabled = true; });
+                } else {
+                  btn.disabled = false;
+                }
+                var fb = document.getElementById('fb-' + q.id);
+                if (fb) fb.innerHTML = correct
+                  ? '<span style="color:#4ade80">' + ((q.feedback && q.feedback.correct) || 'Correct!') + '</span>'
+                  : '<span style="color:#f87171">' + ((q.feedback && q.feedback.incorrect) || 'Incorrect. Try again.') + '</span>';
+                checkCompletion();
+              });
+            }, 0);
+          })(comp);
         } else if (comp.type === 'true_false') {
           var tfId = comp.id;
           var tfCorrect = comp.correctAnswer === true ? 'true' : 'false';
@@ -755,6 +806,244 @@ def _get_fallback_runtime_js() -> str:
               "<button class=\"cf-rt-quiz-submit\" onclick='__cfFITBSubmit(\"" + fbId + "\", " + fbAnsSafe + ", " + fbCS + ")'>Submit</button>" +
             '</div>' +
             '<div id="fb-' + fbId + '" style="margin-top:10px;font-size:13px;font-weight:600;"></div>';
+        } else if (comp.type === 'multi_select') {
+          var msId = comp.id;
+          var msOpts = '';
+          for (var mi = 0; mi < (comp.options || []).length; mi++) {
+            msOpts += '<label class="cf-rt-quiz-option"><input type="checkbox" name="ms-' + msId + '" value="' + mi + '"/><span>' + comp.options[mi] + '</span></label>';
+          }
+          el.innerHTML = '<div class="cf-rt-quiz-badge">MULTI-SELECT</div>' +
+            '<div class="cf-rt-quiz-question">' + (comp.question || '') + '</div>' +
+            '<div class="cf-rt-quiz-options">' + msOpts + '</div>' +
+            '<button id="ms-btn-' + msId + '" class="cf-rt-quiz-submit" disabled>Submit Answer</button>' +
+            '<div id="fb-' + msId + '" class="cf-rt-quiz-feedback"></div>';
+          (function(msComp) {
+            setTimeout(function() {
+              var btn = document.getElementById('ms-btn-' + msComp.id);
+              var boxes = document.querySelectorAll('input[name="ms-' + msComp.id + '"]');
+              boxes.forEach(function(box) {
+                box.addEventListener('change', function() {
+                  var anyChecked = Array.prototype.some.call(boxes, function(b) { return b.checked; });
+                  if (btn) btn.disabled = !anyChecked;
+                });
+              });
+              if (!btn) return;
+              btn.addEventListener('click', function() {
+                var selected = Array.prototype.filter.call(boxes, function(b) { return b.checked; }).map(function(b) { return String(b.value); });
+                var correctAnswers = (msComp.correctAnswer || []).map(function(v) { return String(v); });
+                var correct = selected.length === correctAnswers.length && selected.every(function(v) { return correctAnswers.indexOf(v) !== -1; });
+                scorableComps[msComp.id] = correct;
+                mandatoryCompleted[msComp.id] = true;
+                var fb = document.getElementById('fb-' + msComp.id);
+                if (fb) fb.innerHTML = correct ? '<span style="color:#4ade80">\u2713 Correct!</span>' : '<span style="color:#f87171">\u2717 Incorrect. Try again.</span>';
+                if (correct) {
+                  boxes.forEach(function(b) { b.disabled = true; });
+                  btn.disabled = true;
+                  btn.textContent = 'Submitted';
+                } else {
+                  btn.disabled = false;
+                }
+                checkCompletion();
+              });
+            }, 0);
+          })(comp);
+        } else if (comp.type === 'matching') {
+          var mtId = comp.id;
+          var rightItems = (comp.pairs || []).map(function(p) { return p.rightItem || ''; });
+          for (var ri = rightItems.length - 1; ri > 0; ri--) {
+            var rj = Math.floor(Math.random() * (ri + 1));
+            var tmp = rightItems[ri];
+            rightItems[ri] = rightItems[rj];
+            rightItems[rj] = tmp;
+          }
+          var pairsHtml = '';
+          for (var mpi = 0; mpi < (comp.pairs || []).length; mpi++) {
+            var pair = comp.pairs[mpi] || {};
+            var optionsHtml = '<option value="">Select match...</option>';
+            for (var rmi = 0; rmi < rightItems.length; rmi++) {
+              var safeRight = String(rightItems[rmi]).replace(/"/g, '&quot;');
+              optionsHtml += '<option value="' + safeRight + '">' + rightItems[rmi] + '</option>';
+            }
+            pairsHtml += '<div style="display:flex;gap:10px;margin-bottom:10px;align-items:center;">' +
+              '<div style="flex:1;padding:10px;background:#18181b;border-radius:6px;color:#fafafa;border:1px solid #27272a;">' + (pair.leftItem || '') + '</div>' +
+              '<select class="cf-rt-match-select" data-match-id="' + mtId + '" data-pair-idx="' + mpi + '" style="flex:1;padding:10px;background:#09090b;border-radius:6px;color:#fafafa;border:1px solid #27272a;outline:none;">' + optionsHtml + '</select>' +
+            '</div>';
+          }
+          el.innerHTML = '<div class="cf-rt-quiz-badge">MATCHING</div>' +
+            '<div class="cf-rt-quiz-question">' + (comp.question || '') + '</div>' +
+            '<div class="cf-rt-match-container" style="margin-top:1rem;">' + pairsHtml + '</div>' +
+            '<button id="mt-btn-' + mtId + '" class="cf-rt-quiz-submit" disabled>Submit Answer</button>' +
+            '<div id="fb-' + mtId + '" class="cf-rt-quiz-feedback"></div>';
+          (function(mtComp) {
+            setTimeout(function() {
+              var btn = document.getElementById('mt-btn-' + mtComp.id);
+              var selects = document.querySelectorAll('select[data-match-id="' + mtComp.id + '"]');
+              selects.forEach(function(sel) {
+                sel.addEventListener('change', function() {
+                  var allSelected = Array.prototype.every.call(selects, function(s) { return s.value !== ''; });
+                  if (btn) btn.disabled = !allSelected;
+                });
+              });
+              if (!btn) return;
+              btn.addEventListener('click', function() {
+                var correct = true;
+                selects.forEach(function(sel) {
+                  var idx = parseInt(sel.getAttribute('data-pair-idx') || '0', 10);
+                  var expected = mtComp.pairs[idx] ? mtComp.pairs[idx].rightItem : '';
+                  if (sel.value !== expected) correct = false;
+                });
+                scorableComps[mtComp.id] = correct;
+                mandatoryCompleted[mtComp.id] = true;
+                var fb = document.getElementById('fb-' + mtComp.id);
+                if (fb) fb.innerHTML = correct ? '<span style="color:#4ade80">\u2713 Correct!</span>' : '<span style="color:#f87171">\u2717 Incorrect. Try again.</span>';
+                if (correct) {
+                  selects.forEach(function(s) { s.disabled = true; s.style.opacity = '0.6'; });
+                  btn.disabled = true;
+                  btn.textContent = 'Submitted';
+                } else {
+                  btn.disabled = false;
+                }
+                checkCompletion();
+              });
+            }, 0);
+          })(comp);
+        } else if (comp.type === 'table') {
+          var tableHtml = '<div style="overflow-x:auto;margin-bottom:1rem;"><table style="width:100%;border-collapse:collapse;border:1px solid #3f3f46;color:#fafafa;font-size:14px;"><thead><tr>';
+          for (var thi = 0; thi < (comp.headers || []).length; thi++) {
+            tableHtml += '<th style="border:1px solid #3f3f46;padding:10px;background:#18181b;font-weight:600;text-align:left;">' + comp.headers[thi] + '</th>';
+          }
+          tableHtml += '</tr></thead><tbody>';
+          for (var tri = 0; tri < (comp.rows || []).length; tri++) {
+            tableHtml += '<tr>';
+            var row = comp.rows[tri] || [];
+            for (var tdi = 0; tdi < row.length; tdi++) {
+              tableHtml += '<td style="border:1px solid #3f3f46;padding:10px;background:#09090b;">' + row[tdi] + '</td>';
+            }
+            tableHtml += '</tr>';
+          }
+          tableHtml += '</tbody></table></div>';
+          el.innerHTML = tableHtml;
+        } else if (comp.type === 'interactive-video') {
+          if (comp.embedType === 'youtube' || comp.embedType === 'vimeo') {
+            el.innerHTML = '<div style="padding:24px;border:1px solid #7f1d1d;border-radius:8px;background:#1a0a0a;color:#fca5a5;line-height:1.5;"><strong>Interactive video requires an uploaded video file.</strong><br>YouTube and Vimeo embeds cannot expose playback timing to this SCORM player.</div>';
+          } else {
+            el.style.position = 'relative';
+            var iv = document.createElement('video');
+            iv.className = 'cf-rt-video';
+            iv.controls = true;
+            iv.src = comp.src || '';
+            iv.style.width = '100%';
+            iv.style.borderRadius = '8px';
+            iv.style.background = '#000';
+            el.appendChild(iv);
+
+            var overlay = document.createElement('div');
+            overlay.style.position = 'absolute';
+            overlay.style.inset = '0';
+            overlay.style.background = 'rgba(0,0,0,0.9)';
+            overlay.style.display = 'none';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.borderRadius = '8px';
+            overlay.style.zIndex = '10';
+            overlay.style.padding = '2rem';
+            el.appendChild(overlay);
+
+            var interactions = comp.interactions || [];
+            iv.addEventListener('timeupdate', function() {
+              var currentTime = iv.currentTime;
+              var hit = null;
+              for (var ii = 0; ii < interactions.length; ii++) {
+                var candidate = interactions[ii];
+                if (!candidate.completed && Math.abs((candidate.timestamp || 0) - currentTime) < 0.5) {
+                  hit = candidate;
+                  break;
+                }
+              }
+              if (!hit || overlay.style.display !== 'none') return;
+
+              iv.pause();
+              overlay.innerHTML = '';
+              overlay.style.display = 'flex';
+              iv.controls = false;
+
+              var box = document.createElement('div');
+              box.style.textAlign = 'center';
+              box.style.width = '100%';
+              box.style.maxWidth = '500px';
+
+              var question = document.createElement('h3');
+              question.style.color = '#fff';
+              question.style.marginBottom = '1.5rem';
+              question.style.fontSize = '1.25rem';
+              question.style.fontWeight = '600';
+              question.textContent = hit.question || '';
+              box.appendChild(question);
+
+              var options = document.createElement('div');
+              options.style.display = 'flex';
+              options.style.flexDirection = 'column';
+              options.style.gap = '0.75rem';
+
+              (hit.options || []).forEach(function(opt, optionIndex) {
+                var btn = document.createElement('button');
+                btn.textContent = opt;
+                btn.style.background = '#171717';
+                btn.style.color = '#fff';
+                btn.style.border = '1px solid #450a0a';
+                btn.style.padding = '0.75rem';
+                btn.style.borderRadius = '6px';
+                btn.style.cursor = 'pointer';
+                btn.style.fontSize = '1rem';
+                btn.onclick = function() {
+                  var feedbackId = 'quiz-feedback-' + hit.id;
+                  var feedback = box.querySelector('#' + feedbackId);
+                  if (!feedback) {
+                    feedback = document.createElement('p');
+                    feedback.id = feedbackId;
+                    feedback.style.marginTop = '1rem';
+                    feedback.style.fontWeight = '600';
+                    box.appendChild(feedback);
+                  }
+                  if (optionIndex === hit.correctAnswerIndex) {
+                    btn.style.background = '#16a34a';
+                    feedback.textContent = 'Correct! You can now continue.';
+                    feedback.style.color = '#4ade80';
+                    options.querySelectorAll('button').forEach(function(b) {
+                      b.disabled = true;
+                      if (b !== btn) b.style.opacity = '0.5';
+                    });
+                    var continueBtn = document.createElement('button');
+                    continueBtn.textContent = 'Continue Video';
+                    continueBtn.style.background = '#8b1a1a';
+                    continueBtn.style.color = '#fff';
+                    continueBtn.style.padding = '0.75rem 2rem';
+                    continueBtn.style.border = 'none';
+                    continueBtn.style.borderRadius = '6px';
+                    continueBtn.style.cursor = 'pointer';
+                    continueBtn.style.fontWeight = '700';
+                    continueBtn.style.marginTop = '1rem';
+                    continueBtn.onclick = function() {
+                      hit.completed = true;
+                      overlay.style.display = 'none';
+                      iv.controls = true;
+                      iv.play();
+                    };
+                    box.appendChild(continueBtn);
+                  } else {
+                    btn.style.background = '#7f1d1d';
+                    feedback.textContent = 'Incorrect answer. Please try again.';
+                    feedback.style.color = '#f87171';
+                    setTimeout(function() { btn.style.background = '#171717'; }, 1200);
+                  }
+                };
+                options.appendChild(btn);
+              });
+
+              box.appendChild(options);
+              overlay.appendChild(box);
+            });
+          }
         } else if (comp.type === 'video') {
           if (comp.embedType === 'youtube' || comp.embedType === 'vimeo') {
             el.innerHTML = '<div class="cf-rt-video-wrap"><iframe class="cf-rt-video-embed" src="' + comp.src + '" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe></div>';

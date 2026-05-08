@@ -496,6 +496,7 @@ class CourseForgeRuntime {
     }
 
     this.persistState();
+    this.checkCompletion();
   }
 
   async submitGenericQuiz(quizId: string, score: number): Promise<void> {
@@ -521,6 +522,7 @@ class CourseForgeRuntime {
     }
 
     this.persistState();
+    this.checkCompletion();
   }
 
   // -----------------------------------------------------------------------
@@ -1057,6 +1059,25 @@ class CourseForgeRuntime {
 
       case "interactive-video": {
         wrapper.style.position = "relative";
+
+        if (comp.embedType === "youtube" || comp.embedType === "vimeo") {
+          const message = document.createElement("div");
+          message.style.cssText = [
+            "padding:24px",
+            "border:1px solid #7f1d1d",
+            "border-radius:8px",
+            "background:#1a0a0a",
+            "color:#fca5a5",
+            "line-height:1.5",
+          ].join(";");
+          message.innerHTML = [
+            "<strong>Interactive video requires an uploaded video file.</strong>",
+            "<br />",
+            "YouTube and Vimeo embeds cannot expose playback timing to this SCORM player.",
+          ].join("");
+          wrapper.appendChild(message);
+          break;
+        }
         
         const video = document.createElement("video");
         video.className = "cf-rt-video";
@@ -1125,7 +1146,7 @@ class CourseForgeRuntime {
 
               btn.onclick = () => {
                 const feedbackId = "quiz-feedback-" + hit.id;
-                let feedback = container.querySelector("#" + feedbackId);
+                let feedback = container.querySelector<HTMLParagraphElement>("#" + feedbackId);
                 if (!feedback) {
                   feedback = document.createElement("p");
                   feedback.id = feedbackId;
@@ -1892,6 +1913,13 @@ class CourseForgeRuntime {
           radios.forEach(r => { r.disabled = true; });
         } else {
           submitBtn.disabled = false;
+        }
+
+        const feedbackEl = document.getElementById(`feedback-${quizId}`);
+        if (feedbackEl) {
+          feedbackEl.innerHTML = isCorrect
+            ? '<span style="color:#4ade80">✓ Correct!</span>'
+            : '<span style="color:#f87171">✗ Incorrect. Try again.</span>';
         }
       }
     });
