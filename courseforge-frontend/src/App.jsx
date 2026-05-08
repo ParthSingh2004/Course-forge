@@ -3,7 +3,7 @@ import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerCli
 import Dashboard from './Dashboard';
 import { createLocalCourse, saveCourseToBrowser } from './utils/storage';
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://course-forge-backend.onrender.com').replace(/\/+$/, '');
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://course-forge-tpxk.onrender.com').replace(/\/+$/, '');
 const buildApiUrl = (path) => `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 const buildBackendAssetUrl = (path) => {
   if (!path) return path;
