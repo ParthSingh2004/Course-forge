@@ -3,6 +3,14 @@ import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerCli
 import Dashboard from './Dashboard';
 import { createLocalCourse, saveCourseToBrowser } from './utils/storage';
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://course-forge-backend.onrender.com').replace(/\/+$/, '');
+const buildApiUrl = (path) => `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+const buildBackendAssetUrl = (path) => {
+  if (!path) return path;
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+};
+
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap');
 
@@ -1488,9 +1496,9 @@ function RichTextEditor({ value, onChange, placeholder, style, className }) {
           ))}
         </select>
         <div style={{ width: '1px', height: '16px', background: '#EAD0D0', margin: '0 4px' }} />
-        <input 
-          type="color" 
-          onInput={(e) => exec('foreColor', e.target.value)} 
+        <input
+          type="color"
+          onInput={(e) => exec('foreColor', e.target.value)}
           style={{ width: '20px', height: '20px', padding: 0, border: 'none', cursor: 'pointer', background: 'transparent' }}
           title="Text Color"
         />
@@ -1620,7 +1628,7 @@ function ImageBlock({ block, onUpdate }) {
     if (!aiPrompt) return;
     setIsGenerating(true);
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/generate-image', {
+      const res = await fetch(buildApiUrl('/api/generate-image'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: aiPrompt })
@@ -1628,7 +1636,7 @@ function ImageBlock({ block, onUpdate }) {
       if (!res.ok) throw new Error('Generation failed');
       const data = await res.json();
       if (data.localUrl) {
-        onUpdate(block.id, { image: `http://127.0.0.1:8000${data.localUrl}` });
+        onUpdate(block.id, { image: buildBackendAssetUrl(data.localUrl) });
       }
     } catch (err) {
       console.error(err);
@@ -1665,7 +1673,7 @@ function ImageBlock({ block, onUpdate }) {
   const handleSelectUnsplash = async (photo) => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/unsplash-download', {
+      const res = await fetch(buildApiUrl('/api/unsplash-download'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1734,8 +1742,8 @@ function ImageBlock({ block, onUpdate }) {
       ) : isSearching ? (
         <div className="bg-neutral-900 border border-red-800 text-white p-4 rounded" style={{ background: '#171717', border: '1px solid #991b1b', padding: '1rem', borderRadius: 8, color: '#fff' }}>
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-            <input 
-              value={searchTerm} 
+            <input
+              value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
               placeholder="Search Unsplash..."
@@ -1763,8 +1771,8 @@ function ImageBlock({ block, onUpdate }) {
       ) : (
         <div className="bg-neutral-900 border border-red-800 text-white p-4 rounded" style={{ background: '#171717', border: '1px solid #991b1b', padding: '1rem', borderRadius: 8, color: '#fff' }}>
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-            <input 
-              value={aiPrompt} 
+            <input
+              value={aiPrompt}
               onChange={e => setAiPrompt(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleGenerateImage()}
               placeholder="Describe the image you want to generate..."
@@ -1838,10 +1846,10 @@ function ImageHotspotBlock({ block, onUpdate, readOnly }) {
         </label>
       ) : (
         <div style={{ position: 'relative', width: '100%', display: 'inline-block' }}>
-          <img 
-            src={block.imageUrl} 
-            alt="Hotspot Base" 
-            style={{ width: '100%', borderRadius: 8, display: 'block', cursor: readOnly ? 'default' : 'crosshair' }} 
+          <img
+            src={block.imageUrl}
+            alt="Hotspot Base"
+            style={{ width: '100%', borderRadius: 8, display: 'block', cursor: readOnly ? 'default' : 'crosshair' }}
             onClick={handleImageClick}
           />
           {(block.hotspots || []).map(hotspot => (
@@ -1855,7 +1863,7 @@ function ImageHotspotBlock({ block, onUpdate, readOnly }) {
               }}
             />
           ))}
-          
+
           {activeHotspot && readOnly && (
             <div className="bg-black border border-neutral-700 text-white p-4 rounded-md shadow-xl z-50" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#000', border: '1px solid #404040', color: '#fff', padding: '1rem', borderRadius: 6, zIndex: 50, minWidth: 250 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -1874,14 +1882,14 @@ function ImageHotspotBlock({ block, onUpdate, readOnly }) {
             <span style={{ color: '#fff', fontSize: '0.875rem', fontWeight: 'bold' }}>Edit Hotspot</span>
             <button onClick={() => removeHotspot(activeHotspot.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={16} /></button>
           </div>
-          <input 
-            value={activeHotspot.title} 
+          <input
+            value={activeHotspot.title}
             onChange={(e) => updateHotspot(activeHotspot.id, { title: e.target.value })}
             placeholder="Title"
             style={{ width: '100%', background: '#0a0a0a', color: '#fff', border: '1px solid #404040', padding: '0.5rem', borderRadius: 4, marginBottom: '0.5rem', outline: 'none' }}
           />
-          <textarea 
-            value={activeHotspot.content} 
+          <textarea
+            value={activeHotspot.content}
             onChange={(e) => updateHotspot(activeHotspot.id, { content: e.target.value })}
             placeholder="Content"
             rows={3}
@@ -1904,7 +1912,7 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
   const handleTimeUpdate = (e) => {
     if (!readOnly || activeQuiz) return;
     const currentTime = e.target.currentTime;
-    const hit = interactions.find(int => 
+    const hit = interactions.find(int =>
       !int.completed && Math.abs(int.timestamp - currentTime) < 0.5
     );
     if (hit) {
@@ -1980,11 +1988,11 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
 
       <div style={{ position: 'relative' }}>
         {block.videoUrl ? (
-          <video 
+          <video
             ref={videoRef}
-            src={block.videoUrl} 
-            controls={!activeQuiz} 
-            style={{ width: '100%', borderRadius: 8, background: '#000', display: 'block' }} 
+            src={block.videoUrl}
+            controls={!activeQuiz}
+            style={{ width: '100%', borderRadius: 8, background: '#000', display: 'block' }}
             onTimeUpdate={handleTimeUpdate}
           />
         ) : (
@@ -1997,17 +2005,17 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
               <h3 style={{ color: '#fff', marginBottom: '1.5rem', fontSize: '1.25rem', fontWeight: 600 }}>{activeQuiz.question}</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {activeQuiz.options.map((opt, i) => (
-                  <button 
-                    key={i} 
+                  <button
+                    key={i}
                     onClick={() => !isCorrect && handleQuizAnswer(i)}
-                    style={{ 
-                      background: isCorrect && i === activeQuiz.correctAnswerIndex ? '#16a34a' : '#171717', 
-                      color: '#fff', 
-                      border: '1px solid #450a0a', 
-                      padding: '0.75rem', 
-                      borderRadius: 6, 
-                      cursor: isCorrect ? 'default' : 'pointer', 
-                      transition: 'background 0.2s', 
+                    style={{
+                      background: isCorrect && i === activeQuiz.correctAnswerIndex ? '#16a34a' : '#171717',
+                      color: '#fff',
+                      border: '1px solid #450a0a',
+                      padding: '0.75rem',
+                      borderRadius: 6,
+                      cursor: isCorrect ? 'default' : 'pointer',
+                      transition: 'background 0.2s',
                       fontSize: '1rem',
                       opacity: isCorrect && i !== activeQuiz.correctAnswerIndex ? 0.5 : 1
                     }}
@@ -2018,13 +2026,13 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
                   </button>
                 ))}
               </div>
-              
+
               {hasAttempted && (
                 <div style={{ marginTop: '1.5rem' }}>
                   {isCorrect ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
                       <p style={{ color: '#4ade80', fontWeight: 600, margin: 0 }}>Correct! You can now continue.</p>
-                      <button 
+                      <button
                         onClick={resumeVideo}
                         style={{ background: '#8b1a1a', color: '#fff', padding: '0.75rem 2rem', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 700, animation: 'pulse 2s infinite' }}
                       >
@@ -2051,43 +2059,43 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
             {interactions.map(int => (
               <div key={int.id} style={{ background: '#0a0000', borderLeft: '4px solid #991b1b', padding: '1rem', borderRadius: '0 6px 6px 0', border: '1px solid #262626', borderLeftWidth: 4 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                  <input 
-                    type="number" 
-                    value={int.timestamp} 
-                    onChange={e => updateInteraction(int.id, { timestamp: Number(e.target.value) })} 
+                  <input
+                    type="number"
+                    value={int.timestamp}
+                    onChange={e => updateInteraction(int.id, { timestamp: Number(e.target.value) })}
                     placeholder="Timestamp (seconds)"
                     style={{ background: '#171717', color: '#fff', border: '1px solid #404040', padding: '0.4rem 0.5rem', borderRadius: 4, width: '140px', outline: 'none' }}
                   />
                   <button onClick={() => removeInteraction(int.id)} style={{ background: 'transparent', color: '#ef4444', border: 'none', cursor: 'pointer' }}><Trash2 size={16} /></button>
                 </div>
-                <input 
-                  value={int.question} 
-                  onChange={e => updateInteraction(int.id, { question: e.target.value })} 
+                <input
+                  value={int.question}
+                  onChange={e => updateInteraction(int.id, { question: e.target.value })}
                   placeholder="Question text"
                   style={{ width: '100%', background: '#171717', color: '#fff', border: '1px solid #404040', padding: '0.5rem', borderRadius: 4, marginBottom: '0.75rem', outline: 'none' }}
                 />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {int.options.map((opt, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <input 
-                        type="radio" 
+                      <input
+                        type="radio"
                         name={`quiz-${int.id}`}
-                        checked={int.correctAnswerIndex === i} 
-                        onChange={() => updateInteraction(int.id, { correctAnswerIndex: i })} 
+                        checked={int.correctAnswerIndex === i}
+                        onChange={() => updateInteraction(int.id, { correctAnswerIndex: i })}
                         style={{ cursor: 'pointer' }}
                       />
-                      <input 
-                        value={opt} 
+                      <input
+                        value={opt}
                         onChange={e => {
                           const newOpts = [...int.options];
                           newOpts[i] = e.target.value;
                           updateInteraction(int.id, { options: newOpts });
-                        }} 
+                        }}
                         style={{ flex: 1, background: '#171717', color: '#fff', border: '1px solid #404040', padding: '0.4rem 0.5rem', borderRadius: 4, outline: 'none' }}
                       />
                       <button onClick={() => {
                         const newOpts = int.options.filter((_, idx) => idx !== i);
-                        updateInteraction(int.id, { 
+                        updateInteraction(int.id, {
                           options: newOpts,
                           correctAnswerIndex: int.correctAnswerIndex >= i ? Math.max(0, int.correctAnswerIndex - 1) : int.correctAnswerIndex
                         });
@@ -2710,12 +2718,12 @@ function App() {
       const fd = new FormData();
       fd.append('file', file);
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/upload/audio', { method: 'POST', body: fd });
+        const res = await fetch(buildApiUrl('/api/upload/audio'), { method: 'POST', body: fd });
         if (!res.ok) throw new Error();
         const d = await res.json();
         setSlides(prev => prev.map(s => s.id === activeSlideId ? {
           ...s,
-          bgAudio: { url: `http://127.0.0.1:8000${d.previewUrl}`, name: file.name, mediaId: d.mediaId }
+          bgAudio: { url: buildBackendAssetUrl(d.previewUrl), name: file.name, mediaId: d.mediaId }
         } : s));
       } catch {
         alert('Audio upload failed.');
@@ -2734,7 +2742,7 @@ function App() {
       if (type === 'pptx') endpoint = '/api/upload/pptx';
       else if (type === 'story') endpoint = '/api/upload/story';
       else if (type === 'pdf') endpoint = '/api/upload/pdf';
-      const response = await fetch(`http://127.0.0.1:8000${endpoint}`, { method: 'POST', body: formData });
+      const response = await fetch(buildApiUrl(endpoint), { method: 'POST', body: formData });
       if (!response.ok) throw new Error("Upload failed");
       const data = await response.json();
       const importedBlocks = data.blocks.map((block, index) => ({ ...block, id: Date.now() + index }));
@@ -2765,7 +2773,7 @@ function App() {
       const formData = new FormData();
       formData.append('prompt', aiPrompt.trim());
       formData.append('block_type', aiBlockType);
-      const response = await fetch('http://127.0.0.1:8000/api/ai/generate', { method: 'POST', body: formData });
+      const response = await fetch(buildApiUrl('/api/ai/generate'), { method: 'POST', body: formData });
       const data = await response.json();
       const newBlock = { id: Date.now(), type: 'text', content: data.data.content || JSON.stringify(data.data) };
       setSlides(prev => prev.map(s => {
@@ -2825,7 +2833,7 @@ function App() {
       }, 400);
 
       setExportLabel('Generating SCORM package…');
-      const response = await fetch('http://127.0.0.1:8000/api/export/scorm', {
+      const response = await fetch(buildApiUrl('/api/export/scorm'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
@@ -2881,7 +2889,7 @@ function App() {
       }, 300);
 
       setExportLabel('Generating xAPI package…');
-      const response = await fetch('http://127.0.0.1:8000/api/export/xapi', {
+      const response = await fetch(buildApiUrl('/api/export/xapi'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
@@ -2921,7 +2929,7 @@ function App() {
     setIsPreviewLoading(true);
     try {
       const body = JSON.stringify({ title: courseTitle, blocks: slides, policy: { passingScore }, theme: null });
-      const res = await fetch('http://127.0.0.1:8000/api/preview-html', {
+      const res = await fetch(buildApiUrl('/api/preview-html'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
@@ -3533,12 +3541,12 @@ function App() {
                     const fd = new FormData();
                     fd.append('file', f);
                     try {
-                      const res = await fetch('http://127.0.0.1:8000/api/upload/audio', { method: 'POST', body: fd });
+                      const res = await fetch(buildApiUrl('/api/upload/audio'), { method: 'POST', body: fd });
                       if (!res.ok) throw new Error();
                       const d = await res.json();
                       updateBlock(block.id, {
                         mediaId: d.mediaId,
-                        audioUrl: `http://127.0.0.1:8000${d.previewUrl}`,
+                        audioUrl: buildBackendAssetUrl(d.previewUrl),
                         isUploading: false,
                       });
                     } catch {
@@ -3904,8 +3912,7 @@ function App() {
                         onDragOver={handleSlideDragOver}
                         onDrop={(e) => handleSlideDrop(e, index)}
                         onDragEnd={handleSlideDragEnd}
-                        style={{ background: slide.background?.type === 'color' ? slide.background.value : (slide.background?.type === 'image' ? `url("${slide.background.value}")` : 'white'), backgroundSize: slide.background?.type === 'image' ? 'contain' : 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', border: '1px solid #e8d8d8', borderRadius: '12px', padding: '1.5rem', cursor: 'pointer', position: 'relative', boxShadow: '0 2px 8px rgba(139,26,26,0.03)', transition: 'transform 0.15s, border-color 0.15s', opacity: draggedSlideIdx === index ? 0.4 : 1 }}
-                        
+                        style={{ background: slide.background?.type === 'color' ? slide.background.value : (slide.background?.type === 'image' ? `url("${slide.background.value}")` : 'white'), backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', border: '1px solid #e8d8d8', borderRadius: '12px', padding: '1.5rem', cursor: 'pointer', position: 'relative', boxShadow: '0 2px 8px rgba(139,26,26,0.03)', transition: 'transform 0.15s, border-color 0.15s', opacity: draggedSlideIdx === index ? 0.4 : 1 }}
                         onClick={() => setActiveSlideId(slide.id)}
                         onMouseOver={(e) => e.currentTarget.style.borderColor = '#c0392b'}
                         onMouseOut={(e) => e.currentTarget.style.borderColor = '#e8d8d8'}>
@@ -3937,7 +3944,7 @@ function App() {
               <div className="cf-canvas" style={{
                 backgroundColor: (activeSlide?.background || { type: 'color', value: '#ffffff' }).type === 'color' ? (activeSlide.background || { type: 'color', value: '#ffffff' }).value : '#ffffff',
                 backgroundImage: (activeSlide?.background || { type: 'color', value: '#ffffff' }).type === 'image' ? `url("${activeSlide.background.value}")` : 'none',
-                backgroundSize: (activeSlide?.background || { type: 'color', value: '#ffffff' }).type === 'image' ? 'contain' : 'cover',
+                backgroundSize: 'cover',
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat'
               }}>
