@@ -1,1 +1,4 @@
 @import "tailwindcss";
+.cf-rich-text-editor ul { list-style-type: disc !important; padding-left: 24px !important; margin: 8px 0 !important; }
+.cf-rich-text-editor li { display: list-item !important; }
+

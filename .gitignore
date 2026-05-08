@@ -1,18 +1,37 @@
 # Environments and API Keys (CRITICAL)
 .env
+.env.*
+.env.local
+.env.development
+.env.production
+
+# Python & FastAPI Backend
 venv/
 env/
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# Node/React
+# Local Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Node/React Frontend
 node_modules/
 dist/
 build/
 .npm/
 
+# SCORM/xAPI Exports
+*.zip
+
 # Mac/Windows System Files
 .DS_Store
 Thumbs.db
 
-# SCORM/xAPI Exports
-*.zip
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp

@@ -1,28 +1,20 @@
-"""
-scorm_builder.py — SCORM 1.2 Package Builder
-================================================
-Generates a compliant SCORM 1.2 package with:
-  - Proper imsmanifest.xml with ADL namespaces
-  - Runtime HTML with embedded course data + bundled JS
-  - Slide→Layer→Component data model conversion from authoring blocks
-  - Auto-generated trigger rules from quiz blocks
-"""
-
 import json
 import os
+import re
 import uuid
 import html as html_module
+from urllib.parse import parse_qs, urlparse
 from typing import List, Dict, Any
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # BLOCK → SLIDE/LAYER/COMPONENT CONVERSION
 # ---------------------------------------------------------------------------
-
+ 
 def _make_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
-
-
+ 
+ 
 def _detect_embed_type(url: str) -> str:
     if not url:
         return "direct"
@@ -33,12 +25,45 @@ def _detect_embed_type(url: str) -> str:
     return "direct"
 
 
-def _block_to_component(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
-    """Convert an authoring block into a runtime Component."""
+def _to_embeddable_video_url(url: str) -> str:
+    """Convert public video page URLs into iframe-safe embed URLs."""
+    if not url:
+        return ""
+
+    raw_url = url.strip()
+    parsed = urlparse(raw_url)
+    host = parsed.netloc.lower().replace("www.", "")
+    path = parsed.path.strip("/")
+
+    if host in ("youtube.com", "m.youtube.com", "music.youtube.com", "youtube-nocookie.com"):
+        video_id = ""
+        if path == "watch":
+            video_id = (parse_qs(parsed.query).get("v") or [""])[0]
+        elif path.startswith(("embed/", "shorts/", "live/")):
+            video_id = path.split("/", 1)[1].split("/", 1)[0]
+
+        if re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id or ""):
+            return f"https://www.youtube.com/embed/{video_id}?rel=0"
+
+    if host == "youtu.be":
+        video_id = path.split("/", 1)[0]
+        if re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id or ""):
+            return f"https://www.youtube.com/embed/{video_id}?rel=0"
+
+    if host == "vimeo.com":
+        match = re.search(r"(\d+)", path)
+        if match:
+            return f"https://player.vimeo.com/video/{match.group(1)}"
+
+    return raw_url
+ 
+ 
+def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
+    """Convert an authoring block into a runtime Component (raw)."""
     btype = (block.get("type") or "").lower().strip()
     bid = block.get("id") or _make_id("comp")
     bid = str(bid)
-
+ 
     if btype in ("heading", "heading-1"):
         return {
             "type": "heading",
@@ -46,14 +71,14 @@ def _block_to_component(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "content": block.get("content", ""),
             "level": 2,
         }
-
+ 
     if btype in ("text", "ai-generated"):
         return {
             "type": "text",
             "id": bid,
             "content": block.get("content", ""),
         }
-
+ 
     if btype == "image":
         src = (
             block.get("image")
@@ -70,26 +95,46 @@ def _block_to_component(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "width": block.get("width", "100%"),
             "caption": block.get("caption", ""),
         }
-
+ 
     if btype == "video":
         url = block.get("videoUrl") or block.get("video_url") or ""
         comp = {
             "type": "video",
             "id": bid,
-            "src": url,
+            "src": _to_embeddable_video_url(url),
             "embedType": _detect_embed_type(url),
         }
         if block.get("mandatory"):
             comp["mandatory"] = True
         return comp
+ 
+    if btype == "image-hotspot":
+        return {
+            "type": "image-hotspot",
+            "id": bid,
+            "src": block.get("imageUrl", ""),
+            "hotspots": block.get("hotspots", [])
+        }
 
+    if btype == "interactive-video":
+        url = block.get("videoUrl") or block.get("video_url") or ""
+        comp = {
+            "type": "interactive-video",
+            "id": bid,
+            "src": _to_embeddable_video_url(url),
+            "embedType": _detect_embed_type(url),
+            "interactions": block.get("interactions", [])
+        }
+        return comp
+ 
     if btype == "button":
         return {
             "type": "button",
             "id": bid,
             "label": block.get("content") or block.get("label") or "Button",
+            "targetSlideId": str(block.get("targetSlideId") or ""),
         }
-
+ 
     if btype in ("quiz", "mcq"):
         comp = {
             "type": "quiz",
@@ -101,11 +146,45 @@ def _block_to_component(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
                 "correct": "Correct!",
                 "incorrect": "Incorrect. Try again.",
             },
+            "marks": block.get("marks"),
         }
         if block.get("mandatory"):
             comp["mandatory"] = True
         return comp
-
+ 
+    if btype == "multi_select":
+        comp = {
+            "type": "multi_select",
+            "id": bid,
+            "question": block.get("question", ""),
+            "options": block.get("options", []),
+            "correctAnswer": block.get("correctAnswer", []),
+            "feedback": {
+                "correct": "Correct!",
+                "incorrect": "Incorrect. Try again.",
+            },
+            "marks": block.get("marks"),
+        }
+        if block.get("mandatory"):
+            comp["mandatory"] = True
+        return comp
+ 
+    if btype == "matching":
+        comp = {
+            "type": "matching",
+            "id": bid,
+            "question": block.get("question", ""),
+            "pairs": block.get("pairs", []),
+            "feedback": {
+                "correct": "Correct!",
+                "incorrect": "Incorrect. Try again.",
+            },
+            "marks": block.get("marks"),
+        }
+        if block.get("mandatory"):
+            comp["mandatory"] = True
+        return comp
+ 
     if btype == "flashcard":
         return {
             "type": "flashcard",
@@ -113,21 +192,21 @@ def _block_to_component(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "front": block.get("front", ""),
             "back": block.get("back", ""),
         }
-
+ 
     if btype == "process":
         return {
             "type": "process",
             "id": bid,
             "steps": block.get("steps", []),
         }
-
+ 
     if btype == "list":
         return {
             "type": "list",
             "id": bid,
             "items": block.get("items", []),
         }
-
+ 
     if btype == "quote":
         return {
             "type": "quote",
@@ -135,19 +214,120 @@ def _block_to_component(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "content": block.get("content", ""),
             "author": block.get("author", ""),
         }
+ 
+    if btype == "audio":
+        comp = {
+            "type": "audio",
+            "id": bid,
+            # src is a relative media/ path, resolved during export packaging
+            "src": block.get("src") or block.get("audioUrl", ""),
+            "label": block.get("label", "Audio Track"),
+            "mediaId": block.get("mediaId", ""),
+        }
+        if block.get("mandatory"):
+            comp["mandatory"] = True
+        return comp
+ 
+    if btype == "true_false":
+        comp = {
+            "type": "true_false",
+            "id": bid,
+            "question": block.get("question", ""),
+            "correctAnswer": block.get("correctAnswer", True),
+            "marks": block.get("marks"),
+        }
+        if block.get("isMandatory") or block.get("mandatory"):
+            comp["mandatory"] = True
+        return comp
+ 
+    if btype == "fill_blanks":
+        comp = {
+            "type": "fill_blanks",
+            "id": bid,
+            "question": block.get("question", ""),
+            "answer": block.get("answer", ""),
+            "caseSensitive": bool(block.get("caseSensitive", False)),
+            "marks": block.get("marks"),
+        }
+        if block.get("isMandatory") or block.get("mandatory"):
+            comp["mandatory"] = True
+        return comp
+ 
+    if btype == "table":
+        return {
+            "type": "table",
+            "id": bid,
+            "headers": block.get("headers", []),
+            "rows": block.get("rows", []),
+        }
 
+    if btype == "columns":
+        raw_cols = block.get("columns", [[], []])
+        serialized_cols = []
+        for col in raw_cols:
+            serialized_sub = []
+            for sub in col:
+                stype = (sub.get("type") or "").lower().strip()
+                if stype == "text":
+                    serialized_sub.append({
+                        "type": "text",
+                        "id": str(sub.get("id", _make_id("sub"))),
+                        "content": sub.get("content", ""),
+                    })
+                elif stype == "image":
+                    src = (
+                        sub.get("image")
+                        or sub.get("imageUrl")
+                        or sub.get("src")
+                        or ""
+                    )
+                    serialized_sub.append({
+                        "type": "image",
+                        "id": str(sub.get("id", _make_id("sub"))),
+                        "src": src,
+                        "alt": sub.get("alt", ""),
+                        "caption": sub.get("caption", ""),
+                    })
+            serialized_cols.append(serialized_sub)
+        return {
+            "type": "columns",
+            "id": bid,
+            "columns": serialized_cols,
+        }
+ 
     # Fallback: treat as text
     return {
         "type": "text",
         "id": bid,
         "content": block.get("content", str(block)),
     }
+ 
+ 
+def _block_to_component(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
+    comp = _block_to_component_raw(block, idx)
+    allowed_animations = {
+        "none",
+        "fade-in",
+        "fade-in-up",
+        "slide-in-left",
+        "slide-in-right",
+        "slide-in-up",
+        "slide-in-down",
+        "zoom-in",
+        "zoom-out",
+        "flip-in",
+        "bounce-in",
+    }
+    animation = block.get("animation", "none")
+    comp["animation"] = animation if animation in allowed_animations else "none"
+    comp["animationDelay"] = block.get("animationDelay", 0)
+    return comp
 
 
 def blocks_to_slides(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Convert a flat list of authoring blocks into grouped Slides.
-    
+ 
     Grouping strategy:
       - 'slide' blocks become their own slide with sub-elements as components
       - 'heading' blocks start a new slide
@@ -158,7 +338,7 @@ def blocks_to_slides(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     current_components: List[Dict[str, Any]] = []
     current_title = "Slide 1"
     slide_counter = 0
-
+ 
     def flush_slide():
         nonlocal slide_counter, current_components, current_title
         if not current_components:
@@ -176,10 +356,10 @@ def blocks_to_slides(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "triggers": [],
         })
         current_components = []
-
+ 
     for idx, block in enumerate(blocks):
         btype = (block.get("type") or "").lower().strip()
-
+ 
         # Handle native slide blocks (from .story imports)
         if btype == "slide":
             flush_slide()
@@ -189,6 +369,8 @@ def blocks_to_slides(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             slides.append({
                 "id": str(block.get("id", _make_id("slide"))),
                 "title": block.get("title", f"Slide {slide_counter}"),
+                "background": block.get("background", {"type": "color", "value": "#0f0f11"}),
+                "bgAudio": block.get("bgAudio"),
                 "layers": [{
                     "id": _make_id("layer"),
                     "name": "Base Layer",
@@ -199,7 +381,7 @@ def blocks_to_slides(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             })
             current_title = f"Slide {slide_counter + 1}"
             continue
-
+ 
         # Headings start a new slide
         if btype in ("heading", "heading-1"):
             flush_slide()
@@ -207,14 +389,14 @@ def blocks_to_slides(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             comp = _block_to_component(block, idx)
             current_components.append(comp)
             continue
-
+ 
         # All other blocks go into the current slide
         comp = _block_to_component(block, idx)
         current_components.append(comp)
-
+ 
     # Flush remaining
     flush_slide()
-
+ 
     # If no slides were created, make one default
     if not slides:
         slides.append({
@@ -228,26 +410,26 @@ def blocks_to_slides(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             }],
             "triggers": [],
         })
-
+ 
     return slides
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # AUTO-GENERATE TRIGGER RULES FROM QUIZ BLOCKS
 # ---------------------------------------------------------------------------
-
+ 
 def generate_quiz_triggers(slides: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Generate basic trigger rules for quiz components."""
     triggers = []
-
+ 
     for slide in slides:
         for layer in slide.get("layers", []):
             for comp in layer.get("components", []):
-                if comp.get("type") != "quiz":
+                if comp.get("type") not in ("quiz", "multi_select", "matching", "true_false", "fill_blanks"):
                     continue
-
+ 
                 quiz_id = comp["id"]
-
+ 
                 # Trigger: show feedback on quiz submit
                 triggers.append({
                     "id": _make_id("trigger"),
@@ -261,24 +443,36 @@ def generate_quiz_triggers(slides: List[Dict[str, Any]]) -> List[Dict[str, Any]]
                     ],
                     "oneShot": False,
                 })
-
+ 
     return triggers
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # IMSMANIFEST.XML GENERATION (SCORM 1.2 COMPLIANT)
 # ---------------------------------------------------------------------------
-
-def generate_manifest(title: str, identifier: str = "CourseForge_Course", media_files: list = None) -> str:
+ 
+def generate_manifest(
+    title: str,
+    identifier: str = "CourseForge_Course",
+    media_files: list = None,
+    mastery_score: float | int | None = None,
+) -> str:
     safe_title = html_module.escape(title)
     safe_id = identifier.replace(" ", "_")
-
+    mastery_score_xml = ""
+    if mastery_score is not None:
+        try:
+            resolved_mastery = max(0, min(100, round(float(mastery_score))))
+            mastery_score_xml = f"\n        <adlcp:masteryscore>{resolved_mastery}</adlcp:masteryscore>"
+        except (TypeError, ValueError):
+            mastery_score_xml = ""
+ 
     # Build file references for all media files
     file_refs = '      <file href="index.html"/>\n'
     if media_files:
         for fname in media_files:
             file_refs += f'      <file href="{html_module.escape(fname)}"/>\n'
-
+ 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="{safe_id}"
           version="1.0"
@@ -288,21 +482,22 @@ def generate_manifest(title: str, identifier: str = "CourseForge_Course", media_
           xsi:schemaLocation="http://www.imsproject.org/xsd/imscp_rootv1p1p2 imscp_rootv1p1p2.xsd
                               http://www.imsglobal.org/xsd/imsmd_rootv1p2p1 imsmd_rootv1p2p1.xsd
                               http://www.adlnet.org/xsd/adlcp_rootv1p2 adlcp_rootv1p2.xsd">
-
+ 
   <metadata>
     <schema>ADL SCORM</schema>
     <schemaversion>1.2</schemaversion>
   </metadata>
-
+ 
   <organizations default="org_1">
     <organization identifier="org_1">
       <title>{safe_title}</title>
       <item identifier="item_1" identifierref="res_1" isvisible="true">
-        <title>{safe_title}</title>
+      <title>{safe_title}</title>
+{mastery_score_xml}
       </item>
     </organization>
   </organizations>
-
+ 
   <resources>
     <resource identifier="res_1"
               type="webcontent"
@@ -311,12 +506,12 @@ def generate_manifest(title: str, identifier: str = "CourseForge_Course", media_
 {file_refs}    </resource>
   </resources>
 </manifest>"""
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # RUNTIME HTML GENERATION
 # ---------------------------------------------------------------------------
-
+ 
 def _get_runtime_js() -> str:
     """Read the pre-built runtime JS bundle."""
     bundle_path = os.path.join(
@@ -324,22 +519,24 @@ def _get_runtime_js() -> str:
         "..", "..", "courseforge-frontend", "scorm-runtime", "dist", "scorm-runtime.js"
     )
     bundle_path = os.path.normpath(bundle_path)
-
+ 
     if os.path.exists(bundle_path):
         with open(bundle_path, "r", encoding="utf-8") as f:
             return f.read()
-
+ 
     # Fallback: minimal inline runtime for when bundle hasn't been built yet
     return _get_fallback_runtime_js()
-
-
+ 
+ 
 def _get_fallback_runtime_js() -> str:
     """Minimal fallback runtime when the TypeScript bundle isn't available."""
-    return """
+    return r"""
 (function() {
   'use strict';
-
-  // Minimal SCORM 1.2 API discovery
+ 
+  // ---------------------------------------------------------------------------
+  // SCORM 1.2 API DISCOVERY
+  // ---------------------------------------------------------------------------
   function findAPI(win, depth) {
     if (depth > 500) return null;
     try {
@@ -350,91 +547,169 @@ def _get_fallback_runtime_js() -> str:
     } catch(e) {}
     return null;
   }
-
+ 
   var API = findAPI(window, 0);
   if (!API && window.opener) {
     try { API = findAPI(window.opener, 0); } catch(e) {}
   }
-
-  // Initialize
+ 
   if (API) {
     try { API.LMSInitialize(''); } catch(e) {}
   }
-
+ 
   var courseData = window.__CF_COURSE_DATA;
   if (!courseData) return;
-
-  var currentSlide = 0;
-  var slides = courseData.slides || [];
-  var visitedSlides = {};
-  var mandatoryIds = {};
-  var mandatoryCompleted = {};
-
-  // Build mandatory index
+ 
+  // ---------------------------------------------------------------------------
+  // STATE
+  // ---------------------------------------------------------------------------
+  var currentSlide    = 0;
+  var slides          = courseData.slides || [];
+  var visitedSlides   = {};
+ 
+  // FIX: Single flag that gates status writes — set to true the moment the
+  //      LMS receives 'passed'. Prevents renderSlide() from overwriting it
+  //      with 'incomplete' on subsequent navigation.
+  var coursePassedFlag = false;
+ 
+  // Build mandatory-component index and weightage map up-front
+  var mandatoryIds  = {};   // compId → true  (must complete to unlock scoring)
+  var weightageMap  = {};   // compId → marks (positive integer)
+  var scorableComps = {};   // compId → true|false  (true = answered correctly)
+  var mandatoryCompleted = {};  // compId → true
+ 
   for (var si = 0; si < slides.length; si++) {
     var sLayers = slides[si].layers || [];
     for (var li2 = 0; li2 < sLayers.length; li2++) {
       var sComps = sLayers[li2].components || [];
       for (var ci2 = 0; ci2 < sComps.length; ci2++) {
-        if (sComps[ci2].mandatory) mandatoryIds[sComps[ci2].id] = true;
+        var c = sComps[ci2];
+        if (c.mandatory) mandatoryIds[c.id] = true;
+        if (c.type === 'quiz' || c.type === 'true_false' || c.type === 'fill_blanks') {
+          weightageMap[c.id] = (typeof c.marks === 'number' && c.marks > 0) ? c.marks : 1;
+        }
       }
     }
   }
-
-  var quizScores = {};
-  var totalQuizCount = 0;
-  // Count total quizzes
-  for (var si2 = 0; si2 < slides.length; si2++) {
-    var sL2 = slides[si2].layers || [];
-    for (var li3 = 0; li3 < sL2.length; li3++) {
-      var sC2 = sL2[li3].components || [];
-      for (var ci3 = 0; ci3 < sC2.length; ci3++) {
-        if (sC2[ci3].type === 'quiz') totalQuizCount++;
-      }
-    }
-  }
-
+ 
+  // ---------------------------------------------------------------------------
+  // SCORE CALCULATION
+  // Always returns a normalised 0-100 percentage alongside raw marks so that
+  // both the lesson_status and score CMI fields are consistent.
+  // ---------------------------------------------------------------------------
   function calculateScore() {
-    if (totalQuizCount === 0) return 100;
-    var correct = 0;
-    for (var qid in quizScores) { if (quizScores[qid]) correct++; }
-    return Math.round((correct / totalQuizCount) * 100);
+    var maxPossible = 0;
+    var earned      = 0;
+    for (var cid in weightageMap) {
+      maxPossible += weightageMap[cid];
+      if (scorableComps[cid] === true) earned += weightageMap[cid];
+    }
+    if (maxPossible === 0) {
+      // No scorable interactions — treat as full marks (content-only course)
+      return { raw: 0, max: 0, pct: 100 };
+    }
+    var pct = Math.round((earned / maxPossible) * 100);
+    return { raw: earned, max: maxPossible, pct: pct };
   }
-
+ 
+  // ---------------------------------------------------------------------------
+  // PASSING SCORE RESOLUTION
+  // FIX: Declare passingScore before the try block so the catch branch can
+  //      still fall through to the policy default without leaving it as NaN.
+  // Priority: LMS mastery_score > courseData.policy.passingScore > 80
+  // ---------------------------------------------------------------------------
+  function getPassingScore() {
+    var passing = NaN;
+    try {
+      if (API) {
+        var lmsMastery = API.LMSGetValue('cmi.student_data.mastery_score');
+        passing = parseFloat(lmsMastery);
+      }
+    } catch(e) {
+      passing = NaN;
+    }
+    if (isNaN(passing) || passing <= 0) {
+      var policy = courseData.policy || {};
+      passing = (typeof policy.passingScore === 'number' && policy.passingScore > 0)
+        ? policy.passingScore
+        : 80;
+    }
+    return passing;
+  }
+ 
+  // ---------------------------------------------------------------------------
+  // COMPLETION CHECK — called after every interaction and slide render
+  // ---------------------------------------------------------------------------
   function checkCompletion() {
-    var allVisited = true;
-    for (var i = 0; i < slides.length; i++) {
-      if (!visitedSlides[i]) { allVisited = false; break; }
-    }
-    var allMandatory = true;
+    // FIX: Once the LMS has received 'passed', never re-evaluate. The learner
+    //      has succeeded; further navigation must not downgrade the status.
+    if (coursePassedFlag) return;
+ 
+    // Gate 1 — all mandatory components must be completed
+    var allMandatoryDone = true;
+    var hasMandatory     = false;
     for (var mid in mandatoryIds) {
-      if (!mandatoryCompleted[mid]) { allMandatory = false; break; }
+      hasMandatory = true;
+      if (!mandatoryCompleted[mid]) {
+        allMandatoryDone = false;
+        break;
+      }
     }
-    if (allVisited && allMandatory && API) {
-      var score = calculateScore();
-      var status = score >= 50 ? 'passed' : 'failed';
-      try {
-        API.LMSSetValue('cmi.core.lesson_status', status);
-        API.LMSSetValue('cmi.core.score.raw', String(score));
-        API.LMSSetValue('cmi.core.score.max', '100');
-        API.LMSSetValue('cmi.core.score.min', '0');
-        API.LMSCommit('');
-      } catch(e) {}
+    if (!allMandatoryDone) return;
+ 
+    // FIX Gate 2 — if the course has scorable interactions, require at least
+    //      one attempt before committing any status. This prevents a zero-
+    //      attempt course from being auto-passed on the very first slide load.
+    var hasScorable    = Object.keys(weightageMap).length > 0;
+    var hasAnyAttempt  = Object.keys(scorableComps).length > 0;
+    if (hasScorable && !hasAnyAttempt) return;
+ 
+    if (!API) return;
+ 
+    var result       = calculateScore();
+    // FIX: Always send a normalised 0-100 score so score.raw/score.max is
+    //      unambiguous regardless of how many raw marks the course uses.
+    //      The LMS mastery_score threshold is also expressed as 0-100.
+    var normScore    = hasScorable ? result.pct : 100;
+    var passingScore = getPassingScore();
+    var status       = (normScore >= passingScore) ? 'passed' : 'failed';
+ 
+    try {
+      API.LMSSetValue('cmi.core.score.min', '0');
+      API.LMSSetValue('cmi.core.score.max', '100');
+      API.LMSSetValue('cmi.core.score.raw', String(normScore));
+      API.LMSSetValue('cmi.core.lesson_status', status);
+      API.LMSCommit('');
+    } catch(e) {}
+ 
+    if (status === 'passed') {
+      // FIX: Lock the flag so renderSlide() can no longer overwrite 'passed'
+      coursePassedFlag = true;
     }
+ 
+    console.log(
+      '[Runtime] lesson_status=' + status +
+      ' score=' + normScore + '/100' +
+      ' (raw ' + result.raw + '/' + result.max + ' marks)' +
+      ' pass_threshold=' + passingScore + '%'
+    );
   }
-
+ 
+  // ---------------------------------------------------------------------------
+  // SLIDE RENDERER
+  // ---------------------------------------------------------------------------
   function renderSlide(idx) {
     var slide = slides[idx];
     if (!slide) return;
     var container = document.getElementById('cf-slide-container');
     if (!container) return;
     container.innerHTML = '';
-
+ 
     var title = document.createElement('h2');
     title.className = 'cf-rt-slide-title';
     title.textContent = slide.title;
     container.appendChild(title);
-
+ 
     var layers = slide.layers || [];
     for (var li = 0; li < layers.length; li++) {
       var layer = layers[li];
@@ -457,7 +732,29 @@ def _get_fallback_runtime_js() -> str:
           for (var oi = 0; oi < (comp.options||[]).length; oi++) {
             opts += '<label class="cf-rt-quiz-option"><input type="radio" name="q-' + comp.id + '" value="' + oi + '"/><span>' + comp.options[oi] + '</span></label>';
           }
-          el.innerHTML = '<div class="cf-rt-quiz-badge">QUIZ</div><div class="cf-rt-quiz-question">' + comp.question + '</div><div class="cf-rt-quiz-options">' + opts + '</div><button class="cf-rt-quiz-submit" onclick="var sel=document.querySelector(\'input[name=q-' + comp.id + ']:checked\');if(sel){quizScores[\'' + comp.id + '\']=(Number(sel.value)===' + (comp.correctAnswer||0) + ');mandatoryCompleted[\'' + comp.id + '\']=true;this.disabled=true;this.textContent=\'Submitted\';checkCompletion();}">Submit</button>';
+          el.innerHTML = '<div class="cf-rt-quiz-badge">QUIZ</div><div class="cf-rt-quiz-question">' + comp.question + '</div><div class="cf-rt-quiz-options">' + opts + '</div><div id="fb-' + comp.id + '" style="margin-top:10px;font-size:13px;font-weight:600;"></div><button class="cf-rt-quiz-submit" onclick="(function(btn){var sel=document.querySelector(\'input[name=q-' + comp.id + ']:checked\');if(sel){var correct=(Number(sel.value)===' + (comp.correctAnswer||0) + ');scorableComps[\'' + comp.id + '\']=correct;mandatoryCompleted[\'' + comp.id + '\']=true;if(correct){btn.disabled=true;btn.textContent=\'Submitted\';document.querySelectorAll(\'input[name=q-' + comp.id + ']\').forEach(function(r){r.disabled=true;});}document.getElementById(\'fb-' + comp.id + '\').innerHTML=correct?\'<span style=color:#4ade80>\' + (comp.feedback&&comp.feedback.correct||\'Correct!\') + \'</span>\':\'<span style=color:#f87171>\' + (comp.feedback&&comp.feedback.incorrect||\'Incorrect. Try again.\') + \'</span>\';checkCompletion();})(this)">Submit</button>';
+        } else if (comp.type === 'true_false') {
+          var tfId = comp.id;
+          var tfCorrect = comp.correctAnswer === true ? 'true' : 'false';
+          el.innerHTML = '<div class="cf-rt-quiz-badge">TRUE / FALSE</div>' +
+            '<div class="cf-rt-quiz-question">' + comp.question + '</div>' +
+            '<div style="display:flex;gap:10px;margin-top:12px;">' +
+              '<button id="tf-true-' + tfId + '" style="flex:1;padding:10px;border-radius:8px;border:2px solid #27272a;background:#09090b;color:#d4d4d8;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;" onclick="__cfTFSubmit(\'' + tfId + '\',true,\'' + tfCorrect + '\')">✓ True</button>' +
+              '<button id="tf-false-' + tfId + '" style="flex:1;padding:10px;border-radius:8px;border:2px solid #27272a;background:#09090b;color:#d4d4d8;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;" onclick="__cfTFSubmit(\'' + tfId + '\',false,\'' + tfCorrect + '\')">✗ False</button>' +
+            '</div>' +
+            '<div id="fb-' + tfId + '" style="margin-top:10px;font-size:13px;font-weight:600;"></div>';
+        } else if (comp.type === 'fill_blanks') {
+          var fbId = comp.id;
+          var fbCS = comp.caseSensitive ? 'true' : 'false';
+          var fbAnsSafe = JSON.stringify(comp.answer || '').replace(/'/g, "&#39;");
+          var fbQuestion = comp.question ? String(comp.question).replace(/____/g, '<span style="display:inline-block;min-width:80px;border-bottom:2px solid #8b1a1a;">&nbsp;</span>') : "";
+          el.innerHTML = '<div class="cf-rt-quiz-badge">FILL IN THE BLANK</div>' +
+            '<div class="cf-rt-quiz-question">' + fbQuestion + '</div>' +
+            '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">' +
+              '<input id="fitb-' + fbId + '" type="text" placeholder="Your answer..." style="flex:1;padding:10px 14px;border-radius:8px;border:1.5px solid #27272a;background:#09090b;color:#fafafa;font-size:14px;outline:none;font-family:inherit;"/>' +
+              "<button class=\"cf-rt-quiz-submit\" onclick='__cfFITBSubmit(\"" + fbId + "\", " + fbAnsSafe + ", " + fbCS + ")'>Submit</button>" +
+            '</div>' +
+            '<div id="fb-' + fbId + '" style="margin-top:10px;font-size:13px;font-weight:600;"></div>';
         } else if (comp.type === 'video') {
           if (comp.embedType === 'youtube' || comp.embedType === 'vimeo') {
             el.innerHTML = '<div class="cf-rt-video-wrap"><iframe class="cf-rt-video-embed" src="' + comp.src + '" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe></div>';
@@ -490,15 +787,84 @@ def _get_fallback_runtime_js() -> str:
           }
           el.innerHTML = procHtml;
         } else if (comp.type === 'button') {
-          el.innerHTML = '<button class="cf-rt-button">' + (comp.label||'Button') + '</button>';
+          el.innerHTML = '<button class="cf-rt-button" data-target-slide-id="' + (comp.targetSlideId||'') + '">' + (comp.label||'Button') + '</button>';
+          var buttonEl = el.querySelector('button');
+          if (buttonEl && comp.targetSlideId) {
+            buttonEl.onclick = function(targetId) {
+              return function() {
+                for (var si = 0; si < slides.length; si++) {
+                  if (String(slides[si].id) === String(targetId)) {
+                    currentSlide = si;
+                    renderSlide(currentSlide);
+                    try {
+                      if (API) {
+                        API.LMSSetValue('cmi.core.lesson_location', String(currentSlide));
+                        API.LMSCommit('');
+                      }
+                    } catch(e) {}
+                    break;
+                  }
+                }
+              };
+            }(comp.targetSlideId);
+          }
+        } else if (comp.type === 'audio') {
+          var audioSrc = comp.src || '';
+          var mandBadge = '';
+          if (comp.mandatory) {
+            mandBadge = '<div id="mandatory-badge-' + comp.id + '" style="font-size:10px;font-weight:700;letter-spacing:0.15em;padding:4px 10px;border-radius:6px;margin-bottom:8px;display:inline-block;background:#2a0a0a;color:#f87171;border:1px solid #7f1d1d;">\u26a0 MANDATORY \u2014 Listen to continue</div>';
+          }
+          el.innerHTML = mandBadge +
+            '<div style="margin-bottom:6px;font-size:10px;font-weight:700;letter-spacing:0.15em;color:#c0392b;">AUDIO</div>' +
+            '<div style="font-size:14px;font-weight:600;color:#fafafa;margin-bottom:10px;">' + (comp.label||'Audio Track') + '</div>' +
+            '<audio id="audio-el-' + comp.id + '" controls style="width:100%;border-radius:8px;background:#000;">' +
+              '<source src="' + audioSrc + '">' +
+              'Your browser does not support audio.' +
+            '</audio>';
+          if (comp.mandatory) {
+            (function(cid) {
+              setTimeout(function() {
+                var ael = document.getElementById('audio-el-' + cid);
+                if (ael) {
+                  ael.addEventListener('ended', function() {
+                    mandatoryCompleted[cid] = true;
+                    var badge = document.getElementById('mandatory-badge-' + cid);
+                    if (badge) { badge.textContent = '\u2713 COMPLETED'; badge.style.background = '#052e16'; badge.style.color = '#4ade80'; badge.style.borderColor = '#166534'; }
+                    checkCompletion();
+                  });
+                }
+              }, 0);
+            })(comp.id);
+          }
+        } else if (comp.type === 'columns') {
+          var colsHtml = '<div class="cf-rt-columns-grid">';
+          var cols = comp.columns || [];
+          for (var gi = 0; gi < cols.length; gi++) {
+            colsHtml += '<div class="cf-rt-column">';
+            var subBlocks = cols[gi] || [];
+            for (var sbi = 0; sbi < subBlocks.length; sbi++) {
+              var sb = subBlocks[sbi];
+              if (sb.type === 'text') {
+                colsHtml += '<div class="cf-rt-text" style="margin-bottom:10px;">' + (sb.content || '') + '</div>';
+              } else if (sb.type === 'image' && sb.src) {
+                colsHtml += '<div style="text-align:center;margin-bottom:10px;">';
+                colsHtml += '<img src="' + sb.src + '" alt="' + (sb.alt || '') + '" style="width:100%;border-radius:8px;display:block;" />';
+                if (sb.caption) colsHtml += '<div style="margin-top:6px;font-size:13px;color:#a1a1aa;">' + sb.caption + '</div>';
+                colsHtml += '</div>';
+              }
+            }
+            colsHtml += '</div>';
+          }
+          colsHtml += '</div>';
+          el.innerHTML = colsHtml;
         } else {
           el.innerHTML = '<div class="cf-rt-text">' + (comp.content || comp.label || '') + '</div>';
         }
         container.appendChild(el);
       }
     }
-
-    // Update nav
+ 
+    // Update nav UI
     var counter = document.getElementById('cf-slide-counter');
     if (counter) counter.textContent = (idx+1) + ' / ' + slides.length;
     var prevBtn = document.getElementById('cf-prev-btn');
@@ -507,49 +873,136 @@ def _get_fallback_runtime_js() -> str:
     if (nextBtn) nextBtn.disabled = idx >= slides.length - 1;
     var progress = document.getElementById('cf-progress-bar');
     if (progress) progress.style.width = ((idx+1)/slides.length*100) + '%';
-
-    // SCORM bookmark
+ 
+    // ---------------------------------------------------------------------------
+    // FIX: Only write 'incomplete' when the course has NOT already been passed.
+    //      Previously this unconditionally overwrote 'passed' every time the
+    //      learner navigated to a new slide, making the LMS see a stale status.
+    // ---------------------------------------------------------------------------
     visitedSlides[idx] = true;
     if (API) {
       try {
         API.LMSSetValue('cmi.core.lesson_location', String(idx));
-        API.LMSSetValue('cmi.core.lesson_status', 'incomplete');
-        API.LMSCommit('');
+        if (!coursePassedFlag) {
+          API.LMSSetValue('cmi.core.lesson_status', 'incomplete');
+          API.LMSCommit('');
+        }
       } catch(e) {}
     }
+ 
+    // Re-evaluate completion (e.g. content-only courses with no mandatory items
+    // only reach 'passed' once all questions have been answered via interactions,
+    // not by merely visiting slides — gated by Gate 2 inside checkCompletion).
     checkCompletion();
   }
-
+ 
+  // ---------------------------------------------------------------------------
+  // TRUE / FALSE SUBMISSION
+  // Disables buttons only on correct; keeps them live for retry on wrong.
+  // ---------------------------------------------------------------------------
+  window.__cfTFSubmit = function(id, chosen, correct) {
+    var isCorrect = (String(chosen) === String(correct));
+    scorableComps[id]      = isCorrect;
+    mandatoryCompleted[id] = true;
+ 
+    var fbEl = document.getElementById('fb-' + id);
+    if (fbEl) fbEl.innerHTML = isCorrect
+      ? '<span style="color:#4ade80">\u2713 Correct!</span>'
+      : '<span style="color:#f87171">\u2717 Incorrect. Try again.</span>';
+ 
+    var chosenBtn = document.getElementById('tf-' + (chosen ? 'true' : 'false') + '-' + id);
+    var otherBtn  = document.getElementById('tf-' + (chosen ? 'false' : 'true') + '-' + id);
+    if (chosenBtn) chosenBtn.style.borderColor = isCorrect ? '#16a34a' : '#dc2626';
+    if (otherBtn)  otherBtn.style.borderColor  = '#27272a';
+ 
+    if (isCorrect) {
+      var tb  = document.getElementById('tf-true-'  + id);
+      var fb2 = document.getElementById('tf-false-' + id);
+      if (tb)  { tb.disabled  = true; tb.style.opacity  = '0.5'; }
+      if (fb2) { fb2.disabled = true; fb2.style.opacity = '0.5'; }
+    } else {
+      if (chosenBtn) { chosenBtn.disabled = false; chosenBtn.style.opacity = '1'; }
+      if (otherBtn)  { otherBtn.disabled  = false; otherBtn.style.opacity  = '1'; }
+    }
+    checkCompletion();
+  };
+ 
+  // ---------------------------------------------------------------------------
+  // FILL-IN-THE-BLANK SUBMISSION
+  // Disables input only on correct; keeps it live for retry on wrong.
+  // ---------------------------------------------------------------------------
+  window.__cfFITBSubmit = function(id, correctAnswer, caseSensitive) {
+    var inputEl = document.getElementById('fitb-' + id);
+    if (!inputEl) return;
+    var learnerVal = inputEl.value.trim();
+    var checkVal   = caseSensitive ? learnerVal : learnerVal.toLowerCase();
+    var answerVal  = caseSensitive
+      ? String(correctAnswer).trim()
+      : String(correctAnswer).trim().toLowerCase();
+    var isCorrect  = (checkVal === answerVal);
+ 
+    scorableComps[id]      = isCorrect;
+    mandatoryCompleted[id] = true;
+ 
+    var fbEl = document.getElementById('fb-' + id);
+    if (fbEl) fbEl.innerHTML = isCorrect
+      ? '<span style="color:#4ade80">\u2713 Correct!</span>'
+      : '<span style="color:#f87171">\u2717 Incorrect. Try again.</span>';
+ 
+    if (isCorrect) {
+      inputEl.disabled = true;
+      inputEl.style.opacity = '0.6';
+      if (inputEl.nextElementSibling) {
+        inputEl.nextElementSibling.disabled    = true;
+        inputEl.nextElementSibling.textContent = 'Submitted';
+      }
+    } else {
+      inputEl.disabled      = false;
+      inputEl.style.opacity = '1';
+      if (inputEl.nextElementSibling) {
+        inputEl.nextElementSibling.disabled = false;
+      }
+    }
+    checkCompletion();
+  };
+ 
   window.__cfNext = function() {
-    if (currentSlide < slides.length-1) { currentSlide++; renderSlide(currentSlide); }
+    if (currentSlide < slides.length - 1) { currentSlide++; renderSlide(currentSlide); }
   };
   window.__cfPrev = function() {
     if (currentSlide > 0) { currentSlide--; renderSlide(currentSlide); }
   };
-
-  // Boot
+ 
+  // ---------------------------------------------------------------------------
+  // BOOT
+  // ---------------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', function() {
-    // Try to resume from bookmark
+    // FIX: Restore coursePassedFlag from a previous session so that a learner
+    //      who already passed and is re-opening the SCO doesn't get their
+    //      status downgraded back to 'incomplete' by the initial renderSlide().
     if (API) {
+      try {
+        var prevStatus = API.LMSGetValue('cmi.core.lesson_status');
+        if (prevStatus === 'passed') coursePassedFlag = true;
+      } catch(e) {}
       try {
         var loc = API.LMSGetValue('cmi.core.lesson_location');
         if (loc && !isNaN(Number(loc))) currentSlide = Number(loc);
       } catch(e) {}
     }
+ 
     renderSlide(currentSlide);
-
-    // Mark first slide visited and check completion for single-slide courses
-    visitedSlides[currentSlide] = true;
-    if (API) {
+ 
+    // Set 'incomplete' only on a fresh (not yet passed) attempt
+    if (API && !coursePassedFlag) {
       try {
         API.LMSSetValue('cmi.core.lesson_status', 'incomplete');
         API.LMSCommit('');
       } catch(e) {}
     }
-    checkCompletion();
   });
-
-  // Auto-finish on unload
+ 
+  // Auto-finish on tab/window close
   window.addEventListener('beforeunload', function() {
     if (API) {
       try { API.LMSCommit(''); API.LMSFinish(''); } catch(e) {}
@@ -557,14 +1010,14 @@ def _get_fallback_runtime_js() -> str:
   });
 })();
 """
-
-
+ 
+ 
 def generate_runtime_html(title: str, course_definition: Dict[str, Any]) -> str:
     """Generate the complete runtime HTML page."""
     safe_title = html_module.escape(title)
     course_json = json.dumps(course_definition, separators=(",", ":"))
     runtime_js = _get_runtime_js()
-
+ 
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -577,24 +1030,41 @@ def generate_runtime_html(title: str, course_definition: Dict[str, Any]) -> str:
 </style>
 </head>
 <body>
-  <!-- Progress Bar -->
-  <div class="cf-rt-progress-track">
-    <div class="cf-rt-progress-bar" id="cf-progress-bar"></div>
-  </div>
+  <div class="cf-rt-layout">
+    <!-- Slide Container -->
+    <main class="cf-rt-main">
+      <div class="cf-rt-slide-container" id="cf-slide-container">
+        <div class="cf-rt-loading">Loading course...</div>
+      </div>
+    </main>
 
-  <!-- Header -->
-  <header class="cf-rt-header">
-    <div class="cf-rt-header-title">{safe_title}</div>
-    <div class="cf-rt-header-counter" id="cf-slide-counter">1 / 1</div>
-  </header>
-
-  <!-- Slide Container -->
-  <main class="cf-rt-main">
-    <div class="cf-rt-slide-container" id="cf-slide-container">
-      <div class="cf-rt-loading">Loading course...</div>
+    <!-- Sidebar Wrapper (positions the toggle tab) -->
+    <div class="cf-rt-sidebar-wrapper" id="cf-sidebar-wrapper">
+      <!-- Toggle tab button — always visible on the left edge of the sidebar -->
+      <button
+        class="cf-rt-sidebar-toggle"
+        id="cf-sidebar-toggle"
+        aria-expanded="true"
+        aria-controls="cf-sidebar"
+        title="Toggle navigation panel"
+      >
+        <svg class="cf-rt-sidebar-toggle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fill-rule="evenodd" d="M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 10 8.22 6.28a.75.75 0 0 1 0-1.06z" clip-rule="evenodd"/>
+        </svg>
+      </button>
+      <!-- Sidebar panel -->
+      <aside class="cf-rt-sidebar" id="cf-sidebar">
+        <div class="cf-rt-sidebar-header">
+          <div class="cf-rt-sidebar-progress-text" id="cf-sidebar-progress-text">0% COMPLETE</div>
+          <div class="cf-rt-sidebar-progress-track">
+            <div class="cf-rt-sidebar-progress-bar" id="cf-sidebar-progress-bar"></div>
+          </div>
+        </div>
+        <div class="cf-rt-sidebar-menu" id="cf-sidebar-menu"></div>
+      </aside>
     </div>
-  </main>
-
+  </div>
+ 
   <!-- Navigation -->
   <nav class="cf-rt-nav">
     <button class="cf-rt-nav-btn" id="cf-prev-btn" onclick="window.__cfPrev ? window.__cfPrev() : window.__cfRuntime?.prevSlide()">
@@ -604,21 +1074,21 @@ def generate_runtime_html(title: str, course_definition: Dict[str, Any]) -> str:
       Next &#8594;
     </button>
   </nav>
-
+ 
   <!-- Course Data -->
   <script>window.__CF_COURSE_DATA = {course_json};</script>
-
+ 
   <!-- Runtime Bundle -->
   <script>{runtime_js}</script>
 </body>
 </html>"""
-
-
+ 
+ 
 def _get_runtime_css() -> str:
     """Embedded CSS for the SCORM runtime player."""
     return """
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+ 
 body {
   font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: #0f0f11;
@@ -627,18 +1097,13 @@ body {
   display: flex;
   flex-direction: column;
 }
-
-/* Progress */
-.cf-rt-progress-track {
-  position: fixed; top: 0; left: 0; right: 0; height: 3px;
-  background: #27272a; z-index: 100;
+ 
+/* Layout */
+.cf-rt-layout {
+  display: flex;
+  min-height: 100vh;
 }
-.cf-rt-progress-bar {
-  height: 100%; width: 0;
-  background: linear-gradient(90deg, #8b1a1a, #c0392b);
-  transition: width 0.4s ease;
-}
-
+ 
 /* Header */
 .cf-rt-header {
   display: flex; justify-content: space-between; align-items: center;
@@ -653,7 +1118,7 @@ body {
   font-size: 13px; color: #71717a; font-weight: 500;
   background: #27272a; padding: 4px 12px; border-radius: 20px;
 }
-
+ 
 /* Main */
 .cf-rt-main {
   flex: 1; display: flex; justify-content: center;
@@ -666,29 +1131,33 @@ body {
   box-shadow: 0 8px 32px rgba(0,0,0,0.3);
   min-height: 400px;
 }
-
+ 
 /* Loading */
 .cf-rt-loading {
   text-align: center; color: #71717a; padding: 80px 0;
   font-size: 15px;
 }
-
+ 
 /* Slide title */
 .cf-rt-slide-title {
   font-size: 28px; font-weight: 700; color: #fafafa;
   margin-bottom: 24px; line-height: 1.3;
   border-bottom: 1px solid #27272a; padding-bottom: 16px;
 }
-
+ 
 /* Components */
 .cf-rt-component { margin-bottom: 20px; }
 .cf-rt-heading { font-size: 22px; font-weight: 600; color: #fafafa; margin-bottom: 12px; }
 .cf-rt-text { font-size: 15px; line-height: 1.75; color: #a1a1aa; }
+.cf-rt-text ul, .cf-rt-text ol { padding-left: 24px; margin-top: 8px; margin-bottom: 8px; }
+.cf-rt-text ul { list-style-type: disc; }
+.cf-rt-text ol { list-style-type: decimal; }
+.cf-rt-text li { display: list-item; }
 .cf-rt-image {
   width: 100%; max-height: 500px; object-fit: contain;
   border-radius: 12px; background: #09090b;
 }
-
+ 
 /* Video */
 .cf-rt-video-wrap {
   position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;
@@ -698,7 +1167,7 @@ body {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;
 }
 .cf-rt-video { width: 100%; border-radius: 12px; background: #000; }
-
+ 
 /* Button */
 .cf-rt-button {
   background: linear-gradient(135deg, #8b1a1a, #c0392b);
@@ -708,7 +1177,7 @@ body {
   font-family: inherit;
 }
 .cf-rt-button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(139,26,26,0.4); }
-
+ 
 /* Quiz */
 .cf-rt-quiz-block { padding: 0; }
 .cf-rt-quiz-badge {
@@ -740,7 +1209,7 @@ body {
 .cf-rt-feedback-correct { background: #052e16; color: #4ade80; border: 1px solid #166534; }
 .cf-rt-feedback-incorrect { background: #2a0a0a; color: #f87171; border: 1px solid #7f1d1d; }
 .cf-rt-feedback-info { background: #172554; color: #60a5fa; border: 1px solid #1e3a5f; }
-
+ 
 /* Flashcard */
 .cf-rt-flashcard-scene {
   perspective: 1000px; cursor: pointer; user-select: none;
@@ -768,10 +1237,10 @@ body {
 .cf-rt-flashcard-label { font-size: 10px; font-weight: 700; letter-spacing: 0.15em; opacity: 0.5; margin-bottom: 12px; }
 .cf-rt-flashcard-text { font-size: 17px; font-weight: 600; line-height: 1.5; }
 .cf-rt-flashcard-hint { font-size: 11px; opacity: 0.4; margin-top: 16px; }
-
+ 
 /* Layers */
 .cf-rt-layer { transition: opacity 0.3s ease; }
-
+ 
 /* Navigation */
 .cf-rt-nav {
   position: fixed; bottom: 0; left: 0; right: 0;
@@ -792,7 +1261,7 @@ body {
   color: #fff; border-color: transparent;
 }
 .cf-rt-nav-btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(139,26,26,0.4); }
-
+ 
 /* Toast */
 .cf-rt-toast {
   position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
@@ -805,18 +1274,276 @@ body {
 .cf-rt-toast-exit { animation: cf-toast-out 0.3s ease forwards; }
 @keyframes cf-toast-in { from { opacity:0; transform: translateX(-50%) translateY(10px); } to { opacity:1; transform: translateX(-50%) translateY(0); } }
 @keyframes cf-toast-out { to { opacity:0; transform: translateX(-50%) translateY(10px); } }
+/* Sidebar wrapper — positions the toggle tab relative to the panel */
+.cf-rt-sidebar-wrapper {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+/* Toggle tab — pill button on the left edge of the wrapper */
+.cf-rt-sidebar-toggle {
+  position: absolute;
+  left: -28px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 28px;
+  height: 56px;
+  border: 1px solid #3f3f46;
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  background: #2a2a2e;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.cf-rt-sidebar-toggle:hover {
+  background: #3f3f46;
+  color: #ffffff;
+  box-shadow: -3px 0 12px rgba(0,0,0,0.4);
+}
+
+/* Chevron icon inside the toggle */
+.cf-rt-sidebar-toggle-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* When sidebar is collapsed the chevron flips to point left (re-open) */
+.cf-rt-sidebar-toggle[aria-expanded="false"] .cf-rt-sidebar-toggle-icon {
+  transform: rotate(180deg);
+}
+
+/* Sidebar panel */
+.cf-rt-sidebar {
+  width: 320px;
+  min-width: 320px;
+  background: #2a2a2e;
+  color: #e4e4e7;
+  border-left: 1px solid #3f3f46;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              min-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.35s ease;
+}
+/* Collapsed state — entire panel slides away */
+.cf-rt-sidebar.sidebar-collapsed {
+  width: 0;
+  min-width: 0;
+  border-left-color: transparent;
+}
+
+.cf-rt-sidebar-header {
+  padding: 24px;
+  border-bottom: 1px solid #3f3f46;
+  white-space: nowrap;
+}
+.cf-rt-sidebar-progress-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: #a1a1aa;
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+}
+.cf-rt-sidebar-progress-track {
+  height: 6px;
+  background: #27272a;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.cf-rt-sidebar-progress-bar {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #8b1a1a, #c0392b);
+  transition: width 0.4s ease;
+}
+.cf-rt-sidebar-menu {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 0;
+}
+.cf-rt-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 24px;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+.cf-rt-menu-item:hover {
+  background: #27272a;
+}
+.cf-rt-menu-item.active {
+  background: #2a0a0a;
+  border-left: 4px solid #c0392b;
+  padding-left: 20px;
+}
+.cf-rt-menu-item-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #52525b;
+  margin-right: 12px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #18181b;
+}
+.cf-rt-menu-item.completed .cf-rt-menu-item-icon {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+.cf-rt-menu-item.locked .cf-rt-menu-item-icon {
+  background: #27272a;
+  border-color: #3f3f46;
+}
+.cf-rt-menu-item.completed .cf-rt-menu-item-icon::after {
+  content: '✓';
+}
+.cf-rt-menu-item-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #a1a1aa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cf-rt-menu-item.active .cf-rt-menu-item-title,
+.cf-rt-menu-item:hover .cf-rt-menu-item-title {
+  color: #fafafa;
+}
+.cf-rt-menu-item.active .cf-rt-menu-item-title {
+  font-weight: 600;
+}
+
+/* Animations */
+[class*="animate-"]:not(.animate-none) {
+  opacity: 0;
+  animation-duration: 0.6s;
+  animation-fill-mode: forwards;
+  animation-timing-function: ease-out;
+  backface-visibility: visible;
+  transform-style: flat;
+}
+.animate-fade-in { animation-name: cfFadeIn; }
+.animate-slide-in-left { animation-name: cfSlideInLeft; }
+.animate-slide-in-right { animation-name: cfSlideInRight; }
+.animate-zoom-in { animation-name: cfZoomIn; }
+.animate-slide-in-up { animation-name: cfSlideInUp; }
+.animate-slide-in-down { animation-name: cfSlideInDown; }
+.animate-zoom-out { animation-name: cfZoomOut; }
+.animate-flip-in { animation-name: cfFlipIn; }
+.animate-bounce-in { animation-name: cfBounceIn; }
+.animate-fade-in-up { animation-name: cfFadeInUp; }
+
+@keyframes cfFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes cfSlideInLeft {
+  from { opacity: 0; transform: translateX(-30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes cfSlideInRight {
+  from { opacity: 0; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes cfZoomIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes cfSlideInUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes cfSlideInDown {
+  from { opacity: 0; transform: translateY(-30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes cfZoomOut {
+  from { opacity: 0; transform: scale(1.05); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes cfFlipIn {
+  from { opacity: 0; transform: perspective(400px) rotateX(90deg); }
+  to { opacity: 1; transform: perspective(400px) rotateX(0deg); }
+}
+@keyframes cfBounceIn {
+  0% { opacity: 0; transform: scale(0.3); }
+  50% { opacity: 1; transform: scale(1.05); }
+  70% { opacity: 1; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes cfFadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Columns / Grid block */
+.cf-rt-columns-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+  width: 100%;
+}
+.cf-rt-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: #1a1a1e;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 1rem;
+}
 """
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # PUBLIC API
 # ---------------------------------------------------------------------------
-
-def build_course_definition(title: str, blocks: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Build a complete CourseDefinition from authoring blocks."""
+ 
+def build_course_definition(
+    title: str,
+    blocks: List[Dict[str, Any]],
+    policy: Dict[str, Any] | None = None,
+    theme: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Build a complete CourseDefinition from authoring blocks.
+ 
+    Args:
+        title:  Course title (used in the LMS and HTML <title>).
+        blocks: Flat list of authoring blocks from the frontend editor.
+        policy: LMS admin-configured marking & attempts criteria dict with keys:
+                  passingScore (float, 0-100)
+                  maxAttempts  (int, ≥1)
+                  lockOnPass   (bool)
+                  lockOnExhaust (bool)
+    """
     slides = blocks_to_slides(blocks)
     triggers = generate_quiz_triggers(slides)
-
+ 
+    # Default policy — matches what the admin UI shows on first load
+    resolved_policy = {
+        "passingScore":  70,
+        "maxAttempts":   3,
+        "lockOnPass":    False,
+        "lockOnExhaust": True,
+    }
+    if policy:
+        resolved_policy.update(policy)
+ 
     return {
         "id": _make_id("course"),
         "title": title,
@@ -824,4 +1551,6 @@ def build_course_definition(title: str, blocks: List[Dict[str, Any]]) -> Dict[st
         "slides": slides,
         "triggers": triggers,
         "variables": [],
+        "policy": resolved_policy,
+        "theme": theme or {"background": {"type": "color", "value": "#0f0f11"}},
     }

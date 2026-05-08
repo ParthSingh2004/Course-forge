@@ -13,6 +13,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import os
+from fastapi.staticfiles import StaticFiles
+
+os.makedirs("media", exist_ok=True)
+app.mount("/media", StaticFiles(directory="media"), name="media")
+
 # <-- Tell the app to use our new routes
 app.include_router(router, prefix="/api") 
 

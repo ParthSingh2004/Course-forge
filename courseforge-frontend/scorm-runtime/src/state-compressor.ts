@@ -97,7 +97,7 @@ function base64ToBoolArray(b64: string, length: number): boolean[] {
 interface CompactState {
   v: number;
   vs: string;   // Base64 bitset
-  n: number;     // slide count
+  n: number;    // slide count
   cs: number;
   qs: Record<string, [number, number, number]>; // [score, maxScore, attempts]
   vr: Record<string, string | number | boolean>;

@@ -18,58 +18,150 @@ import { z } from "zod";
  * A Component is the atomic content unit inside a Layer.
  * Maps 1:1 to the authoring tool's block types.
  */
+const BaseComponentProps = {
+  animation: z.enum(["none", "fade-in", "slide-in-left", "slide-in-right", "zoom-in", "slide-in-up", "slide-in-down", "zoom-out", "flip-in", "bounce-in", "fade-in-up"]).default("none"),
+  animationDelay: z.number().min(0).default(0),
+};
+
 export const ComponentSchema = z.discriminatedUnion("type", [
   z.object({
+    ...BaseComponentProps,
     type: z.literal("text"),
     id: z.string(),
     content: z.string(),
   }),
   z.object({
+    ...BaseComponentProps,
     type: z.literal("heading"),
     id: z.string(),
     content: z.string(),
     level: z.number().min(1).max(6).default(2),
   }),
   z.object({
+    ...BaseComponentProps,
     type: z.literal("image"),
     id: z.string(),
-    src: z.string(), // data URI or relative path within ZIP
+    src: z.string(),
     alt: z.string().default(""),
     width: z.string().optional(),
     caption: z.string().optional(),
   }),
   z.object({
+    ...BaseComponentProps,
     type: z.literal("video"),
     id: z.string(),
-    src: z.string(), // embed URL or relative path
+    src: z.string(),
     embedType: z.enum(["youtube", "vimeo", "direct"]).default("direct"),
     mandatory: z.boolean().optional(),
   }),
   z.object({
+    ...BaseComponentProps,
+    type: z.literal("interactive-video"),
+    id: z.string(),
+    src: z.string(),
+    embedType: z.enum(["youtube", "vimeo", "direct"]).default("direct"),
+    interactions: z.array(z.object({
+      id: z.string(),
+      timestamp: z.number(),
+      question: z.string(),
+      options: z.array(z.string()),
+      correctAnswerIndex: z.number(),
+      completed: z.boolean().optional(),
+    })).default([]),
+  }),
+  z.object({
+    ...BaseComponentProps,
+    type: z.literal("image-hotspot"),
+    id: z.string(),
+    src: z.string(),
+    hotspots: z.array(z.object({
+      id: z.string(),
+      x: z.number(),
+      y: z.number(),
+      title: z.string(),
+      content: z.string(),
+    })).default([]),
+  }),
+  z.object({
+    ...BaseComponentProps,
     type: z.literal("button"),
     id: z.string(),
     label: z.string(),
-    action: z.string().optional(), // trigger ID to fire on click
+    action: z.string().optional(),
+    targetSlideId: z.string().optional(),
   }),
   z.object({
+    ...BaseComponentProps,
     type: z.literal("quiz"),
     id: z.string(),
     question: z.string(),
     options: z.array(z.string()),
-    correctAnswer: z.number(), // index into options
+    correctAnswer: z.number(),
     feedback: z.object({
       correct: z.string().default("Correct!"),
       incorrect: z.string().default("Incorrect. Try again."),
     }).default({}),
     mandatory: z.boolean().optional(),
+    marks: z.coerce.number().min(0).optional().catch(0),
   }),
   z.object({
+    ...BaseComponentProps,
+    type: z.literal("multi_select"),
+    id: z.string(),
+    question: z.string(),
+    options: z.array(z.string()),
+    correctAnswer: z.array(z.string()),
+    feedback: z.object({
+      correct: z.string().default("Correct!"),
+      incorrect: z.string().default("Incorrect. Try again."),
+    }).default({}),
+    mandatory: z.boolean().optional(),
+    marks: z.coerce.number().min(0).optional().catch(0),
+  }),
+  z.object({
+    ...BaseComponentProps,
+    type: z.literal("matching"),
+    id: z.string(),
+    question: z.string(),
+    pairs: z.array(z.object({
+      leftItem: z.string(),
+      rightItem: z.string()
+    })),
+    feedback: z.object({
+      correct: z.string().default("Correct!"),
+      incorrect: z.string().default("Incorrect. Try again."),
+    }).default({}),
+    mandatory: z.boolean().optional(),
+    marks: z.coerce.number().min(0).optional().catch(0),
+  }),
+  z.object({
+    ...BaseComponentProps,
+    type: z.literal("true_false"),
+    id: z.string(),
+    question: z.string(),
+    correctAnswer: z.boolean().default(true),
+    mandatory: z.boolean().optional(),
+    marks: z.coerce.number().min(0).optional().catch(0),
+  }),
+  z.object({
+    ...BaseComponentProps,
+    type: z.literal("fill_blanks"),
+    id: z.string(),
+    question: z.string(),
+    answer: z.string(),
+    caseSensitive: z.boolean().default(false),
+    mandatory: z.boolean().optional(),
+    marks: z.coerce.number().min(0).optional().catch(0),
+  }),
+  z.object({
+    ...BaseComponentProps,
     type: z.literal("flashcard"),
     id: z.string(),
     front: z.string(),
     back: z.string(),
   }),
   z.object({
+    ...BaseComponentProps,
     type: z.literal("process"),
     id: z.string(),
     steps: z.array(z.object({
@@ -78,11 +170,28 @@ export const ComponentSchema = z.discriminatedUnion("type", [
     })),
   }),
   z.object({
+    ...BaseComponentProps,
     type: z.literal("list"),
     id: z.string(),
     items: z.array(z.string()),
   }),
   z.object({
+    ...BaseComponentProps,
+    type: z.literal("columns"),
+    id: z.string(),
+    columns: z.array(z.array(z.any())),
+  }),
+  z.object({
+    ...BaseComponentProps,
+    type: z.literal("audio"),
+    id: z.string(),
+    src: z.string(),
+    label: z.string().optional(),
+    mediaId: z.string().optional(),
+    mandatory: z.boolean().optional(),
+  }),
+  z.object({
+    ...BaseComponentProps,
     type: z.literal("quote"),
     id: z.string(),
     content: z.string(),
@@ -266,7 +375,26 @@ export const CourseStateSchema = z.object({
 export type CourseState = z.infer<typeof CourseStateSchema>;
 
 // ═══════════════════════════════════════════════════════════════════
-//  4. COURSE DEFINITION — the full manifest embedded in the HTML
+//  4. COURSE POLICY — passing score fallback for offline/preview mode
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * CoursePolicySchema — embedded into every exported SCORM package.
+ *
+ * At runtime, cmi.student_data.mastery_score (written by the LMS admin
+ * via the portal settings) is always preferred over this value.
+ * This field is used ONLY as a fallback for offline/preview mode when
+ * no LMS is connected.
+ */
+export const CoursePolicySchema = z.object({
+  /** Overall % score needed to receive "passed" status. Used as offline fallback. */
+  passingScore: z.number().min(0).max(100).default(80),
+});
+
+export type CoursePolicy = z.infer<typeof CoursePolicySchema>;
+
+// ═══════════════════════════════════════════════════════════════════
+//  5. COURSE DEFINITION — the full manifest embedded in the HTML
 // ═══════════════════════════════════════════════════════════════════
 
 export const VariableDefinitionSchema = z.object({
@@ -284,6 +412,11 @@ export const CourseDefinitionSchema = z.object({
   slides: z.array(SlideSchema),
   triggers: z.array(TriggerRuleSchema),
   variables: z.array(VariableDefinitionSchema),
+  /**
+   * Offline/preview passing score fallback.
+   * In LMS context, cmi.student_data.mastery_score always takes precedence.
+   */
+  policy: CoursePolicySchema.optional(),
 });
 
 export type CourseDefinition = z.infer<typeof CourseDefinitionSchema>;
