@@ -56,6 +56,17 @@ def _to_embeddable_video_url(url: str) -> str:
             return f"https://player.vimeo.com/video/{match.group(1)}"
 
     return raw_url
+
+
+def _resolve_image_src(block: Dict[str, Any]) -> str:
+    """Resolve image-like source fields used by authoring blocks."""
+    return (
+        block.get("image")
+        or block.get("imageUrl")
+        or block.get("src")
+        or (block.get("data") or {}).get("image")
+        or ""
+    )
  
  
 def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
@@ -80,13 +91,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
         }
  
     if btype == "image":
-        src = (
-            block.get("image")
-            or block.get("imageUrl")
-            or block.get("src")
-            or (block.get("data") or {}).get("image")
-            or ""
-        )
+        src = _resolve_image_src(block)
         return {
             "type": "image",
             "id": bid,
@@ -112,8 +117,8 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
         return {
             "type": "image-hotspot",
             "id": bid,
-            "src": block.get("imageUrl", ""),
-            "hotspots": block.get("hotspots", [])
+            "src": _resolve_image_src(block),
+            "hotspots": block.get("hotspots", []),
         }
 
     if btype == "interactive-video":
@@ -275,12 +280,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
                         "content": sub.get("content", ""),
                     })
                 elif stype == "image":
-                    src = (
-                        sub.get("image")
-                        or sub.get("imageUrl")
-                        or sub.get("src")
-                        or ""
-                    )
+                    src = _resolve_image_src(sub)
                     serialized_sub.append({
                         "type": "image",
                         "id": str(sub.get("id", _make_id("sub"))),
@@ -747,6 +747,109 @@ def _get_fallback_runtime_js() -> str:
           var imgHtml = '<img class="cf-rt-image" src="' + comp.src + '" alt="' + (comp.alt||'') + '" style="width:' + (comp.width||'100%') + ';" />';
           if (comp.caption) imgHtml += '<div style="margin-top:8px;font-size:14px;color:#666;">' + comp.caption + '</div>';
           el.innerHTML = imgHtml;
+        } else if (comp.type === 'image-hotspot') {
+          el.style.position = 'relative';
+          el.style.display = 'inline-block';
+          el.style.width = '100%';
+
+          var hotspotImg = document.createElement('img');
+          hotspotImg.className = 'cf-rt-image';
+          hotspotImg.src = comp.src || '';
+          hotspotImg.alt = comp.alt || 'Hotspot image';
+          hotspotImg.style.width = '100%';
+          hotspotImg.style.display = 'block';
+          hotspotImg.style.borderRadius = '8px';
+          el.appendChild(hotspotImg);
+
+          var activeHotspotId = null;
+          var activeHotspotPopup = null;
+
+          function closeHotspotPopup() {
+            if (activeHotspotPopup) {
+              activeHotspotPopup.remove();
+              activeHotspotPopup = null;
+            }
+            activeHotspotId = null;
+          }
+
+          var hotspotItems = comp.hotspots || [];
+          for (var hi = 0; hi < hotspotItems.length; hi++) {
+            (function(hotspot) {
+              var dot = document.createElement('button');
+              dot.type = 'button';
+              dot.setAttribute('aria-label', hotspot.title || 'Hotspot');
+              dot.style.position = 'absolute';
+              dot.style.left = hotspot.x + '%';
+              dot.style.top = hotspot.y + '%';
+              dot.style.width = '24px';
+              dot.style.height = '24px';
+              dot.style.backgroundColor = '#b91c1c';
+              dot.style.borderRadius = '50%';
+              dot.style.border = '2px solid white';
+              dot.style.transform = 'translate(-50%, -50%)';
+              dot.style.cursor = 'pointer';
+              dot.style.zIndex = '10';
+              dot.style.padding = '0';
+
+              dot.onclick = function(evt) {
+                evt.stopPropagation();
+                if (activeHotspotId === hotspot.id) {
+                  closeHotspotPopup();
+                  return;
+                }
+
+                closeHotspotPopup();
+                activeHotspotId = hotspot.id;
+                activeHotspotPopup = document.createElement('div');
+                activeHotspotPopup.style.position = 'absolute';
+                activeHotspotPopup.style.top = '50%';
+                activeHotspotPopup.style.left = '50%';
+                activeHotspotPopup.style.transform = 'translate(-50%, -50%)';
+                activeHotspotPopup.style.background = '#000';
+                activeHotspotPopup.style.border = '1px solid #404040';
+                activeHotspotPopup.style.color = '#fff';
+                activeHotspotPopup.style.padding = '1rem';
+                activeHotspotPopup.style.borderRadius = '6px';
+                activeHotspotPopup.style.zIndex = '50';
+                activeHotspotPopup.style.minWidth = '250px';
+
+                var popupHeader = document.createElement('div');
+                popupHeader.style.display = 'flex';
+                popupHeader.style.justifyContent = 'space-between';
+                popupHeader.style.alignItems = 'center';
+                popupHeader.style.marginBottom = '0.5rem';
+
+                var popupTitle = document.createElement('h4');
+                popupTitle.style.margin = '0';
+                popupTitle.style.fontSize = '1.1rem';
+                popupTitle.textContent = hotspot.title || 'Hotspot';
+
+                var popupClose = document.createElement('button');
+                popupClose.type = 'button';
+                popupClose.textContent = 'X';
+                popupClose.style.background = 'transparent';
+                popupClose.style.border = 'none';
+                popupClose.style.color = '#a3a3a3';
+                popupClose.style.cursor = 'pointer';
+                popupClose.onclick = closeHotspotPopup;
+
+                popupHeader.appendChild(popupTitle);
+                popupHeader.appendChild(popupClose);
+
+                var popupContent = document.createElement('p');
+                popupContent.style.margin = '0';
+                popupContent.style.fontSize = '0.9rem';
+                popupContent.style.lineHeight = '1.5';
+                popupContent.textContent = hotspot.content || '';
+
+                activeHotspotPopup.appendChild(popupHeader);
+                activeHotspotPopup.appendChild(popupContent);
+                el.appendChild(activeHotspotPopup);
+              };
+
+              el.appendChild(dot);
+            })(hotspotItems[hi]);
+          }
         } else if (comp.type === 'quiz') {
           var opts = '';
           for (var oi = 0; oi < (comp.options||[]).length; oi++) {
@@ -1301,12 +1404,26 @@ def _get_fallback_runtime_js() -> str:
 """
  
  
-def generate_runtime_html(title: str, course_definition: Dict[str, Any]) -> str:
+def generate_runtime_html(
+    title: str,
+    course_definition: Dict[str, Any],
+    *,
+    inline_assets: bool = True,
+    runtime_js_path: str = "runtime.js",
+    course_data_js_path: str = "course-data.js",
+) -> str:
     """Generate the complete runtime HTML page."""
     safe_title = html_module.escape(title)
     course_json = json.dumps(course_definition, separators=(",", ":"))
     runtime_js = _get_runtime_js()
- 
+
+    if inline_assets:
+        course_data_markup = f"<script>window.__CF_COURSE_DATA = {course_json};</script>"
+        runtime_markup = f"<script>{runtime_js}</script>"
+    else:
+        course_data_markup = f'<script src="{html_module.escape(course_data_js_path)}"></script>'
+        runtime_markup = f'<script src="{html_module.escape(runtime_js_path)}"></script>'
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1356,19 +1473,19 @@ def generate_runtime_html(title: str, course_definition: Dict[str, Any]) -> str:
  
   <!-- Navigation -->
   <nav class="cf-rt-nav">
-    <button class="cf-rt-nav-btn" id="cf-prev-btn" onclick="window.__cfPrev ? window.__cfPrev() : window.__cfRuntime?.prevSlide()">
+    <button class="cf-rt-nav-btn" id="cf-prev-btn" type="button">
       &#8592; Previous
     </button>
-    <button class="cf-rt-nav-btn cf-rt-nav-btn-primary" id="cf-next-btn" onclick="window.__cfNext ? window.__cfNext() : window.__cfRuntime?.nextSlide()">
+    <button class="cf-rt-nav-btn cf-rt-nav-btn-primary" id="cf-next-btn" type="button">
       Next &#8594;
     </button>
   </nav>
  
   <!-- Course Data -->
-  <script>window.__CF_COURSE_DATA = {course_json};</script>
+  {course_data_markup}
  
   <!-- Runtime Bundle -->
-  <script>{runtime_js}</script>
+  {runtime_markup}
 </body>
 </html>"""
  

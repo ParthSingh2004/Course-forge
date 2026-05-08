@@ -21,6 +21,7 @@ from app.processors.scorm_builder import (
     build_course_definition,
     generate_manifest,
     generate_runtime_html,
+    _get_runtime_js,
 )
 
 load_dotenv()
@@ -701,6 +702,8 @@ async def generate_ai_content(prompt: str = Form(...), block_type: str = Form("P
 @router.post("/export/scorm")
 async def export_scorm(course: CourseData):
     buffer = io.BytesIO()
+    runtime_js_name = "runtime.js"
+    course_data_js_name = "course-data.js"
 
     # Convert authoring blocks → Slide/Layer/Component model + triggers
     course_def = build_course_definition(course.title, course.blocks, theme=course.theme, policy={
@@ -717,16 +720,26 @@ async def export_scorm(course: CourseData):
     # Generate SCORM 1.2 compliant manifest (include media file declarations)
     manifest = generate_manifest(
         course.title,
-        media_files=list(media_files.keys()),
+        media_files=list(media_files.keys()) + [runtime_js_name, course_data_js_name],
         mastery_score=course.policy.passingScore,
     )
 
-    # Generate runtime HTML with embedded course data + JS bundle
-    html = generate_runtime_html(course.title, course_def)
+    # Generate runtime HTML referencing external JS assets to avoid CSP issues in hosted LMS portals
+    html = generate_runtime_html(
+        course.title,
+        course_def,
+        inline_assets=False,
+        runtime_js_path=runtime_js_name,
+        course_data_js_path=course_data_js_name,
+    )
+    runtime_js = _get_runtime_js()
+    course_data_js = f"window.__CF_COURSE_DATA = {json.dumps(course_def, separators=(',', ':'))};"
 
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("index.html", html)
         z.writestr("imsmanifest.xml", manifest)
+        z.writestr(runtime_js_name, runtime_js)
+        z.writestr(course_data_js_name, course_data_js)
 
         # Write extracted media files
         for fname, fbytes in media_files.items():

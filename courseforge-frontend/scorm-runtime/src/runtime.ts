@@ -238,6 +238,7 @@ class CourseForgeRuntime {
     );
 
     this.renderSidebar();
+    this.bindNavigationButtons();
 
     // Wire the sidebar toggle button (static HTML — wired once in boot)
     const sidebarToggle = document.getElementById("cf-sidebar-toggle");
@@ -247,6 +248,25 @@ class CourseForgeRuntime {
 
     // Apply any restored collapsed state from sessionStorage
     this.applySidebarState();
+  }
+
+  private bindNavigationButtons(): void {
+    const prevBtn = document.getElementById("cf-prev-btn") as HTMLButtonElement | null;
+    const nextBtn = document.getElementById("cf-next-btn") as HTMLButtonElement | null;
+
+    if (prevBtn && !prevBtn.dataset.bound) {
+      prevBtn.dataset.bound = "true";
+      prevBtn.addEventListener("click", () => {
+        this.prevSlide();
+      });
+    }
+
+    if (nextBtn && !nextBtn.dataset.bound) {
+      nextBtn.dataset.bound = "true";
+      nextBtn.addEventListener("click", () => {
+        this.nextSlide();
+      });
+    }
   }
 
   private registerMediaListeners(): void {

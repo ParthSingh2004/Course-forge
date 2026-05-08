@@ -1796,6 +1796,7 @@ function ImageBlock({ block, onUpdate }) {
 // ── Image Hotspot Component ──
 function ImageHotspotBlock({ block, onUpdate, readOnly }) {
   const [activeHotspotId, setActiveHotspotId] = useState(null);
+  const imageSrc = block.imageUrl || block.image || block.src || '';
 
   const handleUpload = (e) => {
     const file = e.target.files?.[0];
@@ -1838,7 +1839,7 @@ function ImageHotspotBlock({ block, onUpdate, readOnly }) {
 
   return (
     <div className="cf-image-hotspot-block" style={{ width: '100%', position: 'relative' }}>
-      {!block.imageUrl ? (
+      {!imageSrc ? (
         <label className="cf-image-label" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, background: '#171717', border: '1px dashed #450a0a', borderRadius: 8, cursor: 'pointer', color: '#a3a3a3' }}>
           <ImageIcon style={{ width: 28, height: 28, opacity: 0.6, marginBottom: '0.5rem' }} />
           Click to upload image
@@ -1847,7 +1848,7 @@ function ImageHotspotBlock({ block, onUpdate, readOnly }) {
       ) : (
         <div style={{ position: 'relative', width: '100%', display: 'inline-block' }}>
           <img
-            src={block.imageUrl}
+            src={imageSrc}
             alt="Hotspot Base"
             style={{ width: '100%', borderRadius: 8, display: 'block', cursor: readOnly ? 'default' : 'crosshair' }}
             onClick={handleImageClick}
