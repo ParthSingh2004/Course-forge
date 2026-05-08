@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 import shutil
 import tempfile
+import html
 from app.processors.pptx_parser import extract_slides
 from app.processors.story_parser import parse_story_file
 from app.processors.pdf_parser import extract_pdf_slides
@@ -936,6 +937,162 @@ def _mime_to_ext(mime: str) -> str:
     return mime_map.get(mime, mime.split("/")[-1] if "/" in mime else "bin")
 
 
+def _generate_tincan_xml(title: str, activity_id: str, launch_path: str = "launch.html") -> str:
+    safe_title = html.escape(title)
+    safe_activity_id = html.escape(activity_id, quote=True)
+    safe_launch_path = html.escape(launch_path, quote=True)
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<tincan xmlns="http://projecttincan.com/tincan.xsd">
+  <activities>
+    <activity id="{safe_activity_id}" type="http://adlnet.gov/expapi/activities/course">
+      <name lang="en-US">{safe_title}</name>
+      <description lang="en-US">{safe_title}</description>
+      <launch lang="en-US">{safe_launch_path}</launch>
+    </activity>
+  </activities>
+</tincan>"""
+
+
+def _generate_xapi_launch_html(title: str, target_path: str = "index.html") -> str:
+    safe_title = html.escape(title)
+    safe_target_path = html.escape(target_path, quote=True)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{safe_title}</title>
+</head>
+<body style="font-family:sans-serif;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+<p>Launching course...</p>
+<script>
+(function() {{
+  var target = "{safe_target_path}";
+  var qs = window.location.search || "";
+  var hash = window.location.hash || "";
+  window.location.replace(target + qs + hash);
+}})();
+</script>
+</body>
+</html>"""
+
+
+def _generate_xapi_bridge_js(title: str, activity_id: str, passing_score: float) -> str:
+    safe_title = json.dumps(title)
+    safe_activity_id = json.dumps(activity_id)
+    resolved_passing_score = max(0, min(100, round(float(passing_score or 0))))
+    return f"""
+(function() {{
+  'use strict';
+
+  function parseLaunchConfig() {{
+    var params = new URLSearchParams(window.location.search || '');
+    var rawActor = params.get('actor');
+    var actor = null;
+
+    if (rawActor) {{
+      try {{
+        actor = JSON.parse(rawActor);
+      }} catch (err) {{
+        try {{
+          actor = JSON.parse(decodeURIComponent(rawActor));
+        }} catch (_) {{
+          actor = null;
+        }}
+      }}
+    }}
+
+    if (!actor) {{
+      actor = {{
+        objectType: 'Agent',
+        mbox: 'mailto:learner@example.com',
+        name: 'Learner'
+      }};
+    }}
+
+    return {{
+      endpoint: params.get('endpoint') || '',
+      auth: params.get('auth') || '',
+      actor: actor,
+      registration: params.get('registration') || '',
+      activityId: params.get('activity_id') || {safe_activity_id},
+      activityTitle: {safe_title},
+      passingScore: {resolved_passing_score}
+    }};
+  }}
+
+  function sendStatement(config, verbId, verbDisplay, result) {{
+    if (!config.endpoint || !config.auth) return;
+
+    var statement = {{
+      actor: config.actor,
+      verb: {{
+        id: verbId,
+        display: {{ 'en-US': verbDisplay }}
+      }},
+      object: {{
+        id: config.activityId,
+        objectType: 'Activity',
+        definition: {{
+          name: {{ 'en-US': config.activityTitle }},
+          type: 'http://adlnet.gov/expapi/activities/course'
+        }}
+      }}
+    }};
+
+    if (config.registration) {{
+      statement.context = {{ registration: config.registration }};
+    }}
+
+    if (result) {{
+      statement.result = result;
+    }}
+
+    fetch(config.endpoint, {{
+      method: 'POST',
+      headers: {{
+        'Content-Type': 'application/json',
+        'X-Experience-API-Version': '1.0.3',
+        'Authorization': config.auth
+      }},
+      body: JSON.stringify(statement)
+    }}).catch(function(err) {{
+      console.warn('[xAPI] Statement send failed:', err);
+    }});
+  }}
+
+  var config = parseLaunchConfig();
+  window.__CF_XAPI_CONFIG = config;
+  window.__CF_XAPI_REPORT_COMPLETION = function(scoreRaw) {{
+    var rounded = Math.round(Number(scoreRaw) || 0);
+    var passed = rounded >= config.passingScore;
+    var result = {{
+      score: {{
+        raw: rounded,
+        min: 0,
+        max: 100,
+        scaled: rounded / 100
+      }},
+      success: passed,
+      completion: true
+    }};
+
+    sendStatement(config, 'http://adlnet.gov/expapi/verbs/completed', 'completed', result);
+    sendStatement(
+      config,
+      passed ? 'http://adlnet.gov/expapi/verbs/passed' : 'http://adlnet.gov/expapi/verbs/failed',
+      passed ? 'passed' : 'failed',
+      result
+    );
+  }};
+
+  document.addEventListener('DOMContentLoaded', function() {{
+    sendStatement(config, 'http://adlnet.gov/expapi/verbs/initialized', 'initialized', null);
+  }});
+}})();
+""".strip()
+
+
 # ---------------------------------------------------------------------------
 # XAPI HELPERS
 # ---------------------------------------------------------------------------
@@ -981,121 +1138,46 @@ def _flatten_course_blocks(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 @router.post("/export/xapi")
 async def export_xapi(course: CourseData):
     buffer = io.BytesIO()
+    safe_id = re.sub(r"\s+", "_", course.title.strip()) or "courseforge_course"
+    runtime_js_name = "runtime.js"
+    course_data_js_name = "course-data.js"
+    xapi_bridge_js_name = "xapi-bridge.js"
+    launch_html_name = "launch.html"
+    tincan_xml_name = "tincan.xml"
+    activity_id = f"http://courseforge.com/{safe_id}"
 
-    safe_id = re.sub(r"\s+", "_", course.title.strip())
+    course_def = build_course_definition(course.title, course.blocks, theme=course.theme, policy={
+        "passingScore": course.policy.passingScore,
+        "maxAttempts":  course.policy.maxAttempts,
+        "lockOnPass":   course.policy.lockOnPass,
+        "lockOnExhaust": course.policy.lockOnExhaust,
+    })
 
-    xapi_script = f"""
-    // ── CourseForge xAPI (Tin Can) Runtime ────────────────────────────────────
-    // Configure your LRS endpoint and credentials here.
-    var CF_LRS_ENDPOINT = "https://your-lrs-endpoint.com/xapi/statements";
-    var CF_LRS_AUTH     = "Basic YOUR_BASE64_ENCODED_CREDENTIALS";
-    var CF_ACTOR_MBOX   = "mailto:learner@example.com";
-    var CF_COURSE_IRI   = "http://courseforge.com/{safe_id}";
-    var CF_COURSE_TITLE = "{course.title}";
-    var CF_PASSING_SCORE = 70; // percent — override to match your LRS/admin setting
+    media_files: Dict[str, bytes] = {}
+    _extract_media_from_course(course_def, media_files)
 
-    function _xapiSend(statement) {{
-        console.log("[xAPI] Sending statement:", JSON.stringify(statement, null, 2));
-        fetch(CF_LRS_ENDPOINT, {{
-            method: "POST",
-            headers: {{
-                "Content-Type": "application/json",
-                "X-Experience-API-Version": "1.0.3",
-                "Authorization": CF_LRS_AUTH
-            }},
-            body: JSON.stringify(statement)
-        }}).catch(function(err) {{
-            console.warn("[xAPI] LRS POST failed:", err);
-        }});
-    }}
-
-    function _xapiStatement(verbId, verbDisplay, result) {{
-        var stmt = {{
-            actor: {{ mbox: CF_ACTOR_MBOX }},
-            verb: {{
-                id: verbId,
-                display: {{ "en-US": verbDisplay }}
-            }},
-            object: {{
-                id: CF_COURSE_IRI,
-                objectType: "Activity",
-                definition: {{
-                    name: {{ "en-US": CF_COURSE_TITLE }},
-                    type: "http://adlnet.gov/expapi/activities/course"
-                }}
-            }}
-        }};
-        if (result) stmt.result = result;
-        return stmt;
-    }}
-
-    // Sent on page load — tells the LRS the learner has opened the course.
-    function initCourse() {{
-        _xapiSend(_xapiStatement(
-            "http://adlnet.gov/expapi/verbs/initialized",
-            "initialized",
-            null
-        ));
-    }}
-
-    // Call this once the learner finishes the course with a calculated score (0-100).
-    // Sends both a "completed" and a "passed"/"failed" statement as per cmi5 convention.
-    function reportCourseCompletion(scoreRaw) {{
-        var scaled  = Math.round(scoreRaw) / 100;
-        var passed  = scoreRaw >= CF_PASSING_SCORE;
-        var result  = {{
-            score: {{
-                raw:    Math.round(scoreRaw),
-                min:    0,
-                max:    100,
-                scaled: scaled
-            }},
-            success:    passed,
-            completion: true,
-            duration:   "PT0S"  // override with real elapsed time if available
-        }};
-
-        // 1. completed statement
-        _xapiSend(_xapiStatement(
-            "http://adlnet.gov/expapi/verbs/completed",
-            "completed",
-            result
-        ));
-
-        // 2. passed / failed statement
-        _xapiSend(_xapiStatement(
-            passed
-                ? "http://adlnet.gov/expapi/verbs/passed"
-                : "http://adlnet.gov/expapi/verbs/failed",
-            passed ? "passed" : "failed",
-            result
-        ));
-
-        console.log("[xAPI] Course " + (passed ? "PASSED" : "FAILED") +
-                    " — score: " + Math.round(scoreRaw) + "/100 " +
-                    "(pass mark: " + CF_PASSING_SCORE + "%)");
-    }}
-    """
-
-    flattened_blocks = _flatten_course_blocks(course.blocks)
-
-    # --- bundle stored audio files into xAPI zip ---
-    xapi_media: Dict[str, bytes] = {}
-    for item in flattened_blocks:
-        if item.get("type") == "audio":
-            mid = item.get("mediaId", "")
-            entry = _MEDIA_STORE.get(mid)
-            if entry:
-                ext = entry["filename"].rsplit(".", 1)[-1]
-                xapi_media[f"media/{mid}.{ext}"] = entry["bytes"]
-                # patch src so render_block_html uses relative path
-                item["_resolved_src"] = f"./media/{mid}.{ext}"
-
-    html = _build_course_html(course.title, flattened_blocks, xapi_script)
+    html = generate_runtime_html(
+        course.title,
+        course_def,
+        inline_assets=False,
+        runtime_js_path=runtime_js_name,
+        course_data_js_path=course_data_js_name,
+        extra_script_paths=[xapi_bridge_js_name],
+    )
+    runtime_js = _get_runtime_js()
+    course_data_js = f"window.__CF_COURSE_DATA = {json.dumps(course_def, separators=(',', ':'))};"
+    xapi_bridge_js = _generate_xapi_bridge_js(course.title, activity_id, course.policy.passingScore)
+    launch_html = _generate_xapi_launch_html(course.title, "index.html")
+    tincan_xml = _generate_tincan_xml(course.title, activity_id, launch_html_name)
 
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("index.html", html)
-        for fname, fbytes in xapi_media.items():
+        z.writestr(runtime_js_name, runtime_js)
+        z.writestr(course_data_js_name, course_data_js)
+        z.writestr(xapi_bridge_js_name, xapi_bridge_js)
+        z.writestr(launch_html_name, launch_html)
+        z.writestr(tincan_xml_name, tincan_xml)
+        for fname, fbytes in media_files.items():
             z.writestr(fname, fbytes)
 
     buffer.seek(0)

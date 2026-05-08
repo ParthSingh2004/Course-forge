@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerClick, ListChecks, Trash2, GripVertical, FileUp, Globe, FileArchive, BookOpen, ChevronRight, CreditCard, Video, RotateCcw, Play, List, Quote, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify, ShieldCheck, ToggleLeft, PenLine, Mic, FileText, Table, Save, CheckCircle, Eye, X } from 'lucide-react';
+import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerClick, ListChecks, Trash2, GripVertical, FileUp, Globe, BookOpen, ChevronRight, CreditCard, Video, RotateCcw, Play, List, Quote, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify, ShieldCheck, ToggleLeft, PenLine, Mic, FileText, Table, Save, CheckCircle, Eye, X } from 'lucide-react';
 import Dashboard from './Dashboard';
 import { createLocalCourse, saveCourseToBrowser } from './utils/storage';
 
@@ -2741,7 +2741,6 @@ function App() {
     try {
       let endpoint;
       if (type === 'pptx') endpoint = '/api/upload/pptx';
-      else if (type === 'story') endpoint = '/api/upload/story';
       else if (type === 'pdf') endpoint = '/api/upload/pdf';
       const response = await fetch(buildApiUrl(endpoint), { method: 'POST', body: formData });
       if (!response.ok) throw new Error("Upload failed");
@@ -3854,11 +3853,6 @@ function App() {
                 <FileUp className="cf-sidebar-icon" />
                 {isUploading ? 'Uploading…' : 'PowerPoint'}
                 <input type="file" accept=".pptx" style={{ display: 'none' }} onChange={(e) => handleFileUpload(e, 'pptx')} />
-              </label>
-              <label className="cf-sidebar-import-btn">
-                <FileArchive className="cf-sidebar-icon" />
-                {isUploading ? 'Uploading…' : '.story File'}
-                <input type="file" accept=".story" style={{ display: 'none' }} onChange={(e) => handleFileUpload(e, 'story')} />
               </label>
               <label className="cf-sidebar-import-btn">
                 <FileText className="cf-sidebar-icon" />

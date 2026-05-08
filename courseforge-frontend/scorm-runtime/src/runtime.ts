@@ -851,8 +851,14 @@ class CourseForgeRuntime {
       }
       const newSrc = new URL(resolvedSrc, window.location.href).href;
       if (this.bgAudioElement.src !== newSrc) {
+        this.bgAudioElement.pause();
         this.bgAudioElement.src = newSrc;
+        this.bgAudioElement.currentTime = 0;
       }
+    } else if (this.bgAudioElement) {
+      this.bgAudioElement.pause();
+      this.bgAudioElement.removeAttribute("src");
+      this.bgAudioElement.load();
     }
 
     this.bgAudioPausedByMedia = false;
@@ -927,16 +933,84 @@ class CourseForgeRuntime {
     return src;
   }
 
+  private getAnimationFrames(animation: string): Keyframe[] | null {
+    switch (animation) {
+      case "fade-in":
+        return [{ opacity: 0 }, { opacity: 1 }];
+      case "fade-in-up":
+        return [{ opacity: 0, transform: "translateY(20px)" }, { opacity: 1, transform: "translateY(0)" }];
+      case "slide-in-left":
+        return [{ opacity: 0, transform: "translateX(-30px)" }, { opacity: 1, transform: "translateX(0)" }];
+      case "slide-in-right":
+        return [{ opacity: 0, transform: "translateX(30px)" }, { opacity: 1, transform: "translateX(0)" }];
+      case "slide-in-up":
+        return [{ opacity: 0, transform: "translateY(30px)" }, { opacity: 1, transform: "translateY(0)" }];
+      case "slide-in-down":
+        return [{ opacity: 0, transform: "translateY(-30px)" }, { opacity: 1, transform: "translateY(0)" }];
+      case "zoom-in":
+        return [{ opacity: 0, transform: "scale(0.95)" }, { opacity: 1, transform: "scale(1)" }];
+      case "zoom-out":
+        return [{ opacity: 0, transform: "scale(1.05)" }, { opacity: 1, transform: "scale(1)" }];
+      case "flip-in":
+        return [{ opacity: 0, transform: "perspective(400px) rotateX(90deg)" }, { opacity: 1, transform: "perspective(400px) rotateX(0deg)" }];
+      case "bounce-in":
+        return [
+          { opacity: 0, transform: "scale(0.3)" },
+          { opacity: 1, transform: "scale(1.05)", offset: 0.5 },
+          { opacity: 1, transform: "scale(0.9)", offset: 0.7 },
+          { opacity: 1, transform: "scale(1)" },
+        ];
+      default:
+        return null;
+    }
+  }
+
+  private applyComponentAnimation(el: HTMLElement, animation: string, delaySeconds: number): void {
+    if (!animation || animation === "none") {
+      el.style.opacity = "1";
+      return;
+    }
+
+    const frames = this.getAnimationFrames(animation);
+    if (!frames) {
+      el.style.opacity = "1";
+      return;
+    }
+
+    const delayMs = Math.max(0, delaySeconds || 0) * 1000;
+    el.style.opacity = "0";
+
+    requestAnimationFrame(() => {
+      if (typeof el.animate === "function") {
+        const player = el.animate(frames, {
+          duration: 600,
+          delay: delayMs,
+          easing: "ease-out",
+          fill: "forwards",
+        });
+        player.onfinish = () => {
+          el.style.opacity = "1";
+        };
+        player.oncancel = () => {
+          el.style.opacity = "1";
+        };
+      } else {
+        el.style.animationDelay = `${delaySeconds || 0}s`;
+        el.classList.add(`animate-${animation}`);
+        setTimeout(() => {
+          el.style.opacity = "1";
+        }, delayMs + 650);
+      }
+    });
+  }
+
   private renderComponent(comp: Component): HTMLElement | null {
     const wrapper = document.createElement("div");
     const animation = (comp as any).animation || "none";
-    wrapper.className = "cf-rt-component animate-" + animation;
+    wrapper.className = "cf-rt-component";
     wrapper.id = `comp-${comp.id}`;
 
     const delay = (comp as any).animationDelay || 0;
-    if (delay > 0) {
-      wrapper.style.animationDelay = delay + "s";
-    }
 
     switch (comp.type) {
       case "text": {
@@ -1872,6 +1946,7 @@ class CourseForgeRuntime {
         return null;
     }
 
+    this.applyComponentAnimation(wrapper, animation, delay);
     return wrapper;
   }
 
@@ -2101,6 +2176,11 @@ class CourseForgeRuntime {
 
         this.reportScore();
         this.checkCompletion();
+        const score = this.calculateScore();
+        const xapiReporter = (window as any).__CF_XAPI_REPORT_COMPLETION;
+        if (typeof xapiReporter === "function") {
+          xapiReporter(score.pct);
+        }
 
         // FIX 2a: Set the guard before calling finish() so the pagehide /
         // beforeunload handler does not attempt a second LMSFinish() call.

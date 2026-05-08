@@ -714,7 +714,9 @@ def _get_fallback_runtime_js() -> str:
       }
       var resolvedBgAudioSrc = new URL(bgAudioSrc, window.location.href).href;
       if (bgAudioElement.src !== resolvedBgAudioSrc) {
+        bgAudioElement.pause();
         bgAudioElement.src = resolvedBgAudioSrc;
+        bgAudioElement.currentTime = 0;
       }
       bgAudioElement.play().catch(function() {});
     } else if (bgAudioElement) {
@@ -1411,11 +1413,18 @@ def generate_runtime_html(
     inline_assets: bool = True,
     runtime_js_path: str = "runtime.js",
     course_data_js_path: str = "course-data.js",
+    extra_script_paths: List[str] | None = None,
 ) -> str:
     """Generate the complete runtime HTML page."""
     safe_title = html_module.escape(title)
     course_json = json.dumps(course_definition, separators=(",", ":"))
     runtime_js = _get_runtime_js()
+
+    extra_script_markup = ""
+    if extra_script_paths:
+        extra_script_markup = "\n".join(
+            f'  <script src="{html_module.escape(path)}"></script>' for path in extra_script_paths
+        )
 
     if inline_assets:
         course_data_markup = f"<script>window.__CF_COURSE_DATA = {course_json};</script>"
@@ -1483,6 +1492,9 @@ def generate_runtime_html(
  
   <!-- Course Data -->
   {course_data_markup}
+
+  <!-- Extra Runtime Scripts -->
+{extra_script_markup}
  
   <!-- Runtime Bundle -->
   {runtime_markup}
