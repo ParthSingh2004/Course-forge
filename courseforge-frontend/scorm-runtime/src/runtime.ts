@@ -178,7 +178,7 @@ class CourseForgeRuntime {
       for (const layer of slide.layers) {
         for (const comp of layer.components) {
           if (
-            (comp.type === "quiz" || comp.type === "video" || comp.type === "audio") &&
+            (comp.type === "quiz" || comp.type === "video" || comp.type === "audio" || comp.type === "interactive-video") &&
             (comp as any).mandatory
           ) {
             this.mandatoryIds.add(comp.id);
@@ -682,8 +682,10 @@ class CourseForgeRuntime {
             maxPossibleScore += weight;
 
             const result = this.state.quizScores[comp.id];
-            if (result && result.score > 0) {
-              totalEarnedScore += weight;
+            if (result) {
+              const maxScore = typeof result.maxScore === "number" && result.maxScore > 0 ? result.maxScore : 1;
+              const normalizedScore = Math.max(0, Math.min(1, result.score / maxScore));
+              totalEarnedScore += weight * normalizedScore;
             }
           }
         }
@@ -1179,6 +1181,25 @@ class CourseForgeRuntime {
       case "interactive-video": {
         wrapper.style.position = "relative";
 
+        if ((comp as any).mandatory) {
+          const isComplete = this.state.mandatoryCompleted.includes(comp.id);
+          const badge = document.createElement("div");
+          badge.id = `mandatory-badge-${comp.id}`;
+          badge.style.cssText = `font-size:10px;font-weight:700;letter-spacing:0.15em;padding:4px 10px;border-radius:6px;margin-bottom:8px;display:inline-block;`;
+          if (isComplete) {
+            badge.textContent = "✓ COMPLETED";
+            badge.style.background = "#052e16";
+            badge.style.color = "#4ade80";
+            badge.style.border = "1px solid #166534";
+          } else {
+            badge.textContent = "⚠ MANDATORY — Watch to continue";
+            badge.style.background = "#2a0a0a";
+            badge.style.color = "#f87171";
+            badge.style.border = "1px solid #7f1d1d";
+          }
+          wrapper.appendChild(badge);
+        }
+
         if (comp.embedType === "youtube" || comp.embedType === "vimeo") {
           const message = document.createElement("div");
           message.style.cssText = [
@@ -1220,6 +1241,12 @@ class CourseForgeRuntime {
         wrapper.appendChild(overlay);
 
         const interactions = comp.interactions || [];
+
+        if ((comp as any).mandatory) {
+          video.addEventListener("ended", () => {
+            this.markMandatoryComplete(comp.id);
+          });
+        }
         
         video.addEventListener("timeupdate", () => {
           const currentTime = video.currentTime;
@@ -1431,7 +1458,6 @@ class CourseForgeRuntime {
         const btn = document.createElement("button");
         btn.className = "cf-rt-button";
         btn.textContent = comp.label;
-        btn.style.textAlign = alignment;
         btn.addEventListener("click", () => {
           if (comp.targetSlideId) {
             this.goToSlide(comp.targetSlideId);
@@ -1585,7 +1611,7 @@ class CourseForgeRuntime {
         }
 
         const existingScore = this.state.quizScores[fbId];
-        const isCorrectAlready = existingScore && existingScore.score > 0;
+        const isCorrectAlready = existingScore && existingScore.score >= 1;
         const answers = normalizeFillBlankAnswers(comp);
         let blankIndex = 0;
         let qHtml = comp.question.replace(/____/g, () => {
@@ -1628,19 +1654,29 @@ class CourseForgeRuntime {
 
           if (inputEls.length && btnEl) {
             btnEl.addEventListener("click", () => {
-              const isCorrect = inputEls.every((inputEl, index) => {
+              let correctCount = 0;
+              inputEls.forEach((inputEl, index) => {
                 const learnerVal = inputEl.value.trim();
                 const expected = String(answers[index] || "").trim();
                 const checkVal = comp.caseSensitive ? learnerVal : learnerVal.toLowerCase();
                 const ansVal = comp.caseSensitive ? expected : expected.toLowerCase();
-                return checkVal === ansVal;
+                if (checkVal === ansVal) {
+                  correctCount += 1;
+                }
               });
+              const totalBlanks = answers.length || 1;
+              const partialScore = correctCount / totalBlanks;
+              const isCorrect = partialScore === 1;
 
               const fb = wrapper.querySelector(`#fb-${fbId}`);
               if (fb) {
-                fb.innerHTML = isCorrect
-                  ? '<span style="color:#4ade80">\u2713 Correct!</span>'
-                  : '<span style="color:#f87171">\u2717 Incorrect. Try again.</span>';
+                if (isCorrect) {
+                  fb.innerHTML = '<span style="color:#4ade80">\u2713 Correct!</span>';
+                } else if (correctCount > 0) {
+                  fb.innerHTML = `<span style="color:#fbbf24">\u25B3 ${correctCount} of ${totalBlanks} correct. You can retry for full marks.</span>`;
+                } else {
+                  fb.innerHTML = '<span style="color:#f87171">\u2717 Incorrect. Try again.</span>';
+                }
               }
 
               if (isCorrect) {
@@ -1659,7 +1695,7 @@ class CourseForgeRuntime {
                 btnEl.disabled = false;
               }
 
-              this.submitGenericQuiz(fbId, isCorrect ? 1 : 0);
+              this.submitGenericQuiz(fbId, partialScore);
             });
           }
         });

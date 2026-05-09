@@ -213,6 +213,8 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "embedType": _detect_embed_type(url),
             "interactions": interactions
         }
+        if block.get("mandatory"):
+            comp["mandatory"] = True
         return comp
  
     if btype == "button":
@@ -705,7 +707,12 @@ def _get_fallback_runtime_js() -> str:
     var earned      = 0;
     for (var cid in weightageMap) {
       maxPossible += weightageMap[cid];
-      if (scorableComps[cid] === true) earned += weightageMap[cid];
+      if (typeof scorableComps[cid] === 'number') {
+        var normalized = Math.max(0, Math.min(1, Number(scorableComps[cid]) || 0));
+        earned += weightageMap[cid] * normalized;
+      } else if (scorableComps[cid] === true) {
+        earned += weightageMap[cid];
+      }
     }
     if (maxPossible === 0) {
       // No scorable interactions — treat as full marks (content-only course)
@@ -1158,8 +1165,39 @@ def _get_fallback_runtime_js() -> str:
           tableHtml += '</tbody></table></div>';
           el.innerHTML = tableHtml;
         } else if (comp.type === 'interactive-video') {
+          if (comp.mandatory) {
+            var ivBadge = document.createElement('div');
+            ivBadge.id = 'mandatory-badge-' + comp.id;
+            ivBadge.style.fontSize = '10px';
+            ivBadge.style.fontWeight = '700';
+            ivBadge.style.letterSpacing = '0.15em';
+            ivBadge.style.padding = '4px 10px';
+            ivBadge.style.borderRadius = '6px';
+            ivBadge.style.marginBottom = '8px';
+            ivBadge.style.display = 'inline-block';
+            if (mandatoryCompleted[comp.id]) {
+              ivBadge.textContent = '\u2713 COMPLETED';
+              ivBadge.style.background = '#052e16';
+              ivBadge.style.color = '#4ade80';
+              ivBadge.style.border = '1px solid #166534';
+            } else {
+              ivBadge.textContent = '\u26a0 MANDATORY \u2014 Watch to continue';
+              ivBadge.style.background = '#2a0a0a';
+              ivBadge.style.color = '#f87171';
+              ivBadge.style.border = '1px solid #7f1d1d';
+            }
+            el.appendChild(ivBadge);
+          }
           if (comp.embedType === 'youtube' || comp.embedType === 'vimeo') {
-            el.innerHTML = '<div style="padding:24px;border:1px solid #7f1d1d;border-radius:8px;background:#1a0a0a;color:#fca5a5;line-height:1.5;"><strong>Interactive video requires an uploaded video file.</strong><br>YouTube and Vimeo embeds cannot expose playback timing to this SCORM player.</div>';
+            var ivMessage = document.createElement('div');
+            ivMessage.style.padding = '24px';
+            ivMessage.style.border = '1px solid #7f1d1d';
+            ivMessage.style.borderRadius = '8px';
+            ivMessage.style.background = '#1a0a0a';
+            ivMessage.style.color = '#fca5a5';
+            ivMessage.style.lineHeight = '1.5';
+            ivMessage.innerHTML = '<strong>Interactive video requires an uploaded video file.</strong><br>YouTube and Vimeo embeds cannot expose playback timing to this SCORM player.';
+            el.appendChild(ivMessage);
           } else {
             el.style.position = 'relative';
             var iv = document.createElement('video');
@@ -1170,6 +1208,19 @@ def _get_fallback_runtime_js() -> str:
             iv.style.borderRadius = '8px';
             iv.style.background = '#000';
             el.appendChild(iv);
+            if (comp.mandatory) {
+              iv.addEventListener('ended', function() {
+                mandatoryCompleted[comp.id] = true;
+                var badge = document.getElementById('mandatory-badge-' + comp.id);
+                if (badge) {
+                  badge.textContent = '\u2713 COMPLETED';
+                  badge.style.background = '#052e16';
+                  badge.style.color = '#4ade80';
+                  badge.style.borderColor = '#166534';
+                }
+                checkCompletion();
+              });
+            }
 
             var overlay = document.createElement('div');
             overlay.style.position = 'absolute';
@@ -1342,9 +1393,6 @@ def _get_fallback_runtime_js() -> str:
           el.style.justifyContent = alignment === 'left' ? 'flex-start' : (alignment === 'right' ? 'flex-end' : 'center');
           el.innerHTML = '<button class="cf-rt-button" data-target-slide-id="' + (comp.targetSlideId||'') + '">' + (comp.label||'Button') + '</button>';
           var buttonEl = el.querySelector('button');
-          if (buttonEl) {
-            buttonEl.style.textAlign = alignment;
-          }
           if (buttonEl && comp.targetSlideId) {
             buttonEl.onclick = function(targetId) {
               return function() {
@@ -1370,13 +1418,15 @@ def _get_fallback_runtime_js() -> str:
           if (comp.mandatory) {
             mandBadge = '<div id="mandatory-badge-' + comp.id + '" style="font-size:10px;font-weight:700;letter-spacing:0.15em;padding:4px 10px;border-radius:6px;margin-bottom:8px;display:inline-block;background:#2a0a0a;color:#f87171;border:1px solid #7f1d1d;">\u26a0 MANDATORY \u2014 Listen to continue</div>';
           }
-          el.innerHTML = mandBadge +
+          el.innerHTML = '<div style="padding:16px;border:1px solid #f0d8d8;border-radius:12px;background:#fffafa;">' +
+            mandBadge +
             '<div style="margin-bottom:6px;font-size:10px;font-weight:700;letter-spacing:0.15em;color:#c0392b;">AUDIO</div>' +
-            '<div style="font-size:14px;font-weight:600;color:#fafafa;margin-bottom:10px;">' + (comp.label||'Audio Track') + '</div>' +
+            '<div style="font-size:14px;font-weight:600;color:#1a0a0a;margin-bottom:10px;">' + (comp.label||'Audio Track') + '</div>' +
             '<audio id="audio-el-' + comp.id + '" controls style="width:100%;border-radius:8px;background:#000;">' +
               '<source src="' + audioSrc + '">' +
               'Your browser does not support audio.' +
-            '</audio>';
+            '</audio>' +
+            '</div>';
           if (comp.mandatory) {
             (function(cid) {
               setTimeout(function() {
@@ -1495,21 +1545,31 @@ def _get_fallback_runtime_js() -> str:
       return document.getElementById('fitb-' + id + '-' + index);
     }).filter(Boolean);
     if (!inputEls.length) return;
-    var isCorrect = inputEls.every(function(inputEl, index) {
+    var correctCount = 0;
+    inputEls.forEach(function(inputEl, index) {
       var learnerVal = inputEl.value.trim();
       var answerVal = String(answers[index] || '').trim();
       var checkVal = caseSensitive ? learnerVal : learnerVal.toLowerCase();
       var normalizedAnswer = caseSensitive ? answerVal : answerVal.toLowerCase();
-      return checkVal === normalizedAnswer;
+      if (checkVal === normalizedAnswer) correctCount += 1;
     });
+    var totalBlanks = answers.length || 1;
+    var partialScore = correctCount / totalBlanks;
+    var isCorrect = partialScore === 1;
  
-    scorableComps[id]      = isCorrect;
+    scorableComps[id]      = partialScore;
     mandatoryCompleted[id] = true;
  
     var fbEl = document.getElementById('fb-' + id);
-    if (fbEl) fbEl.innerHTML = isCorrect
-      ? '<span style="color:#4ade80">\u2713 Correct!</span>'
-      : '<span style="color:#f87171">\u2717 Incorrect. Try again.</span>';
+    if (fbEl) {
+      if (isCorrect) {
+        fbEl.innerHTML = '<span style="color:#4ade80">\u2713 Correct!</span>';
+      } else if (correctCount > 0) {
+        fbEl.innerHTML = '<span style="color:#fbbf24">\u25B3 ' + correctCount + ' of ' + totalBlanks + ' correct. You can retry for full marks.</span>';
+      } else {
+        fbEl.innerHTML = '<span style="color:#f87171">\u2717 Incorrect. Try again.</span>';
+      }
+    }
  
     if (isCorrect) {
       inputEls.forEach(function(inputEl, index) {
@@ -1768,13 +1828,18 @@ body {
 .cf-rt-button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(139,26,26,0.4); }
  
 /* Quiz */
-.cf-rt-quiz-block { padding: 0; }
+.cf-rt-quiz-block {
+  padding: 16px;
+  border: 1px solid #f0d8d8;
+  border-radius: 12px;
+  background: #fffafa;
+}
 .cf-rt-quiz-badge {
   font-size: 10px; font-weight: 700; letter-spacing: 0.15em;
   color: #c0392b; margin-bottom: 12px;
 }
 .cf-rt-quiz-question {
-  font-size: 17px; font-weight: 600; color: #fafafa;
+  font-size: 17px; font-weight: 600; color: #1a0a0a;
   margin-bottom: 16px; line-height: 1.5;
 }
 .cf-rt-quiz-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }

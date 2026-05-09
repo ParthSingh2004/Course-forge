@@ -214,6 +214,13 @@ const STYLES = `
 
   .cf-title-input::placeholder { color: #450a0a; }
 
+  .cf-rich-text-input[data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    color: #8b6060;
+    pointer-events: none;
+    display: block;
+  }
+
   .cf-header-actions {
     display: flex;
     align-items: center;
@@ -1706,6 +1713,7 @@ function RichTextEditor({ value, onChange, placeholder, style, className }) {
       </div>
       <div
         ref={editorRef}
+        className="cf-rich-text-input"
         contentEditable
         onInput={handleInput}
         onKeyUp={updateToolbarState}
@@ -2174,8 +2182,27 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
     <div style={{ position: 'relative', background: readOnly ? 'transparent' : '#0a0000', padding: readOnly ? 0 : '1rem', borderRadius: 8 }}>
       {!readOnly && (
         <div style={{ marginBottom: '1rem', padding: '0.5rem', background: '#171717', border: '1px solid #7f1d1d', borderRadius: 6, display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ color: '#d4d4d4', fontSize: '0.8125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {block.fileName || (block.videoUrl ? 'Uploaded video selected' : 'Upload a video file to add quiz interactions.')}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
+            <button
+              type="button"
+              onClick={() => onUpdate(block.id, { mandatory: !block.mandatory })}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.35rem',
+                padding: '0.25rem 0.625rem', borderRadius: 6, cursor: 'pointer',
+                fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '0.06em',
+                background: block.mandatory ? '#8b1a1a' : '#fff5f5',
+                color: block.mandatory ? 'white' : '#8b6060',
+                border: block.mandatory ? '1px solid #8b1a1a' : '1px solid #EAD0D0',
+                transition: 'all 0.15s',
+                flexShrink: 0,
+              }}
+            >
+              <ShieldCheck style={{ width: 12, height: 12 }} />
+              {block.mandatory ? 'MANDATORY' : 'Optional'}
+            </button>
+            <div style={{ color: '#d4d4d4', fontSize: '0.8125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {block.fileName || (block.videoUrl ? 'Uploaded video selected' : 'Upload a video file to add quiz interactions.')}
+            </div>
           </div>
           <label style={{ background: '#171717', color: '#fff', padding: '0.5rem 1rem', border: '1px solid #450a0a', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <FileUp style={{ width: 14, height: 14 }} /> Upload
@@ -2897,6 +2924,7 @@ function App() {
     if (type === 'interactive-video') {
       newBlock.videoUrl = '';
       newBlock.interactions = [];
+      newBlock.mandatory = false;
     }
     if (type === 'image-hotspot') {
       newBlock.imageUrl = '';
@@ -3250,7 +3278,7 @@ function App() {
                 className="cf-button-input"
                 value={block.content}
                 onChange={(e) => updateBlock(block.id, { content: e.target.value })}
-                style={{ textAlign: block.alignment || 'center' }}
+                style={{ textAlign: 'center' }}
                 placeholder="Button label..."
               />
             </div>
@@ -4233,7 +4261,7 @@ function App() {
               </button>
               <span className="cf-sidebar-label">Assessments</span>
               <button onClick={() => addBlock('quiz')} className="cf-sidebar-btn">
-                <ListChecks className="cf-sidebar-icon" /> Quiz
+                <ListChecks className="cf-sidebar-icon" /> MCQ
               </button>
               <button onClick={() => addBlock('true_false')} className="cf-sidebar-btn">
                 <ToggleLeft className="cf-sidebar-icon" /> True / False
