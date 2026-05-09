@@ -60,6 +60,7 @@ export const ComponentSchema = z.discriminatedUnion("type", [
     id: z.string(),
     src: z.string(),
     embedType: z.enum(["youtube", "vimeo", "direct"]).default("direct"),
+    mandatory: z.boolean().optional(),
     interactions: z.array(z.object({
       id: z.string(),
       timestamp: z.number(),

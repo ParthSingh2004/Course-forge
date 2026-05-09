@@ -1527,7 +1527,7 @@ const STYLES = `
   }
 `;
 
-function RichTextEditor({ value, onChange, placeholder, style, className }) {
+function RichTextEditor({ value, onChange, placeholder, style, className, compactToolbar = false }) {
   const editorRef = useRef(null);
   const isEditing = useRef(false);
   const savedSelectionRef = useRef(null);
@@ -1633,12 +1633,12 @@ function RichTextEditor({ value, onChange, placeholder, style, className }) {
 
   return (
     <div className={`cf-rich-text-editor ${className || ''}`} style={{ border: '1px solid #EAD0D0', borderRadius: 8, overflow: 'hidden', background: 'white', ...style }}>
-      <div className="cf-rte-toolbar" style={{ display: 'flex', gap: '4px', padding: '6px 8px', background: '#FDF8F8', borderBottom: '1px solid #EAD0D0', alignItems: 'center', fontSize: '13px', fontWeight: '400', fontStyle: 'normal', textTransform: 'none', letterSpacing: 'normal', color: '#333' }}>
+      <div className="cf-rte-toolbar" style={{ display: 'flex', gap: '4px', padding: '6px 8px', background: '#FDF8F8', borderBottom: '1px solid #EAD0D0', alignItems: 'center', fontSize: '13px', fontWeight: '400', fontStyle: 'normal', textTransform: 'none', letterSpacing: 'normal', color: '#333', flexWrap: compactToolbar ? 'wrap' : 'nowrap' }}>
         <button onMouseDown={(e) => { e.preventDefault(); exec('bold'); }} style={{ padding: '4px 8px', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', color: 'inherit' }}>B</button>
         <button onMouseDown={(e) => { e.preventDefault(); exec('italic'); }} style={{ padding: '4px 8px', background: 'transparent', border: 'none', cursor: 'pointer', fontStyle: 'italic', fontSize: '13px', color: 'inherit' }}>I</button>
         <button onMouseDown={(e) => { e.preventDefault(); exec('underline'); }} style={{ padding: '4px 8px', background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontSize: '13px', color: 'inherit' }}>U</button>
         <div style={{ width: '1px', height: '16px', background: '#EAD0D0', margin: '0 4px' }} />
-        <select value={currentFont} onMouseDown={saveSelection} onChange={(e) => { e.preventDefault(); exec('fontName', e.target.value); }} style={{ padding: '2px 4px', border: '1px solid #EAD0D0', borderRadius: 4, fontSize: '12px', background: 'white' }}>
+        <select value={currentFont} onMouseDown={saveSelection} onChange={(e) => { e.preventDefault(); exec('fontName', e.target.value); }} style={{ padding: '2px 4px', border: '1px solid #EAD0D0', borderRadius: 4, fontSize: '12px', background: 'white', maxWidth: compactToolbar ? 110 : 'none' }}>
           <option value="" disabled>Font</option>
           <option value="Roboto">Roboto</option>
           <option value="Arial">Arial</option>
@@ -1662,7 +1662,7 @@ function RichTextEditor({ value, onChange, placeholder, style, className }) {
               applyTypedFontSize();
             }
           }}
-          style={{ width: 72, padding: '2px 6px', border: '1px solid #EAD0D0', borderRadius: 4, fontSize: '12px', background: 'white' }}
+          style={{ width: compactToolbar ? 60 : 72, padding: '2px 6px', border: '1px solid #EAD0D0', borderRadius: 4, fontSize: '12px', background: 'white' }}
           title="Font size in pixels"
         />
         <div style={{ width: '1px', height: '16px', background: '#EAD0D0', margin: '0 4px' }} />
@@ -3914,6 +3914,7 @@ function App() {
                         value={sb.content}
                         onChange={(val) => updateSubBlock(colIdx, sb.id, { content: val })}
                         placeholder="Type here..."
+                        compactToolbar
                         style={{ border: '1px solid #f0e0e0' }}
                       />
                     ) : (

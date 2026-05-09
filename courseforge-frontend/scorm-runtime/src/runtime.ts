@@ -1929,7 +1929,7 @@ class CourseForgeRuntime {
         ul.className = "cf-rt-list";
         ul.style.paddingLeft = "20px";
         ul.style.margin = "0";
-        ul.style.color = "#a1a1aa";
+        ul.style.color = "#111111";
 
         for (const item of comp.items) {
           const li = document.createElement("li");
@@ -1951,9 +1951,14 @@ class CourseForgeRuntime {
         for (const colBlocks of colsData) {
           const colEl = document.createElement("div");
           colEl.className = "cf-rt-column";
+          colEl.style.color = "#ffffff";
           
           for (const sub of colBlocks) {
             const subEl = this.renderComponent(sub);
+            if (sub.type === "text") {
+              const textEl = subEl?.querySelector(".cf-rt-text") as HTMLElement | null;
+              if (textEl) textEl.style.color = "#ffffff";
+            }
             if (subEl) colEl.appendChild(subEl);
           }
           colsWrap.appendChild(colEl);

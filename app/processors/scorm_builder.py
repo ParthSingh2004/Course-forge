@@ -766,7 +766,7 @@ def _get_fallback_runtime_js() -> str:
       }
     }
     if (!allMandatoryDone) return;
- 
+
     // FIX Gate 2 — if the course has scorable interactions, require at least
     //      one attempt before committing any status. This prevents a zero-
     //      attempt course from being auto-passed on the very first slide load.
@@ -803,6 +803,50 @@ def _get_fallback_runtime_js() -> str:
       ' (raw ' + result.raw + '/' + result.max + ' marks)' +
       ' pass_threshold=' + passingScore + '%'
     );
+  }
+
+  function hasIncompleteMandatoryInteractiveVideo(slide) {
+    var layers = (slide && slide.layers) || [];
+    for (var li = 0; li < layers.length; li++) {
+      var comps = layers[li].components || [];
+      for (var ci = 0; ci < comps.length; ci++) {
+        var comp = comps[ci];
+        if (comp.type === 'interactive-video' && mandatoryIds[comp.id] && !mandatoryCompleted[comp.id]) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function showRuntimeToast(message, type) {
+    var existing = document.querySelector('.cf-rt-toast');
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+    var toast = document.createElement('div');
+    toast.className = 'cf-rt-toast cf-rt-toast-' + (type || 'info');
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(function() {
+      toast.classList.add('cf-rt-toast-exit');
+      setTimeout(function() {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 300);
+    }, 2200);
+  }
+
+  function canNavigateToSlide(targetIdx) {
+    if (targetIdx > currentSlide) {
+      for (var si = currentSlide; si < targetIdx; si++) {
+        var slideToCheck = slides[si];
+        if (slideToCheck && hasIncompleteMandatoryInteractiveVideo(slideToCheck)) {
+          showRuntimeToast('Please complete all mandatory items on intermediate slides', 'info');
+          return false;
+        }
+      }
+    }
+    return true;
   }
  
   // ---------------------------------------------------------------------------
@@ -1386,7 +1430,7 @@ def _get_fallback_runtime_js() -> str:
         } else if (comp.type === 'flashcard') {
           el.innerHTML = '<div class="cf-rt-flashcard-scene" onclick="this.classList.toggle(\'flipped\')"><div class="cf-rt-flashcard-inner"><div class="cf-rt-flashcard-face cf-rt-flashcard-front" style="background:' + (comp.frontBackground || 'linear-gradient(145deg, #1a0a0a 0%, #3d1010 60%, #6b1a1a 100%)') + ';border:1px solid ' + (comp.frontBorder || '#4d2020') + ';box-shadow:0 8px 32px ' + (comp.frontShadow || 'rgba(139,26,26,0.25)') + ';"><div class="cf-rt-flashcard-label" style="color:' + (comp.frontBadgeColor || 'rgba(255,255,255,0.68)') + ';">FRONT</div><div class="cf-rt-flashcard-text">' + (comp.front||'') + '</div><div class="cf-rt-flashcard-hint" style="color:rgba(255,255,255,0.78);">Click to flip</div></div><div class="cf-rt-flashcard-face cf-rt-flashcard-back" style="background:' + (comp.backBackground || 'linear-gradient(145deg, #fffaf9 0%, #fff0ee 100%)') + ';border:2px solid ' + (comp.backBorder || '#e8c8c8') + ';box-shadow:0 8px 32px ' + (comp.backShadow || 'rgba(139,26,26,0.12)') + ';"><div class="cf-rt-flashcard-label" style="color:' + (comp.backBadgeColor || '#c4a0a0') + ';">BACK</div><div class="cf-rt-flashcard-text" style="color:' + (comp.backTextColor || '#1a0a0a') + ';">' + (comp.back||'') + '</div><div class="cf-rt-flashcard-hint" style="color:' + (comp.backTextColor || '#8b1a1a') + ';">Click to flip back</div></div></div></div>';
         } else if (comp.type === 'list') {
-          var listHtml = '<ul class="cf-rt-list" style="padding-left:20px;margin:0;color:#a1a1aa;">';
+          var listHtml = '<ul class="cf-rt-list" style="padding-left:20px;margin:0;color:#111111;">';
           for (var ii = 0; ii < (comp.items||[]).length; ii++) {
             listHtml += '<li style="margin-bottom:8px;line-height:1.75;">' + comp.items[ii] + '</li>';
           }
@@ -1420,6 +1464,7 @@ def _get_fallback_runtime_js() -> str:
               return function() {
                 for (var si = 0; si < slides.length; si++) {
                   if (String(slides[si].id) === String(targetId)) {
+                    if (!canNavigateToSlide(si)) return;
                     currentSlide = si;
                     renderSlide(currentSlide);
                     try {
@@ -1475,7 +1520,7 @@ def _get_fallback_runtime_js() -> str:
             for (var sbi = 0; sbi < subBlocks.length; sbi++) {
               var sb = subBlocks[sbi];
               if (sb.type === 'text') {
-                colsHtml += '<div class="cf-rt-text" style="margin-bottom:10px;">' + (sb.content || '') + '</div>';
+                colsHtml += '<div class="cf-rt-text" style="margin-bottom:10px;color:#ffffff;">' + (sb.content || '') + '</div>';
               } else if (sb.type === 'image' && sb.src) {
                 colsHtml += '<div style="text-align:center;margin-bottom:10px;">';
                 colsHtml += '<img src="' + sb.src + '" alt="' + (sb.alt || '') + '" style="width:100%;border-radius:8px;display:block;" />';
@@ -1612,9 +1657,14 @@ def _get_fallback_runtime_js() -> str:
     }
     checkCompletion();
   };
- 
+
   window.__cfNext = function() {
-    if (currentSlide < slides.length - 1) { currentSlide++; renderSlide(currentSlide); }
+    if (currentSlide < slides.length - 1) {
+      var targetSlide = currentSlide + 1;
+      if (!canNavigateToSlide(targetSlide)) return;
+      currentSlide = targetSlide;
+      renderSlide(currentSlide);
+    }
   };
   window.__cfPrev = function() {
     if (currentSlide > 0) { currentSlide--; renderSlide(currentSlide); }
@@ -2182,6 +2232,7 @@ body {
   border: 1px solid #27272a;
   border-radius: 12px;
   padding: 1rem;
+  color: #ffffff;
 }
 @media (max-width: 900px) {
   .cf-rt-columns-grid {
