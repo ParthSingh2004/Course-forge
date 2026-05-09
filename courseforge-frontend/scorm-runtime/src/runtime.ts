@@ -1243,16 +1243,31 @@ class CourseForgeRuntime {
         const interactions = comp.interactions || [];
 
         if ((comp as any).mandatory) {
+          let maxWatched = 0;
+          video.addEventListener("timeupdate", () => {
+            if (!video.seeking) {
+              maxWatched = Math.max(maxWatched, video.currentTime);
+            }
+          });
+          video.addEventListener("seeking", () => {
+            if (video.currentTime > maxWatched + 1) {
+              video.currentTime = maxWatched;
+            }
+          });
           video.addEventListener("ended", () => {
-            this.markMandatoryComplete(comp.id);
+            const allInteractionsCompleted = interactions.every(int => int.completed);
+            if (allInteractionsCompleted) {
+              this.markMandatoryComplete(comp.id);
+            }
           });
         }
         
         video.addEventListener("timeupdate", () => {
           const currentTime = video.currentTime;
-          const hit = interactions.find(int => 
-            !int.completed && Math.abs(int.timestamp - currentTime) < 0.5
-          );
+          const hit = interactions.find(int => {
+            const timestamp = Number(int.timestamp || 0);
+            return !int.completed && currentTime >= timestamp && currentTime <= timestamp + 0.75;
+          });
 
           if (hit && overlay.style.display === "none") {
             video.pause();

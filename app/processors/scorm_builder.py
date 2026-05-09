@@ -1208,19 +1208,6 @@ def _get_fallback_runtime_js() -> str:
             iv.style.borderRadius = '8px';
             iv.style.background = '#000';
             el.appendChild(iv);
-            if (comp.mandatory) {
-              iv.addEventListener('ended', function() {
-                mandatoryCompleted[comp.id] = true;
-                var badge = document.getElementById('mandatory-badge-' + comp.id);
-                if (badge) {
-                  badge.textContent = '\u2713 COMPLETED';
-                  badge.style.background = '#052e16';
-                  badge.style.color = '#4ade80';
-                  badge.style.borderColor = '#166534';
-                }
-                checkCompletion();
-              });
-            }
 
             var overlay = document.createElement('div');
             overlay.style.position = 'absolute';
@@ -1235,12 +1222,26 @@ def _get_fallback_runtime_js() -> str:
             el.appendChild(overlay);
 
             var interactions = comp.interactions || [];
+            if (comp.mandatory) {
+              var ivMaxWatched = 0;
+              iv.addEventListener('timeupdate', function() {
+                if (!iv.seeking) {
+                  ivMaxWatched = Math.max(ivMaxWatched, iv.currentTime);
+                }
+              });
+              iv.addEventListener('seeking', function() {
+                if (iv.currentTime > ivMaxWatched + 1) {
+                  iv.currentTime = ivMaxWatched;
+                }
+              });
+            }
             iv.addEventListener('timeupdate', function() {
               var currentTime = iv.currentTime;
               var hit = null;
               for (var ii = 0; ii < interactions.length; ii++) {
                 var candidate = interactions[ii];
-                if (!candidate.completed && Math.abs((candidate.timestamp || 0) - currentTime) < 0.5) {
+                var candidateTime = Number(candidate.timestamp || 0);
+                if (!candidate.completed && currentTime >= candidateTime && currentTime <= candidateTime + 0.75) {
                   hit = candidate;
                   break;
                 }
@@ -1354,6 +1355,27 @@ def _get_fallback_runtime_js() -> str:
               box.appendChild(options);
               overlay.appendChild(box);
             });
+            if (comp.mandatory) {
+              iv.addEventListener('ended', function() {
+                var allInteractionsCompleted = true;
+                for (var ci = 0; ci < interactions.length; ci++) {
+                  if (!interactions[ci].completed) {
+                    allInteractionsCompleted = false;
+                    break;
+                  }
+                }
+                if (!allInteractionsCompleted) return;
+                mandatoryCompleted[comp.id] = true;
+                var badge = document.getElementById('mandatory-badge-' + comp.id);
+                if (badge) {
+                  badge.textContent = '\u2713 COMPLETED';
+                  badge.style.background = '#052e16';
+                  badge.style.color = '#4ade80';
+                  badge.style.borderColor = '#166534';
+                }
+                checkCompletion();
+              });
+            }
           }
         } else if (comp.type === 'video') {
           if (comp.embedType === 'youtube' || comp.embedType === 'vimeo') {
