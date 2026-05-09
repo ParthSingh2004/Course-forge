@@ -1951,13 +1951,12 @@ class CourseForgeRuntime {
         for (const colBlocks of colsData) {
           const colEl = document.createElement("div");
           colEl.className = "cf-rt-column";
-          colEl.style.color = "#ffffff";
           
           for (const sub of colBlocks) {
             const subEl = this.renderComponent(sub);
             if (sub.type === "text") {
               const textEl = subEl?.querySelector(".cf-rt-text") as HTMLElement | null;
-              if (textEl) textEl.style.color = "#ffffff";
+              if (textEl) textEl.style.color = "#111111";
             }
             if (subEl) colEl.appendChild(subEl);
           }

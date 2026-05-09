@@ -805,18 +805,18 @@ def _get_fallback_runtime_js() -> str:
     );
   }
 
-  function hasIncompleteMandatoryInteractiveVideo(slide) {
+  function areMandatoryItemsComplete(slide) {
     var layers = (slide && slide.layers) || [];
     for (var li = 0; li < layers.length; li++) {
       var comps = layers[li].components || [];
       for (var ci = 0; ci < comps.length; ci++) {
         var comp = comps[ci];
-        if (comp.type === 'interactive-video' && mandatoryIds[comp.id] && !mandatoryCompleted[comp.id]) {
-          return true;
+        if (mandatoryIds[comp.id] && !mandatoryCompleted[comp.id]) {
+          return false;
         }
       }
     }
-    return false;
+    return true;
   }
 
   function showRuntimeToast(message, type) {
@@ -840,7 +840,7 @@ def _get_fallback_runtime_js() -> str:
     if (targetIdx > currentSlide) {
       for (var si = currentSlide; si < targetIdx; si++) {
         var slideToCheck = slides[si];
-        if (slideToCheck && hasIncompleteMandatoryInteractiveVideo(slideToCheck)) {
+        if (slideToCheck && !areMandatoryItemsComplete(slideToCheck)) {
           showRuntimeToast('Please complete all mandatory items on intermediate slides', 'info');
           return false;
         }
@@ -1520,7 +1520,7 @@ def _get_fallback_runtime_js() -> str:
             for (var sbi = 0; sbi < subBlocks.length; sbi++) {
               var sb = subBlocks[sbi];
               if (sb.type === 'text') {
-                colsHtml += '<div class="cf-rt-text" style="margin-bottom:10px;color:#ffffff;">' + (sb.content || '') + '</div>';
+                colsHtml += '<div class="cf-rt-text" style="margin-bottom:10px;color:#111111;">' + (sb.content || '') + '</div>';
               } else if (sb.type === 'image' && sb.src) {
                 colsHtml += '<div style="text-align:center;margin-bottom:10px;">';
                 colsHtml += '<img src="' + sb.src + '" alt="' + (sb.alt || '') + '" style="width:100%;border-radius:8px;display:block;" />';
@@ -2228,11 +2228,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  background: #1a1a1e;
-  border: 1px solid #27272a;
-  border-radius: 12px;
-  padding: 1rem;
-  color: #ffffff;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  color: #111111;
 }
 @media (max-width: 900px) {
   .cf-rt-columns-grid {

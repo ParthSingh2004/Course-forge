@@ -805,7 +805,7 @@ const STYLES = `
     font-family: 'Roboto', sans-serif;
     font-size: 0.9375rem;
     line-height: 1.7;
-    color: #3D2020;
+    color: #1A0A0A;
     background: transparent;
     border: none;
     outline: none;
