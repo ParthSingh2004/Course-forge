@@ -5,6 +5,81 @@ import uuid
 import html as html_module
 from urllib.parse import parse_qs, urlparse
 from typing import List, Dict, Any
+
+DEFAULT_FLASHCARD_COLOR = "#8b1a1a"
+
+
+def _clamp(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(max_value, value))
+
+
+def _sanitize_hex_color(value: Any, fallback: str = DEFAULT_FLASHCARD_COLOR) -> str:
+    raw = str(value or "").strip()
+    return raw if re.fullmatch(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})", raw) else fallback
+
+
+def _expand_hex_color(value: str) -> str:
+    clean = _sanitize_hex_color(value)[1:]
+    return "".join(ch * 2 for ch in clean) if len(clean) == 3 else clean
+
+
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    full = _expand_hex_color(value)
+    return int(full[0:2], 16), int(full[2:4], 16), int(full[4:6], 16)
+
+
+def _rgb_to_hex(r: float, g: float, b: float) -> str:
+    return "#{:02x}{:02x}{:02x}".format(
+        round(_clamp(r, 0, 255)),
+        round(_clamp(g, 0, 255)),
+        round(_clamp(b, 0, 255)),
+    )
+
+
+def _mix_hex(hex_color: str, target_hex: str, amount: float) -> str:
+    r1, g1, b1 = _hex_to_rgb(hex_color)
+    r2, g2, b2 = _hex_to_rgb(target_hex)
+    return _rgb_to_hex(
+        r1 + (r2 - r1) * amount,
+        g1 + (g2 - g1) * amount,
+        b1 + (b2 - b1) * amount,
+    )
+
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    r, g, b = _hex_to_rgb(hex_color)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
+def _flashcard_theme(color: Any) -> Dict[str, str]:
+    base = _sanitize_hex_color(color)
+    return {
+        "base": base,
+        "front_bg": f"linear-gradient(145deg, {_mix_hex(base, '#000000', 0.72)} 0%, {_mix_hex(base, '#000000', 0.48)} 60%, {_mix_hex(base, '#ffffff', 0.12)} 100%)",
+        "front_border": _mix_hex(base, "#ffffff", 0.18),
+        "front_shadow": _hex_to_rgba(base, 0.28),
+        "back_bg": f"linear-gradient(145deg, {_mix_hex(base, '#ffffff', 0.94)} 0%, {_mix_hex(base, '#ffffff', 0.84)} 100%)",
+        "back_border": _mix_hex(base, "#ffffff", 0.58),
+        "back_shadow": _hex_to_rgba(base, 0.14),
+        "front_badge": "rgba(255,255,255,0.68)",
+        "back_badge": _mix_hex(base, "#ffffff", 0.28),
+        "back_text": _mix_hex(base, "#000000", 0.82),
+    }
+
+
+def _count_fill_blank_placeholders(question: Any) -> int:
+    return len(re.findall(r"____", str(question or "")))
+
+
+def _normalize_fill_blank_answers(block: Dict[str, Any]) -> List[str]:
+    answers = block.get("answers")
+    explicit_answer_count = len(answers) if isinstance(answers, list) else 0
+    desired_count = max(explicit_answer_count, _count_fill_blank_placeholders(block.get("question", "")), 1)
+    if isinstance(answers, list) and len(answers) > 0:
+        source = [str(answer or "") for answer in answers]
+    else:
+        source = [str(block.get("answer", "") or "")]
+    return [source[idx] if idx < len(source) else "" for idx in range(desired_count)]
  
  
 # ---------------------------------------------------------------------------
@@ -123,12 +198,20 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
 
     if btype == "interactive-video":
         url = block.get("videoUrl") or block.get("video_url") or ""
+        interactions = []
+        for interaction in block.get("interactions", []):
+            if not isinstance(interaction, dict):
+                continue
+            interactions.append({
+                **interaction,
+                "requireCorrectToContinue": interaction.get("requireCorrectToContinue", True),
+            })
         comp = {
             "type": "interactive-video",
             "id": bid,
             "src": _to_embeddable_video_url(url),
             "embedType": _detect_embed_type(url),
-            "interactions": block.get("interactions", [])
+            "interactions": interactions
         }
         return comp
  
@@ -138,6 +221,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "id": bid,
             "label": block.get("content") or block.get("label") or "Button",
             "targetSlideId": str(block.get("targetSlideId") or ""),
+            "alignment": str(block.get("alignment") or "center"),
         }
  
     if btype in ("quiz", "mcq"):
@@ -191,11 +275,23 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
         return comp
  
     if btype == "flashcard":
+        flashcard_color = _sanitize_hex_color(block.get("color"))
+        flashcard_theme = _flashcard_theme(flashcard_color)
         return {
             "type": "flashcard",
             "id": bid,
             "front": block.get("front", ""),
             "back": block.get("back", ""),
+            "color": flashcard_color,
+            "frontBackground": flashcard_theme["front_bg"],
+            "frontBorder": flashcard_theme["front_border"],
+            "frontShadow": flashcard_theme["front_shadow"],
+            "backBackground": flashcard_theme["back_bg"],
+            "backBorder": flashcard_theme["back_border"],
+            "backShadow": flashcard_theme["back_shadow"],
+            "frontBadgeColor": flashcard_theme["front_badge"],
+            "backBadgeColor": flashcard_theme["back_badge"],
+            "backTextColor": flashcard_theme["back_text"],
         }
  
     if btype == "process":
@@ -246,11 +342,13 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
         return comp
  
     if btype == "fill_blanks":
+        answers = _normalize_fill_blank_answers(block)
         comp = {
             "type": "fill_blanks",
             "id": bid,
             "question": block.get("question", ""),
-            "answer": block.get("answer", ""),
+            "answer": answers[0] if answers else "",
+            "answers": answers,
             "caseSensitive": bool(block.get("caseSensitive", False)),
             "marks": block.get("marks"),
         }
@@ -267,9 +365,13 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
         }
 
     if btype == "columns":
-        raw_cols = block.get("columns", [[], []])
+        raw_cols = block.get("columns")
+        if not isinstance(raw_cols, list) or len(raw_cols) == 0:
+            raw_cols = [[], []]
         serialized_cols = []
         for col in raw_cols:
+            if not isinstance(col, list):
+                col = []
             serialized_sub = []
             for sub in col:
                 stype = (sub.get("type") or "").lower().strip()
@@ -369,7 +471,7 @@ def blocks_to_slides(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             slides.append({
                 "id": str(block.get("id", _make_id("slide"))),
                 "title": block.get("title", f"Slide {slide_counter}"),
-                "background": block.get("background", {"type": "color", "value": "#0f0f11"}),
+                "background": block.get("background", {"type": "color", "value": "#ffffff"}),
                 "bgAudio": block.get("bgAudio"),
                 "layers": [{
                     "id": _make_id("layer"),
@@ -705,6 +807,22 @@ def _get_fallback_runtime_js() -> str:
     var container = document.getElementById('cf-slide-container');
     if (!container) return;
 
+    var bg = slide.background || null;
+    if (bg) {
+      if (bg.type === 'color' && bg.value) {
+        container.style.backgroundColor = bg.value;
+        container.style.backgroundImage = 'none';
+      } else if (bg.type === 'image' && bg.value) {
+        container.style.backgroundColor = '#ffffff';
+        container.style.backgroundImage = 'url("' + bg.value + '")';
+        container.style.backgroundSize = 'cover';
+        container.style.backgroundPosition = 'center';
+      }
+    } else {
+      container.style.backgroundColor = '#ffffff';
+      container.style.backgroundImage = 'none';
+    }
+
     var bgAudio = slide.bgAudio || null;
     var bgAudioSrc = bgAudio ? (bgAudio.src || bgAudio.url || '') : '';
     if (bgAudioSrc) {
@@ -902,13 +1020,24 @@ def _get_fallback_runtime_js() -> str:
         } else if (comp.type === 'fill_blanks') {
           var fbId = comp.id;
           var fbCS = comp.caseSensitive ? 'true' : 'false';
-          var fbAnsSafe = JSON.stringify(comp.answer || '').replace(/'/g, "&#39;");
-          var fbQuestion = comp.question ? String(comp.question).replace(/____/g, '<span style="display:inline-block;min-width:80px;border-bottom:2px solid #8b1a1a;">&nbsp;</span>') : "";
+          var fbAnswers = Array.isArray(comp.answers) && comp.answers.length ? comp.answers : [comp.answer || ''];
+          var fbAnsSafe = JSON.stringify(fbAnswers).replace(/'/g, "&#39;");
+          var fbBlankIndex = 0;
+          var fbQuestion = comp.question ? String(comp.question).replace(/____/g, function() {
+            var currentIndex = fbBlankIndex++;
+            return '<input id="fitb-' + fbId + '-' + currentIndex + '" type="text" placeholder="Answer ' + (currentIndex + 1) + '" style="display:inline-block;min-width:120px;max-width:180px;margin:0 6px;padding:6px 10px;border-radius:8px;border:1.5px solid #27272a;background:#09090b;color:#fafafa;font-size:14px;outline:none;font-family:inherit;vertical-align:middle;"/>';
+          }) : "";
+          if (fbBlankIndex < fbAnswers.length) {
+            fbQuestion += '<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">';
+            for (var fi = fbBlankIndex; fi < fbAnswers.length; fi++) {
+              fbQuestion += '<input id="fitb-' + fbId + '-' + fi + '" type="text" placeholder="Answer ' + (fi + 1) + '" style="padding:10px 14px;border-radius:8px;border:1.5px solid #27272a;background:#09090b;color:#fafafa;font-size:14px;outline:none;font-family:inherit;"/>';
+            }
+            fbQuestion += '</div>';
+          }
           el.innerHTML = '<div class="cf-rt-quiz-badge">FILL IN THE BLANK</div>' +
             '<div class="cf-rt-quiz-question">' + fbQuestion + '</div>' +
             '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">' +
-              '<input id="fitb-' + fbId + '" type="text" placeholder="Your answer..." style="flex:1;padding:10px 14px;border-radius:8px;border:1.5px solid #27272a;background:#09090b;color:#fafafa;font-size:14px;outline:none;font-family:inherit;"/>' +
-              "<button class=\"cf-rt-quiz-submit\" onclick='__cfFITBSubmit(\"" + fbId + "\", " + fbAnsSafe + ", " + fbCS + ")'>Submit</button>" +
+              "<button id=\"fitb-btn-" + fbId + "\" class=\"cf-rt-quiz-submit\" onclick='__cfFITBSubmit(\"" + fbId + "\", " + fbAnsSafe + ", " + fbCS + ")'>Submit</button>" +
             '</div>' +
             '<div id="fb-' + fbId + '" style="margin-top:10px;font-size:13px;font-weight:600;"></div>';
         } else if (comp.type === 'multi_select') {
@@ -1101,6 +1230,8 @@ def _get_fallback_runtime_js() -> str:
                 btn.style.cursor = 'pointer';
                 btn.style.fontSize = '1rem';
                 btn.onclick = function() {
+                  var requireCorrectToContinue = hit.requireCorrectToContinue !== false;
+                  var answeredCorrectly = optionIndex === hit.correctAnswerIndex;
                   var feedbackId = 'quiz-feedback-' + hit.id;
                   var feedback = box.querySelector('#' + feedbackId);
                   if (!feedback) {
@@ -1110,7 +1241,7 @@ def _get_fallback_runtime_js() -> str:
                     feedback.style.fontWeight = '600';
                     box.appendChild(feedback);
                   }
-                  if (optionIndex === hit.correctAnswerIndex) {
+                  if (answeredCorrectly) {
                     btn.style.background = '#16a34a';
                     feedback.textContent = 'Correct! You can now continue.';
                     feedback.style.color = '#4ade80';
@@ -1135,6 +1266,30 @@ def _get_fallback_runtime_js() -> str:
                       iv.play();
                     };
                     box.appendChild(continueBtn);
+                  } else if (!requireCorrectToContinue) {
+                    feedback.textContent = 'Incorrect, but you can continue.';
+                    feedback.style.color = '#fbbf24';
+                    options.querySelectorAll('button').forEach(function(b) {
+                      b.disabled = true;
+                      if (b !== btn) b.style.opacity = '0.5';
+                    });
+                    var continueBtnWrong = document.createElement('button');
+                    continueBtnWrong.textContent = 'Continue Video';
+                    continueBtnWrong.style.background = '#8b1a1a';
+                    continueBtnWrong.style.color = '#fff';
+                    continueBtnWrong.style.padding = '0.75rem 2rem';
+                    continueBtnWrong.style.border = 'none';
+                    continueBtnWrong.style.borderRadius = '6px';
+                    continueBtnWrong.style.cursor = 'pointer';
+                    continueBtnWrong.style.fontWeight = '700';
+                    continueBtnWrong.style.marginTop = '1rem';
+                    continueBtnWrong.onclick = function() {
+                      hit.completed = true;
+                      overlay.style.display = 'none';
+                      iv.controls = true;
+                      iv.play();
+                    };
+                    box.appendChild(continueBtnWrong);
                   } else {
                     btn.style.background = '#7f1d1d';
                     feedback.textContent = 'Incorrect answer. Please try again.';
@@ -1156,7 +1311,7 @@ def _get_fallback_runtime_js() -> str:
             el.innerHTML = '<video class="cf-rt-video" src="' + comp.src + '" controls></video>';
           }
         } else if (comp.type === 'flashcard') {
-          el.innerHTML = '<div class="cf-rt-flashcard-scene" onclick="this.classList.toggle(\'flipped\')"><div class="cf-rt-flashcard-inner"><div class="cf-rt-flashcard-face cf-rt-flashcard-front"><div class="cf-rt-flashcard-label">FRONT</div><div class="cf-rt-flashcard-text">' + (comp.front||'') + '</div><div class="cf-rt-flashcard-hint">Click to flip</div></div><div class="cf-rt-flashcard-face cf-rt-flashcard-back"><div class="cf-rt-flashcard-label">BACK</div><div class="cf-rt-flashcard-text">' + (comp.back||'') + '</div><div class="cf-rt-flashcard-hint">Click to flip back</div></div></div></div>';
+          el.innerHTML = '<div class="cf-rt-flashcard-scene" onclick="this.classList.toggle(\'flipped\')"><div class="cf-rt-flashcard-inner"><div class="cf-rt-flashcard-face cf-rt-flashcard-front" style="background:' + (comp.frontBackground || 'linear-gradient(145deg, #1a0a0a 0%, #3d1010 60%, #6b1a1a 100%)') + ';border:1px solid ' + (comp.frontBorder || '#4d2020') + ';box-shadow:0 8px 32px ' + (comp.frontShadow || 'rgba(139,26,26,0.25)') + ';"><div class="cf-rt-flashcard-label" style="color:' + (comp.frontBadgeColor || 'rgba(255,255,255,0.68)') + ';">FRONT</div><div class="cf-rt-flashcard-text">' + (comp.front||'') + '</div><div class="cf-rt-flashcard-hint" style="color:rgba(255,255,255,0.78);">Click to flip</div></div><div class="cf-rt-flashcard-face cf-rt-flashcard-back" style="background:' + (comp.backBackground || 'linear-gradient(145deg, #fffaf9 0%, #fff0ee 100%)') + ';border:2px solid ' + (comp.backBorder || '#e8c8c8') + ';box-shadow:0 8px 32px ' + (comp.backShadow || 'rgba(139,26,26,0.12)') + ';"><div class="cf-rt-flashcard-label" style="color:' + (comp.backBadgeColor || '#c4a0a0') + ';">BACK</div><div class="cf-rt-flashcard-text" style="color:' + (comp.backTextColor || '#1a0a0a') + ';">' + (comp.back||'') + '</div><div class="cf-rt-flashcard-hint" style="color:' + (comp.backTextColor || '#8b1a1a') + ';">Click to flip back</div></div></div></div>';
         } else if (comp.type === 'list') {
           var listHtml = '<ul class="cf-rt-list" style="padding-left:20px;margin:0;color:#a1a1aa;">';
           for (var ii = 0; ii < (comp.items||[]).length; ii++) {
@@ -1181,8 +1336,15 @@ def _get_fallback_runtime_js() -> str:
           }
           el.innerHTML = procHtml;
         } else if (comp.type === 'button') {
+          var alignment = String(comp.alignment || 'center').toLowerCase();
+          el.style.display = 'flex';
+          el.style.width = '100%';
+          el.style.justifyContent = alignment === 'left' ? 'flex-start' : (alignment === 'right' ? 'flex-end' : 'center');
           el.innerHTML = '<button class="cf-rt-button" data-target-slide-id="' + (comp.targetSlideId||'') + '">' + (comp.label||'Button') + '</button>';
           var buttonEl = el.querySelector('button');
+          if (buttonEl) {
+            buttonEl.style.textAlign = alignment;
+          }
           if (buttonEl && comp.targetSlideId) {
             buttonEl.onclick = function(targetId) {
               return function() {
@@ -1231,8 +1393,10 @@ def _get_fallback_runtime_js() -> str:
             })(comp.id);
           }
         } else if (comp.type === 'columns') {
-          var colsHtml = '<div class="cf-rt-columns-grid">';
+          var colsHtml = '';
           var cols = comp.columns || [];
+          var colsCount = Math.max(cols.length || 0, 1);
+          colsHtml += '<div class="cf-rt-columns-grid" style="--cf-columns-count:' + colsCount + ';">';
           for (var gi = 0; gi < cols.length; gi++) {
             colsHtml += '<div class="cf-rt-column">';
             var subBlocks = cols[gi] || [];
@@ -1325,15 +1489,19 @@ def _get_fallback_runtime_js() -> str:
   // FILL-IN-THE-BLANK SUBMISSION
   // Disables input only on correct; keeps it live for retry on wrong.
   // ---------------------------------------------------------------------------
-  window.__cfFITBSubmit = function(id, correctAnswer, caseSensitive) {
-    var inputEl = document.getElementById('fitb-' + id);
-    if (!inputEl) return;
-    var learnerVal = inputEl.value.trim();
-    var checkVal   = caseSensitive ? learnerVal : learnerVal.toLowerCase();
-    var answerVal  = caseSensitive
-      ? String(correctAnswer).trim()
-      : String(correctAnswer).trim().toLowerCase();
-    var isCorrect  = (checkVal === answerVal);
+  window.__cfFITBSubmit = function(id, correctAnswers, caseSensitive) {
+    var answers = Array.isArray(correctAnswers) && correctAnswers.length ? correctAnswers : [correctAnswers];
+    var inputEls = answers.map(function(_, index) {
+      return document.getElementById('fitb-' + id + '-' + index);
+    }).filter(Boolean);
+    if (!inputEls.length) return;
+    var isCorrect = inputEls.every(function(inputEl, index) {
+      var learnerVal = inputEl.value.trim();
+      var answerVal = String(answers[index] || '').trim();
+      var checkVal = caseSensitive ? learnerVal : learnerVal.toLowerCase();
+      var normalizedAnswer = caseSensitive ? answerVal : answerVal.toLowerCase();
+      return checkVal === normalizedAnswer;
+    });
  
     scorableComps[id]      = isCorrect;
     mandatoryCompleted[id] = true;
@@ -1344,18 +1512,21 @@ def _get_fallback_runtime_js() -> str:
       : '<span style="color:#f87171">\u2717 Incorrect. Try again.</span>';
  
     if (isCorrect) {
-      inputEl.disabled = true;
-      inputEl.style.opacity = '0.6';
-      if (inputEl.nextElementSibling) {
-        inputEl.nextElementSibling.disabled    = true;
-        inputEl.nextElementSibling.textContent = 'Submitted';
+      inputEls.forEach(function(inputEl, index) {
+        inputEl.disabled = true;
+        inputEl.style.opacity = '0.6';
+        inputEl.value = String(answers[index] || '');
+      });
+      var submitBtn = document.getElementById('fitb-btn-' + id);
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitted';
       }
     } else {
-      inputEl.disabled      = false;
-      inputEl.style.opacity = '1';
-      if (inputEl.nextElementSibling) {
-        inputEl.nextElementSibling.disabled = false;
-      }
+      inputEls.forEach(function(inputEl) {
+        inputEl.disabled = false;
+        inputEl.style.opacity = '1';
+      });
     }
     checkCompletion();
   };
@@ -1509,8 +1680,8 @@ def _get_runtime_css() -> str:
  
 body {
   font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #0f0f11;
-  color: #e4e4e7;
+  background: #f4f4f5;
+  color: #18181b;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -1544,9 +1715,9 @@ body {
 }
 .cf-rt-slide-container {
   width: 100%; max-width: 780px;
-  background: #18181b; border: 1px solid #27272a;
+  background: #ffffff; border: 1px solid #e4e4e7;
   border-radius: 16px; padding: 48px 40px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
   min-height: 400px;
 }
  
@@ -1558,15 +1729,15 @@ body {
  
 /* Slide title */
 .cf-rt-slide-title {
-  font-size: 28px; font-weight: 700; color: #fafafa;
+  font-size: 28px; font-weight: 700; color: #111827;
   margin-bottom: 24px; line-height: 1.3;
-  border-bottom: 1px solid #27272a; padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb; padding-bottom: 16px;
 }
  
 /* Components */
 .cf-rt-component { margin-bottom: 20px; }
-.cf-rt-heading { font-size: 22px; font-weight: 600; color: #fafafa; margin-bottom: 12px; }
-.cf-rt-text { font-size: 15px; line-height: 1.75; color: #a1a1aa; }
+.cf-rt-heading { font-size: 22px; font-weight: 600; color: #111827; margin-bottom: 12px; }
+.cf-rt-text { font-size: 15px; line-height: 1.75; color: #374151; }
 .cf-rt-text ul, .cf-rt-text ol { padding-left: 24px; margin-top: 8px; margin-bottom: 8px; }
 .cf-rt-text ul { list-style-type: disc; }
 .cf-rt-text ol { list-style-type: decimal; }
@@ -1912,7 +2083,7 @@ body {
 /* Columns / Grid block */
 .cf-rt-columns-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(var(--cf-columns-count, 1), minmax(0, 1fr));
   gap: 1.25rem;
   width: 100%;
 }
@@ -1924,6 +2095,11 @@ body {
   border: 1px solid #27272a;
   border-radius: 12px;
   padding: 1rem;
+}
+@media (max-width: 900px) {
+  .cf-rt-columns-grid {
+    grid-template-columns: 1fr;
+  }
 }
 """
  
@@ -1970,5 +2146,5 @@ def build_course_definition(
         "triggers": triggers,
         "variables": [],
         "policy": resolved_policy,
-        "theme": theme or {"background": {"type": "color", "value": "#0f0f11"}},
+        "theme": theme or {"background": {"type": "color", "value": "#ffffff"}},
     }

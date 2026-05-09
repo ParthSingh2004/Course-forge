@@ -29,6 +29,80 @@ load_dotenv()
 
 router = APIRouter()
 
+DEFAULT_FLASHCARD_COLOR = "#8b1a1a"
+
+
+def _clamp(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(max_value, value))
+
+
+def _sanitize_hex_color(value: Any, fallback: str = DEFAULT_FLASHCARD_COLOR) -> str:
+    raw = str(value or "").strip()
+    return raw if re.fullmatch(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})", raw) else fallback
+
+
+def _expand_hex_color(value: str) -> str:
+    clean = _sanitize_hex_color(value)[1:]
+    return "".join(ch * 2 for ch in clean) if len(clean) == 3 else clean
+
+
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    full = _expand_hex_color(value)
+    return int(full[0:2], 16), int(full[2:4], 16), int(full[4:6], 16)
+
+
+def _rgb_to_hex(r: float, g: float, b: float) -> str:
+    return "#{:02x}{:02x}{:02x}".format(
+        round(_clamp(r, 0, 255)),
+        round(_clamp(g, 0, 255)),
+        round(_clamp(b, 0, 255)),
+    )
+
+
+def _mix_hex(hex_color: str, target_hex: str, amount: float) -> str:
+    r1, g1, b1 = _hex_to_rgb(hex_color)
+    r2, g2, b2 = _hex_to_rgb(target_hex)
+    return _rgb_to_hex(
+        r1 + (r2 - r1) * amount,
+        g1 + (g2 - g1) * amount,
+        b1 + (b2 - b1) * amount,
+    )
+
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    r, g, b = _hex_to_rgb(hex_color)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
+def _flashcard_theme(color: Any) -> Dict[str, str]:
+    base = _sanitize_hex_color(color)
+    return {
+        "front_bg": f"linear-gradient(145deg, {_mix_hex(base, '#000000', 0.72)} 0%, {_mix_hex(base, '#000000', 0.48)} 60%, {_mix_hex(base, '#ffffff', 0.12)} 100%)",
+        "front_border": _mix_hex(base, "#ffffff", 0.18),
+        "front_shadow": _hex_to_rgba(base, 0.28),
+        "back_bg": f"linear-gradient(145deg, {_mix_hex(base, '#ffffff', 0.94)} 0%, {_mix_hex(base, '#ffffff', 0.84)} 100%)",
+        "back_border": _mix_hex(base, "#ffffff", 0.58),
+        "back_shadow": _hex_to_rgba(base, 0.14),
+        "front_badge": "rgba(255,255,255,0.68)",
+        "back_badge": _mix_hex(base, "#ffffff", 0.28),
+        "back_text": _mix_hex(base, "#000000", 0.82),
+    }
+
+
+def _count_fill_blank_placeholders(question: Any) -> int:
+    return len(re.findall(r"____", str(question or "")))
+
+
+def _normalize_fill_blank_answers(block: Dict[str, Any]) -> List[str]:
+    answers = block.get("answers")
+    explicit_answer_count = len(answers) if isinstance(answers, list) else 0
+    desired_count = max(explicit_answer_count, _count_fill_blank_placeholders(block.get("question", "")), 1)
+    if isinstance(answers, list) and len(answers) > 0:
+        source = [str(answer or "") for answer in answers]
+    else:
+        source = [str(block.get("answer", "") or "")]
+    return [source[idx] if idx < len(source) else "" for idx in range(desired_count)]
+
 class UnsplashDownloadRequest(BaseModel):
     url: str
     download_location: str
@@ -306,11 +380,12 @@ def _render_video_html(video_url: str, wrapper_style: str) -> str:
 
 _FLASHCARD_CSS_INJECTED = False  # used as a sentinel per build call
 
-def _render_flashcard_html(front: str, back: str, card_id: str, wrapper_style: str) -> str:
+def _render_flashcard_html(front: str, back: str, card_id: str, wrapper_style: str, color: str = DEFAULT_FLASHCARD_COLOR) -> str:
     """
     Render a self-contained, CSS-only flip card.
     Works offline inside a SCORM/xAPI ZIP with no external dependencies.
     """
+    theme = _flashcard_theme(color)
     return f'''
     <div style="{wrapper_style}">
         <style>
@@ -344,13 +419,16 @@ def _render_flashcard_html(front: str, back: str, card_id: str, wrapper_style: s
                 min-height: 160px;
             }}
             .fc-front-{card_id} {{
-                background: linear-gradient(145deg, #1a0a0a, #6b1a1a);
+                background: {theme["front_bg"]};
+                border: 1px solid {theme["front_border"]};
+                box-shadow: 0 8px 32px {theme["front_shadow"]};
                 color: #fff;
             }}
             .fc-back-{card_id} {{
-                background: linear-gradient(145deg, #fffaf9, #fff0ee);
-                border: 2px solid #e8c8c8;
-                color: #1a0a0a;
+                background: {theme["back_bg"]};
+                border: 2px solid {theme["back_border"]};
+                box-shadow: 0 8px 32px {theme["back_shadow"]};
+                color: {theme["back_text"]};
                 transform: rotateY(180deg);
             }}
             .fc-label-{card_id} {{
@@ -359,7 +437,7 @@ def _render_flashcard_html(front: str, back: str, card_id: str, wrapper_style: s
                 letter-spacing: 0.15em;
                 text-transform: uppercase;
                 margin-bottom: 10px;
-                opacity: 0.55;
+                opacity: 1;
             }}
             .fc-text-{card_id} {{
                 font-size: 16px;
@@ -377,12 +455,12 @@ def _render_flashcard_html(front: str, back: str, card_id: str, wrapper_style: s
              onclick="document.getElementById('scene-{card_id}').classList.toggle('flipped')">
             <div class="fc-card-{card_id}">
                 <div class="fc-front-{card_id}">
-                    <div class="fc-label-{card_id}">Question / Term</div>
+                    <div class="fc-label-{card_id}" style="color:{theme['front_badge']};">Question / Term</div>
                     <p class="fc-text-{card_id}">{front or "(no question set)"}</p>
                     <div class="fc-hint-{card_id}">↻ Click to reveal answer</div>
                 </div>
                 <div class="fc-back-{card_id}">
-                    <div class="fc-label-{card_id}">Answer / Definition</div>
+                    <div class="fc-label-{card_id}" style="color:{theme['back_badge']};">Answer / Definition</div>
                     <p class="fc-text-{card_id}">{back or "(no answer set)"}</p>
                     <div class="fc-hint-{card_id}">↻ Click to flip back</div>
                 </div>
@@ -437,8 +515,9 @@ def render_block_html(block: Dict[str, Any], block_index: int = 0) -> str:
     if block_type == "flashcard":
         front = block.get("front", "")
         back  = block.get("back", "")
+        color = block.get("color", DEFAULT_FLASHCARD_COLOR)
         card_id = f"fc{block_index}"
-        return _render_flashcard_html(front, back, card_id, wrapper)
+        return _render_flashcard_html(front, back, card_id, wrapper, color)
 
     # ── IMAGE BLOCK (existing logic) ─────────────────────────────────────────
     image_src = _extract_image_src(block)
@@ -472,7 +551,7 @@ def render_block_html(block: Dict[str, Any], block_index: int = 0) -> str:
     # ── LEGACY FLASHCARD (data.front / data.back without explicit type) ───────
     if "front" in data and "back" in data:
         card_id = f"fc_legacy_{block_index}"
-        return _render_flashcard_html(data.get("front"), data.get("back"), card_id, wrapper)
+        return _render_flashcard_html(data.get("front"), data.get("back"), card_id, wrapper, data.get("color", DEFAULT_FLASHCARD_COLOR))
 
     # ── LIST / QUOTE / PROCESS ────────────────────────────────────────────────
     if block_type == "list":
@@ -530,12 +609,17 @@ def render_block_html(block: Dict[str, Any], block_index: int = 0) -> str:
         '''
 
     if block_type == "fill_blanks":
-        question_display = (block.get("question","")).replace("____", "_" * 10)
+        question_display = re.sub(r"____", "_" * 10, block.get("question",""))
+        answers = _normalize_fill_blank_answers(block)
+        answer_html = "".join(
+            f'<div style="margin-top:{0 if idx == 0 else 6}px;">Blank {idx + 1}: <strong>{answer}</strong></div>'
+            for idx, answer in enumerate(answers)
+        )
         return f'''
         <div style="{wrapper}">
             <div style="font-size:10px;font-weight:700;letter-spacing:0.15em;color:#8b1a1a;margin-bottom:10px;">FILL IN THE BLANK</div>
             <div style="font-size:16px;font-weight:600;margin-bottom:14px;">{question_display}</div>
-            <div style="padding:8px 14px;background:#f0f0f0;border-radius:6px;font-size:14px;color:#555;">Answer: <strong>{block.get("answer","")}</strong></div>
+            <div style="padding:8px 14px;background:#f0f0f0;border-radius:6px;font-size:14px;color:#555;">{answer_html}</div>
         </div>
         '''
 

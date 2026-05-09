@@ -14,6 +14,30 @@ import type {
   Component,
 } from "./schemas";
 
+const FILL_BLANK_TOKEN = /____/g;
+
+function countFillBlankPlaceholders(question: string): number {
+  const matches = String(question || "").match(FILL_BLANK_TOKEN);
+  return matches ? matches.length : 0;
+}
+
+function normalizeFillBlankAnswers(component: any): string[] {
+  const explicitAnswerCount = Array.isArray(component.answers) ? component.answers.length : 0;
+  const desiredCount = Math.max(explicitAnswerCount, countFillBlankPlaceholders(component.question || ""), 1);
+  const source = Array.isArray(component.answers) && component.answers.length > 0
+    ? component.answers
+    : [component.answer || ""];
+  return Array.from({ length: desiredCount }, (_, index) => String(source[index] ?? ""));
+}
+
+function escapeAttribute(value: string): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 // ---------------------------------------------------------------------------
 // Runtime Class
 // ---------------------------------------------------------------------------
@@ -821,12 +845,13 @@ class CourseForgeRuntime {
         container.style.backgroundColor = bg.value;
         container.style.backgroundImage = "none";
       } else if (bg.type === "image" && bg.value) {
+        container.style.backgroundColor = "#ffffff";
         container.style.backgroundImage = `url("${bg.value}")`;
         container.style.backgroundSize = "cover";
         container.style.backgroundPosition = "center";
       }
     } else {
-      container.style.backgroundColor = "#18181b";
+      container.style.backgroundColor = "#ffffff";
       container.style.backgroundImage = "none";
     }
 
@@ -1239,6 +1264,8 @@ class CourseForgeRuntime {
               btn.style.fontSize = "1rem";
 
               btn.onclick = () => {
+                const requireCorrectToContinue = hit.requireCorrectToContinue !== false;
+                const answeredCorrectly = i === hit.correctAnswerIndex;
                 const feedbackId = "quiz-feedback-" + hit.id;
                 let feedback = container.querySelector<HTMLParagraphElement>("#" + feedbackId);
                 if (!feedback) {
@@ -1249,12 +1276,38 @@ class CourseForgeRuntime {
                   container.appendChild(feedback);
                 }
 
-                if (i === hit.correctAnswerIndex) {
+                if (answeredCorrectly) {
                   btn.style.background = "#16a34a";
                   feedback.textContent = "Correct! You can now continue.";
                   feedback.style.color = "#4ade80";
                   
                   // Disable other buttons
+                  optionsDiv.querySelectorAll("button").forEach(b => {
+                    (b as HTMLButtonElement).disabled = true;
+                    if (b !== btn) (b as HTMLButtonElement).style.opacity = "0.5";
+                  });
+
+                  const continueBtn = document.createElement("button");
+                  continueBtn.textContent = "Continue Video";
+                  continueBtn.style.background = "#8b1a1a";
+                  continueBtn.style.color = "#fff";
+                  continueBtn.style.padding = "0.75rem 2rem";
+                  continueBtn.style.border = "none";
+                  continueBtn.style.borderRadius = "6px";
+                  continueBtn.style.cursor = "pointer";
+                  continueBtn.style.fontWeight = "700";
+                  continueBtn.style.marginTop = "1rem";
+                  continueBtn.onclick = () => {
+                    hit.completed = true;
+                    overlay.style.display = "none";
+                    video.controls = true;
+                    video.play();
+                  };
+                  container.appendChild(continueBtn);
+                } else if (!requireCorrectToContinue) {
+                  feedback.textContent = "Incorrect, but you can continue.";
+                  feedback.style.color = "#fbbf24";
+
                   optionsDiv.querySelectorAll("button").forEach(b => {
                     (b as HTMLButtonElement).disabled = true;
                     if (b !== btn) (b as HTMLButtonElement).style.opacity = "0.5";
@@ -1370,9 +1423,15 @@ class CourseForgeRuntime {
       }
 
       case "button": {
+        const alignment = String((comp as any).alignment || "center").toLowerCase();
+        wrapper.style.display = "flex";
+        wrapper.style.width = "100%";
+        wrapper.style.justifyContent =
+          alignment === "left" ? "flex-start" : alignment === "right" ? "flex-end" : "center";
         const btn = document.createElement("button");
         btn.className = "cf-rt-button";
         btn.textContent = comp.label;
+        btn.style.textAlign = alignment;
         btn.addEventListener("click", () => {
           if (comp.targetSlideId) {
             this.goToSlide(comp.targetSlideId);
@@ -1527,14 +1586,32 @@ class CourseForgeRuntime {
 
         const existingScore = this.state.quizScores[fbId];
         const isCorrectAlready = existingScore && existingScore.score > 0;
-        const qHtml = comp.question.replace(/____/g, '<span style="display:inline-block;min-width:80px;border-bottom:2px solid #8b1a1a;">&nbsp;</span>');
+        const answers = normalizeFillBlankAnswers(comp);
+        let blankIndex = 0;
+        let qHtml = comp.question.replace(/____/g, () => {
+          const currentIndex = blankIndex++;
+          const valueAttr = isCorrectAlready
+            ? ` value="${escapeAttribute(answers[currentIndex] || "")}"`
+            : "";
+          const disabledAttr = isCorrectAlready ? " disabled" : "";
+          return `<input id="fitb-${fbId}-${currentIndex}" type="text" placeholder="Answer ${currentIndex + 1}" style="display:inline-block;min-width:120px;max-width:180px;margin:0 6px;padding:6px 10px;border-radius:8px;border:1.5px solid #27272a;background:#09090b;color:#fafafa;font-size:14px;outline:none;font-family:inherit;vertical-align:middle;${isCorrectAlready ? "opacity:0.6;" : ""}"${valueAttr}${disabledAttr}/>`;
+        });
+        if (blankIndex < answers.length) {
+          qHtml += `<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">${answers.slice(blankIndex).map((answer, index) => {
+            const answerIndex = blankIndex + index;
+            const valueAttr = isCorrectAlready
+              ? ` value="${escapeAttribute(answer || "")}"`
+              : "";
+            const disabledAttr = isCorrectAlready ? " disabled" : "";
+            return `<input id="fitb-${fbId}-${answerIndex}" type="text" placeholder="Answer ${answerIndex + 1}" style="padding:10px 14px;border-radius:8px;border:1.5px solid #27272a;background:#09090b;color:#fafafa;font-size:14px;outline:none;font-family:inherit;${isCorrectAlready ? "opacity:0.6;" : ""}"${valueAttr}${disabledAttr}/>`;
+          }).join("")}</div>`;
+        }
 
         const fbDiv = document.createElement("div");
         fbDiv.innerHTML = `
           <div class="cf-rt-quiz-badge">FILL IN THE BLANK</div>
           <div class="cf-rt-quiz-question">${qHtml}</div>
           <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
-            <input id="fitb-${fbId}" type="text" placeholder="Your answer..." style="flex:1;padding:10px 14px;border-radius:8px;border:1.5px solid #27272a;background:#09090b;color:#fafafa;font-size:14px;outline:none;font-family:inherit;" ${isCorrectAlready ? 'disabled style="opacity:0.6" value="' + comp.answer.replace(/"/g, "&quot;") + '"' : ""}/>
             <button id="fitb-btn-${fbId}" class="cf-rt-quiz-submit" ${isCorrectAlready ? "disabled" : ""}>${isCorrectAlready ? "Submitted" : "Submit"}</button>
           </div>
           <div id="fb-${fbId}" style="margin-top:10px;font-size:13px;font-weight:600;">
@@ -1544,15 +1621,20 @@ class CourseForgeRuntime {
         wrapper.appendChild(fbDiv);
 
         requestAnimationFrame(() => {
-          const inputEl = wrapper.querySelector(`#fitb-${fbId}`) as HTMLInputElement;
+          const inputEls = answers
+            .map((_, index) => wrapper.querySelector(`#fitb-${fbId}-${index}`) as HTMLInputElement | null)
+            .filter(Boolean) as HTMLInputElement[];
           const btnEl   = wrapper.querySelector(`#fitb-btn-${fbId}`) as HTMLButtonElement;
 
-          if (inputEl && btnEl) {
+          if (inputEls.length && btnEl) {
             btnEl.addEventListener("click", () => {
-              const learnerVal = inputEl.value.trim();
-              const checkVal = comp.caseSensitive ? learnerVal : learnerVal.toLowerCase();
-              const ansVal   = comp.caseSensitive ? comp.answer.trim() : comp.answer.trim().toLowerCase();
-              const isCorrect = (checkVal === ansVal);
+              const isCorrect = inputEls.every((inputEl, index) => {
+                const learnerVal = inputEl.value.trim();
+                const expected = String(answers[index] || "").trim();
+                const checkVal = comp.caseSensitive ? learnerVal : learnerVal.toLowerCase();
+                const ansVal = comp.caseSensitive ? expected : expected.toLowerCase();
+                return checkVal === ansVal;
+              });
 
               const fb = wrapper.querySelector(`#fb-${fbId}`);
               if (fb) {
@@ -1562,13 +1644,18 @@ class CourseForgeRuntime {
               }
 
               if (isCorrect) {
-                inputEl.disabled = true;
-                inputEl.style.opacity = "0.6";
+                inputEls.forEach((inputEl, index) => {
+                  inputEl.disabled = true;
+                  inputEl.style.opacity = "0.6";
+                  inputEl.value = answers[index] || "";
+                });
                 btnEl.disabled = true;
                 btnEl.textContent = "Submitted";
               } else {
-                inputEl.disabled = false;
-                inputEl.style.opacity = "1";
+                inputEls.forEach((inputEl) => {
+                  inputEl.disabled = false;
+                  inputEl.style.opacity = "1";
+                });
                 btnEl.disabled = false;
               }
 
@@ -1808,6 +1895,7 @@ class CourseForgeRuntime {
         const colsData = (comp as any).columns || [];
         const colsWrap = document.createElement("div");
         colsWrap.className = "cf-rt-columns-grid";
+        colsWrap.style.setProperty("--cf-columns-count", String(Math.max(colsData.length || 0, 1)));
 
         for (const colBlocks of colsData) {
           const colEl = document.createElement("div");
@@ -2024,15 +2112,15 @@ class CourseForgeRuntime {
     return `
       <div class="cf-rt-flashcard-scene">
         <div class="cf-rt-flashcard-inner">
-          <div class="cf-rt-flashcard-face cf-rt-flashcard-front">
-            <div class="cf-rt-flashcard-label">QUESTION</div>
+          <div class="cf-rt-flashcard-face cf-rt-flashcard-front" style="background:${fc.frontBackground || "linear-gradient(145deg, #1a0a0a 0%, #3d1010 60%, #6b1a1a 100%)"};border:1px solid ${fc.frontBorder || "#4d2020"};box-shadow:0 8px 32px ${fc.frontShadow || "rgba(139,26,26,0.25)"};">
+            <div class="cf-rt-flashcard-label" style="color:${fc.frontBadgeColor || "rgba(255,255,255,0.68)"};">QUESTION</div>
             <div class="cf-rt-flashcard-text">${fc.front}</div>
-            <div class="cf-rt-flashcard-hint">↻ Click to flip</div>
+            <div class="cf-rt-flashcard-hint" style="color:rgba(255,255,255,0.78);">↻ Click to flip</div>
           </div>
-          <div class="cf-rt-flashcard-face cf-rt-flashcard-back">
-            <div class="cf-rt-flashcard-label">ANSWER</div>
-            <div class="cf-rt-flashcard-text">${fc.back}</div>
-            <div class="cf-rt-flashcard-hint">↻ Click to flip back</div>
+          <div class="cf-rt-flashcard-face cf-rt-flashcard-back" style="background:${fc.backBackground || "linear-gradient(145deg, #fffaf9 0%, #fff0ee 100%)"};border:2px solid ${fc.backBorder || "#e8c8c8"};box-shadow:0 8px 32px ${fc.backShadow || "rgba(139,26,26,0.12)"};">
+            <div class="cf-rt-flashcard-label" style="color:${fc.backBadgeColor || "#c4a0a0"};">ANSWER</div>
+            <div class="cf-rt-flashcard-text" style="color:${fc.backTextColor || "#1a0a0a"};">${fc.back}</div>
+            <div class="cf-rt-flashcard-hint" style="color:${fc.backTextColor || "#8b1a1a"};">↻ Click to flip back</div>
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerClick, ListChecks, Trash2, GripVertical, FileUp, Globe, BookOpen, ChevronRight, CreditCard, Video, RotateCcw, Play, List, Quote, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify, ShieldCheck, ToggleLeft, PenLine, Mic, FileText, Table, Save, CheckCircle, Eye, X } from 'lucide-react';
+import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerClick, ListChecks, Trash2, GripVertical, FileUp, Globe, BookOpen, ChevronRight, CreditCard, Video, RotateCcw, Play, List, Quote, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify, ShieldCheck, ToggleLeft, PenLine, Mic, FileText, Table, Save, CheckCircle, Eye, X, ChevronDown, Copy } from 'lucide-react';
 import Dashboard from './Dashboard';
 import { createLocalCourse, saveCourseToBrowser } from './utils/storage';
 
@@ -10,6 +10,134 @@ const buildBackendAssetUrl = (path) => {
   if (/^https?:\/\//i.test(path)) return path;
   return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 };
+
+const DEFAULT_FLASHCARD_COLOR = '#8b1a1a';
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const sanitizeHexColor = (value, fallback = DEFAULT_FLASHCARD_COLOR) => (
+  /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test((value || '').trim())
+    ? value.trim()
+    : fallback
+);
+const expandHex = (hex) => {
+  const clean = sanitizeHexColor(hex).slice(1);
+  return clean.length === 3
+    ? clean.split('').map(ch => ch + ch).join('')
+    : clean;
+};
+const hexToRgb = (hex) => {
+  const fullHex = expandHex(hex);
+  return {
+    r: parseInt(fullHex.slice(0, 2), 16),
+    g: parseInt(fullHex.slice(2, 4), 16),
+    b: parseInt(fullHex.slice(4, 6), 16),
+  };
+};
+const rgbToHex = ({ r, g, b }) => `#${[r, g, b].map(v => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join('')}`;
+const mixHex = (hex, targetHex, amount) => {
+  const from = hexToRgb(hex);
+  const to = hexToRgb(targetHex);
+  return rgbToHex({
+    r: from.r + (to.r - from.r) * amount,
+    g: from.g + (to.g - from.g) * amount,
+    b: from.b + (to.b - from.b) * amount,
+  });
+};
+const hexToRgba = (hex, alpha) => {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+const getFlashcardTheme = (hex) => {
+  const base = sanitizeHexColor(hex);
+  return {
+    base,
+    frontBackground: `linear-gradient(145deg, ${mixHex(base, '#000000', 0.72)} 0%, ${mixHex(base, '#000000', 0.48)} 60%, ${mixHex(base, '#ffffff', 0.12)} 100%)`,
+    frontBorder: `1px solid ${mixHex(base, '#ffffff', 0.18)}`,
+    frontShadow: `0 8px 32px ${hexToRgba(base, 0.28)}`,
+    backBackground: `linear-gradient(145deg, ${mixHex(base, '#ffffff', 0.94)} 0%, ${mixHex(base, '#ffffff', 0.84)} 100%)`,
+    backBorder: `2px solid ${mixHex(base, '#ffffff', 0.58)}`,
+    backShadow: `0 8px 32px ${hexToRgba(base, 0.14)}`,
+    backAccent: mixHex(base, '#ffffff', 0.18),
+    frontBadge: 'rgba(255,255,255,0.68)',
+    backBadge: mixHex(base, '#ffffff', 0.28),
+    frontHint: 'rgba(255,255,255,0.78)',
+    backHint: mixHex(base, '#000000', 0.08),
+    backText: mixHex(base, '#000000', 0.82),
+    backPlaceholder: mixHex(base, '#ffffff', 0.42),
+  };
+};
+
+const FILL_BLANK_TOKEN = /____/g;
+
+const countFillBlankPlaceholders = (question = '') => {
+  const matches = String(question).match(FILL_BLANK_TOKEN);
+  return matches ? matches.length : 0;
+};
+
+const normalizeFillBlankAnswers = (question = '', answers = [], legacyAnswer = '') => {
+  const explicitAnswerCount = Array.isArray(answers) ? answers.length : 0;
+  const desiredCount = Math.max(explicitAnswerCount, countFillBlankPlaceholders(question), 1);
+  const source = Array.isArray(answers) && answers.length > 0
+    ? answers
+    : [legacyAnswer || ''];
+  return Array.from({ length: desiredCount }, (_, index) => source[index] ?? '');
+};
+
+const normalizeAuthoringSlides = (slides = []) => (
+  (slides || []).map(slide => ({
+    ...slide,
+    elements: (slide.elements || []).map(block => {
+      if (block.type !== 'fill_blanks') return block;
+      const answers = normalizeFillBlankAnswers(block.question, block.answers, block.answer);
+      return {
+        ...block,
+        answers,
+        answer: answers[0] || '',
+      };
+    }),
+  }))
+);
+
+const makeEditorId = (prefix = 'id') => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+const cloneSubBlockWithFreshIds = (subBlock) => ({
+  ...subBlock,
+  id: makeEditorId('subblock'),
+});
+
+const cloneBlockWithFreshIds = (block) => {
+  const clonedBlock = {
+    ...block,
+    id: makeEditorId('block'),
+  };
+
+  if (block.type === 'columns') {
+    clonedBlock.columns = (block.columns || []).map(col => (col || []).map(cloneSubBlockWithFreshIds));
+  }
+
+  if (block.type === 'interactive-video') {
+    clonedBlock.interactions = (block.interactions || []).map(interaction => ({
+      ...interaction,
+      id: makeEditorId('interaction'),
+    }));
+  }
+
+  if (block.type === 'image-hotspot') {
+    clonedBlock.hotspots = (block.hotspots || []).map(hotspot => ({
+      ...hotspot,
+      id: makeEditorId('hotspot'),
+    }));
+  }
+
+  return clonedBlock;
+};
+
+const cloneSlideWithFreshIds = (slide, copyNumber = null) => ({
+  ...slide,
+  id: makeEditorId('slide'),
+  title: copyNumber ? `${slide.title || 'Untitled Slide'} Copy ${copyNumber}` : `${slide.title || 'Untitled Slide'} Copy`,
+  elements: (slide.elements || []).map(cloneBlockWithFreshIds),
+});
 
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap');
@@ -714,6 +842,7 @@ const STYLES = `
     display: flex;
     justify-content: center;
     padding: 0.5rem 0;
+    width: 100%;
   }
 
   .cf-button-input {
@@ -731,6 +860,12 @@ const STYLES = `
     box-shadow: 0 4px 12px rgba(139,26,26,0.3);
     letter-spacing: 0.02em;
     min-width: 140px;
+  }
+
+  .cf-rich-text-editor b,
+  .cf-rich-text-editor strong {
+    font-weight: 800;
+    color: #111827;
   }
 
   .cf-quiz-block {
@@ -1390,7 +1525,7 @@ function RichTextEditor({ value, onChange, placeholder, style, className }) {
   const isEditing = useRef(false);
   const savedSelectionRef = useRef(null);
   const [currentFont, setCurrentFont] = useState('');
-  const [currentSize, setCurrentSize] = useState('');
+  const [currentSize, setCurrentSize] = useState('16');
 
   const selectionIsInsideEditor = () => {
     const selection = window.getSelection();
@@ -1414,10 +1549,10 @@ function RichTextEditor({ value, onChange, placeholder, style, className }) {
 
   const getSelectedFontSize = () => {
     const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || !editorRef.current) return '';
+    if (!selection || selection.rangeCount === 0 || !editorRef.current) return '16';
 
     let node = selection.anchorNode;
-    if (!node || !editorRef.current.contains(node)) return '';
+    if (!node || !editorRef.current.contains(node)) return '16';
     if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
 
     while (node && node !== editorRef.current) {
@@ -1427,7 +1562,7 @@ function RichTextEditor({ value, onChange, placeholder, style, className }) {
       node = node.parentElement;
     }
 
-    return '';
+    return '16';
   };
 
   const updateToolbarState = () => {
@@ -1454,6 +1589,15 @@ function RichTextEditor({ value, onChange, placeholder, style, className }) {
     updateToolbarState();
   };
 
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const plainText = e.clipboardData?.getData('text/plain') || '';
+    restoreSelection();
+    document.execCommand('insertText', false, plainText);
+    handleInput();
+    saveSelection();
+  };
+
   const exec = (command, val = null) => {
     restoreSelection();
     document.execCommand(command, false, val);
@@ -1461,17 +1605,23 @@ function RichTextEditor({ value, onChange, placeholder, style, className }) {
   };
 
   const execFontSize = (size) => {
+    const numericSize = Number(size);
+    if (!Number.isFinite(numericSize) || numericSize < 8 || numericSize > 96) return;
     restoreSelection();
     // execCommand fontSize 1-7 is too limited. We'll use a trick to apply px.
     document.execCommand('fontSize', false, '7');
     const fontElements = editorRef.current.querySelectorAll('font[size="7"]');
     fontElements.forEach(el => {
       el.removeAttribute('size');
-      el.style.fontSize = size + 'px';
+      el.style.fontSize = numericSize + 'px';
     });
-    setCurrentSize(String(size));
+    setCurrentSize(String(numericSize));
     handleInput();
     saveSelection();
+  };
+
+  const applyTypedFontSize = () => {
+    execFontSize(currentSize);
   };
 
   return (
@@ -1489,12 +1639,25 @@ function RichTextEditor({ value, onChange, placeholder, style, className }) {
           <option value="Calibri">Calibri</option>
           <option value="Courier New">Courier</option>
         </select>
-        <select value={currentSize} onMouseDown={saveSelection} onChange={(e) => { e.preventDefault(); execFontSize(e.target.value); }} style={{ padding: '2px 4px', border: '1px solid #EAD0D0', borderRadius: 4, fontSize: '12px', background: 'white' }}>
-          <option value="" disabled>Size</option>
-          {[8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72].map(size => (
-            <option key={size} value={size}>{size}px</option>
-          ))}
-        </select>
+        <input
+          type="number"
+          min="8"
+          max="96"
+          step="1"
+          value={currentSize}
+          onMouseDown={saveSelection}
+          onFocus={saveSelection}
+          onChange={(e) => setCurrentSize(e.target.value)}
+          onBlur={applyTypedFontSize}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              applyTypedFontSize();
+            }
+          }}
+          style={{ width: 72, padding: '2px 6px', border: '1px solid #EAD0D0', borderRadius: 4, fontSize: '12px', background: 'white' }}
+          title="Font size in pixels"
+        />
         <div style={{ width: '1px', height: '16px', background: '#EAD0D0', margin: '0 4px' }} />
         <input
           type="color"
@@ -1548,6 +1711,7 @@ function RichTextEditor({ value, onChange, placeholder, style, className }) {
         onKeyUp={updateToolbarState}
         onMouseUp={updateToolbarState}
         onSelect={updateToolbarState}
+        onPaste={handlePaste}
         onFocus={() => { isEditing.current = true; updateToolbarState(); }}
         onBlur={() => { isEditing.current = false; handleInput(); }}
         style={{ padding: '12px', minHeight: '80px', outline: 'none', fontSize: '1rem', color: '#1A0A0A', fontFamily: 'Roboto' }}
@@ -1560,6 +1724,7 @@ function RichTextEditor({ value, onChange, placeholder, style, className }) {
 // ── Flashcard component (self-contained flip state) ──
 function FlashcardBlock({ block, onUpdate }) {
   const [flipped, setFlipped] = useState(false);
+  const theme = getFlashcardTheme(block.color);
 
   const stopPropAndFlip = (e) => {
     // Only flip if not clicking a textarea
@@ -1568,44 +1733,67 @@ function FlashcardBlock({ block, onUpdate }) {
   };
 
   return (
-    <div className="cf-flashcard-block" onClick={stopPropAndFlip} title="Click to flip">
-      <div className={`cf-flashcard-inner${flipped ? ' flipped' : ''}`}>
-        {/* Front */}
-        <div className="cf-flashcard-face cf-flashcard-front">
-          <div className="cf-flashcard-badge">
-            <CreditCard style={{ width: 10, height: 10 }} />
-            Front · Question
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.5rem' }}>
+        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#8b6060', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+          Card Color
+        </span>
+        <input
+          type="color"
+          value={sanitizeHexColor(block.color)}
+          onChange={(e) => onUpdate(block.id, { color: e.target.value })}
+          onClick={(e) => e.stopPropagation()}
+          title="Choose flashcard color"
+          style={{ width: 42, height: 32, border: '1px solid #EAD0D0', borderRadius: 6, background: '#fff', cursor: 'pointer' }}
+        />
+      </div>
+      <div className="cf-flashcard-block" onClick={stopPropAndFlip} title="Click to flip">
+        <div className={`cf-flashcard-inner${flipped ? ' flipped' : ''}`}>
+          {/* Front */}
+          <div
+            className="cf-flashcard-face cf-flashcard-front"
+            style={{ background: theme.frontBackground, border: theme.frontBorder, boxShadow: theme.frontShadow }}
+          >
+            <div className="cf-flashcard-badge" style={{ color: theme.frontBadge }}>
+              <CreditCard style={{ width: 10, height: 10 }} />
+              Front · Question
+            </div>
+            <textarea
+              className="cf-flashcard-textarea"
+              value={block.front || ''}
+              placeholder="Type the question or term…"
+              onChange={(e) => onUpdate(block.id, { front: e.target.value })}
+              onClick={(e) => e.stopPropagation()}
+              rows={3}
+              style={{ color: '#FFFFFF' }}
+            />
+            <div className="cf-flashcard-flip-hint" style={{ color: theme.frontHint }}>
+              <RotateCcw style={{ width: 10, height: 10 }} />
+              Click to reveal answer
+            </div>
           </div>
-          <textarea
-            className="cf-flashcard-textarea"
-            value={block.front || ''}
-            placeholder="Type the question or term…"
-            onChange={(e) => onUpdate(block.id, { front: e.target.value })}
-            onClick={(e) => e.stopPropagation()}
-            rows={3}
-          />
-          <div className="cf-flashcard-flip-hint">
-            <RotateCcw style={{ width: 10, height: 10 }} />
-            Click to reveal answer
-          </div>
-        </div>
-        {/* Back */}
-        <div className="cf-flashcard-face cf-flashcard-back">
-          <div className="cf-flashcard-badge">
-            <CreditCard style={{ width: 10, height: 10 }} />
-            Back · Answer
-          </div>
-          <textarea
-            className="cf-flashcard-textarea"
-            value={block.back || ''}
-            placeholder="Type the answer or definition…"
-            onChange={(e) => onUpdate(block.id, { back: e.target.value })}
-            onClick={(e) => e.stopPropagation()}
-            rows={3}
-          />
-          <div className="cf-flashcard-flip-hint">
-            <RotateCcw style={{ width: 10, height: 10 }} />
-            Click to flip back
+          {/* Back */}
+          <div
+            className="cf-flashcard-face cf-flashcard-back"
+            style={{ background: theme.backBackground, border: theme.backBorder, boxShadow: theme.backShadow }}
+          >
+            <div className="cf-flashcard-badge" style={{ color: theme.backBadge }}>
+              <CreditCard style={{ width: 10, height: 10 }} />
+              Back · Answer
+            </div>
+            <textarea
+              className="cf-flashcard-textarea"
+              value={block.back || ''}
+              placeholder="Type the answer or definition…"
+              onChange={(e) => onUpdate(block.id, { back: e.target.value })}
+              onClick={(e) => e.stopPropagation()}
+              rows={3}
+              style={{ color: theme.backText }}
+            />
+            <div className="cf-flashcard-flip-hint" style={{ color: theme.backHint }}>
+              <RotateCcw style={{ width: 10, height: 10 }} />
+              Click to flip back
+            </div>
           </div>
         </div>
       </div>
@@ -1940,9 +2128,10 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
     const newInt = {
       id: Date.now().toString(),
       timestamp: 0,
-      question: "New Question",
-      options: ["Option 1", "Option 2"],
+      question: "",
+      options: ["", ""],
       correctAnswerIndex: 0,
+      requireCorrectToContinue: true,
       completed: false
     };
     onUpdate(block.id, { interactions: [...interactions, newInt] });
@@ -1959,12 +2148,20 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
 
   const handleQuizAnswer = (idx) => {
     setHasAttempted(true);
-    if (idx === activeQuiz.correctAnswerIndex) {
+    const answeredCorrectly = idx === activeQuiz.correctAnswerIndex;
+    if (answeredCorrectly) {
+      setIsCorrect(true);
+    } else if (activeQuiz?.requireCorrectToContinue === false) {
       setIsCorrect(true);
     } else {
       setIsCorrect(false);
     }
   };
+
+  const canContinueAfterWrong = activeQuiz?.requireCorrectToContinue === false;
+  const answeredCorrectly = !!activeQuiz && hasAttempted && isCorrect;
+  const answeredIncorrectly = !!activeQuiz && hasAttempted && !isCorrect;
+  const canContinue = !!activeQuiz && hasAttempted && (answeredCorrectly || canContinueAfterWrong);
 
   const resumeVideo = () => {
     const newInts = interactions.map(int => int.id === activeQuiz.id ? { ...int, completed: true } : int);
@@ -2008,20 +2205,20 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
                 {activeQuiz.options.map((opt, i) => (
                   <button
                     key={i}
-                    onClick={() => !isCorrect && handleQuizAnswer(i)}
+                    onClick={() => !canContinue && handleQuizAnswer(i)}
                     style={{
-                      background: isCorrect && i === activeQuiz.correctAnswerIndex ? '#16a34a' : '#171717',
+                      background: answeredCorrectly && i === activeQuiz.correctAnswerIndex ? '#16a34a' : '#171717',
                       color: '#fff',
                       border: '1px solid #450a0a',
                       padding: '0.75rem',
                       borderRadius: 6,
-                      cursor: isCorrect ? 'default' : 'pointer',
+                      cursor: canContinue ? 'default' : 'pointer',
                       transition: 'background 0.2s',
                       fontSize: '1rem',
-                      opacity: isCorrect && i !== activeQuiz.correctAnswerIndex ? 0.5 : 1
+                      opacity: answeredCorrectly && i !== activeQuiz.correctAnswerIndex ? 0.5 : 1
                     }}
-                    onMouseOver={e => !isCorrect && (e.currentTarget.style.background = '#7f1d1d')}
-                    onMouseOut={e => !isCorrect && (e.currentTarget.style.background = isCorrect && i === activeQuiz.correctAnswerIndex ? '#16a34a' : '#171717')}
+                    onMouseOver={e => !canContinue && (e.currentTarget.style.background = '#7f1d1d')}
+                    onMouseOut={e => !canContinue && (e.currentTarget.style.background = answeredCorrectly && i === activeQuiz.correctAnswerIndex ? '#16a34a' : '#171717')}
                   >
                     {opt}
                   </button>
@@ -2030,9 +2227,11 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
 
               {hasAttempted && (
                 <div style={{ marginTop: '1.5rem' }}>
-                  {isCorrect ? (
+                  {canContinue ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-                      <p style={{ color: '#4ade80', fontWeight: 600, margin: 0 }}>Correct! You can now continue.</p>
+                      <p style={{ color: answeredCorrectly ? '#4ade80' : '#fbbf24', fontWeight: 600, margin: 0 }}>
+                        {answeredCorrectly ? 'Correct! You can now continue.' : 'Incorrect, but the author allows you to continue.'}
+                      </p>
                       <button
                         onClick={resumeVideo}
                         style={{ background: '#8b1a1a', color: '#fff', padding: '0.75rem 2rem', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 700, animation: 'pulse 2s infinite' }}
@@ -2040,9 +2239,9 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
                         Continue Video
                       </button>
                     </div>
-                  ) : (
+                  ) : answeredIncorrectly ? (
                     <p style={{ color: '#f87171', fontWeight: 600 }}>Incorrect answer. Please try again.</p>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>
@@ -2056,6 +2255,9 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
             <h4 style={{ color: '#fff', margin: 0, fontSize: '1rem' }}>Quiz Interactions</h4>
             <button onClick={addInteraction} style={{ background: '#991b1b', color: '#fff', padding: '0.4rem 0.8rem', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.875rem' }}>+ Add Quiz Point</button>
           </div>
+          <p style={{ color: '#d4d4d4', margin: '0 0 0.85rem 0', fontSize: '0.85rem' }}>
+            The counter is the number of seconds into the video when the quiz will pop up.
+          </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {interactions.map(int => (
               <div key={int.id} style={{ background: '#0a0000', borderLeft: '4px solid #991b1b', padding: '1rem', borderRadius: '0 6px 6px 0', border: '1px solid #262626', borderLeftWidth: 4 }}>
@@ -2076,6 +2278,15 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
                   style={{ width: '100%', background: '#171717', color: '#fff', border: '1px solid #404040', padding: '0.5rem', borderRadius: 4, marginBottom: '0.75rem', outline: 'none' }}
                 />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', color: '#d4d4d4', fontSize: '0.875rem', marginBottom: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={int.requireCorrectToContinue !== false}
+                      onChange={(e) => updateInteraction(int.id, { requireCorrectToContinue: e.target.checked })}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    Learner must answer correctly to continue
+                  </label>
                   {int.options.map((opt, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <input
@@ -2103,7 +2314,7 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
                       }} style={{ background: 'transparent', color: '#ef4444', border: 'none', cursor: 'pointer' }}><X size={14} /></button>
                     </div>
                   ))}
-                  <button onClick={() => updateInteraction(int.id, { options: [...int.options, "New Option"] })} style={{ alignSelf: 'flex-start', background: 'transparent', color: '#991b1b', border: 'none', cursor: 'pointer', fontSize: '0.875rem', marginTop: '0.25rem' }}>+ Add Option</button>
+                  <button onClick={() => updateInteraction(int.id, { options: [...int.options, ""] })} style={{ alignSelf: 'flex-start', background: 'transparent', color: '#991b1b', border: 'none', cursor: 'pointer', fontSize: '0.875rem', marginTop: '0.25rem' }}>+ Add Option</button>
                 </div>
               </div>
             ))}
@@ -2228,7 +2439,7 @@ function VideoBlock({ block, onUpdate }) {
 function ProcessBlock({ block, onUpdate }) {
   const [currentStep, setCurrentStep] = useState(0);
 
-  const steps = block.steps || [{ title: 'Step 1', content: '' }];
+  const steps = block.steps || [{ title: '', content: '' }];
 
   const nextStep = (e) => {
     e.stopPropagation();
@@ -2242,7 +2453,7 @@ function ProcessBlock({ block, onUpdate }) {
 
   const addStep = (e) => {
     e.stopPropagation();
-    const newSteps = [...steps, { title: `Step ${steps.length + 1}`, content: '' }];
+    const newSteps = [...steps, { title: '', content: '' }];
     onUpdate(block.id, { steps: newSteps });
     setCurrentStep(newSteps.length - 1);
   };
@@ -2328,7 +2539,7 @@ function TableBlock({ block, onUpdate }) {
     onUpdate(block.id, { rows: [...block.rows, newRow] });
   };
   const addCol = () => {
-    const newHeaders = [...block.headers, `Header ${block.headers.length + 1}`];
+    const newHeaders = [...block.headers, ''];
     const newRows = block.rows.map(row => [...row, '']);
     onUpdate(block.id, { headers: newHeaders, rows: newRows });
   };
@@ -2416,7 +2627,10 @@ function loadDraft() {
 
 function App() {
   const draft = loadDraft();
-  const initialState = draft ?? createDefaultAuthoringState();
+  const initialState = {
+    ...(draft ?? createDefaultAuthoringState()),
+    slides: normalizeAuthoringSlides((draft ?? createDefaultAuthoringState()).slides),
+  };
 
   const [currentView, setCurrentView] = useState('dashboard');
   const [selectedCourseId, setSelectedCourseId] = useState(null);
@@ -2485,6 +2699,16 @@ function App() {
   }, [courseTitle, passingScore, slides]);
 
   useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) {
+        setIsExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
     if (currentView !== 'editor' || !selectedCourseId) return;
 
     const payload = { courseTitle, passingScore, slides };
@@ -2521,8 +2745,11 @@ function App() {
   const [aiBlockType, setAiBlockType] = useState('Paragraph');
   const [exportProgress, setExportProgress] = useState(0);
   const [exportLabel, setExportLabel] = useState('');
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef(null);
 
   const activeSlide = activeSlideId ? slides.find(s => s.id === activeSlideId) : null;
+  const activeSlideIndex = activeSlideId ? slides.findIndex(s => s.id === activeSlideId) : -1;
 
   const SUGGESTED_PROMPTS = [
     'Key learning objectives',
@@ -2555,19 +2782,45 @@ function App() {
     if (activeSlideId === slideId) setActiveSlideId(null);
   };
 
+  const duplicateSlide = (slideId) => {
+    let duplicatedSlideId = null;
+    setSlides(prev => {
+      const slideIndex = prev.findIndex(s => s.id === slideId);
+      if (slideIndex < 0) return prev;
+
+      const sourceSlide = prev[slideIndex];
+      const matchingCopies = prev.filter(s => String(s.title || '').startsWith(`${sourceSlide.title || 'Untitled Slide'} Copy`)).length;
+      const duplicatedSlide = cloneSlideWithFreshIds(sourceSlide, matchingCopies > 0 ? matchingCopies + 1 : null);
+      duplicatedSlideId = duplicatedSlide.id;
+
+      const nextSlides = [...prev];
+      nextSlides.splice(slideIndex + 1, 0, duplicatedSlide);
+      return nextSlides;
+    });
+    if (duplicatedSlideId) setActiveSlideId(duplicatedSlideId);
+  };
+
   const updateSlideTitle = (slideId, title) => {
     setSlides(prev => prev.map(s => s.id === slideId ? { ...s, title } : s));
+  };
+
+  const goToAdjacentSlide = (direction) => {
+    if (activeSlideIndex < 0) return;
+    const nextIndex = activeSlideIndex + direction;
+    if (nextIndex < 0 || nextIndex >= slides.length) return;
+    setActiveSlideId(slides[nextIndex].id);
   };
 
   const addBlock = (type) => {
     if (!activeSlideId) return;
     const newBlock = { id: Date.now(), type };
-    if (type === 'heading') newBlock.content = "New Heading";
-    if (type === 'text') newBlock.content = "Type your text here...";
-    if (type === 'image') newBlock.content = "Image Placeholder";
+    if (type === 'heading') newBlock.content = "";
+    if (type === 'text') newBlock.content = "";
+    if (type === 'image') newBlock.content = "";
     if (type === 'button') {
-      newBlock.content = "Click Me";
+      newBlock.content = "";
       newBlock.targetSlideId = "";
+      newBlock.alignment = "center";
     }
     if (type === 'quiz') {
       newBlock.question = "";
@@ -2578,20 +2831,21 @@ function App() {
     if (type === 'flashcard') {
       newBlock.front = '';
       newBlock.back = '';
+      newBlock.color = DEFAULT_FLASHCARD_COLOR;
     }
     if (type === 'video') {
       newBlock.videoUrl = '';
       newBlock.isLocal = false;
     }
     if (type === 'list') {
-      newBlock.items = ["List item 1", "List item 2", "List item 3"];
+      newBlock.items = ["", "", ""];
     }
     if (type === 'quote') {
-      newBlock.content = "Quote text here...";
-      newBlock.author = "Author Name";
+      newBlock.content = "";
+      newBlock.author = "";
     }
     if (type === 'process') {
-      newBlock.steps = [{ title: 'Step 1', content: '' }, { title: 'Step 2', content: '' }];
+      newBlock.steps = [{ title: '', content: '' }, { title: '', content: '' }];
     }
     if (type === 'true_false') {
       newBlock.question = '';
@@ -2602,38 +2856,39 @@ function App() {
     if (type === 'fill_blanks') {
       newBlock.question = '';
       newBlock.answer = '';
+      newBlock.answers = [''];
       newBlock.caseSensitive = false;
       newBlock.isMandatory = false;
       newBlock.marks = 0;
     }
     if (type === 'multi_select') {
       newBlock.question = '';
-      newBlock.options = ['Option 1', 'Option 2', 'Option 3'];
-      newBlock.correctAnswer = ['0'];
+      newBlock.options = ['', '', ''];
+      newBlock.correctAnswer = [];
       newBlock.mandatory = false;
       newBlock.marks = 0;
     }
     if (type === 'matching') {
       newBlock.question = '';
       newBlock.pairs = [
-        { leftItem: 'Concept 1', rightItem: 'Definition 1' },
-        { leftItem: 'Concept 2', rightItem: 'Definition 2' }
+        { leftItem: '', rightItem: '' },
+        { leftItem: '', rightItem: '' }
       ];
       newBlock.mandatory = false;
       newBlock.marks = 0;
     }
     if (type === 'audio') {
-      newBlock.label = 'Audio Track';
+      newBlock.label = '';
       newBlock.audioUrl = '';
       newBlock.mediaId = '';
       newBlock.isUploading = false;
       newBlock.mandatory = false;
     }
     if (type === 'table') {
-      newBlock.headers = ['Header 1', 'Header 2'];
+      newBlock.headers = ['', ''];
       newBlock.rows = [
-        ['Row 1 Col 1', 'Row 1 Col 2'],
-        ['Row 2 Col 1', 'Row 2 Col 2']
+        ['', ''],
+        ['', '']
       ];
     }
     if (type === 'columns') {
@@ -2799,7 +3054,11 @@ function App() {
         if (block.type === 'video' && !block.videoUrl) warnings.push(`Slide ${sIdx + 1}: Video block missing URL.`);
         if (block.type === 'audio' && !block.audioUrl && !block.mediaId) warnings.push(`Slide ${sIdx + 1}: Audio block missing media file.`);
         if (block.type === 'true_false' && !block.question?.trim()) warnings.push(`Slide ${sIdx + 1}: True/False block missing question.`);
-        if (block.type === 'fill_blanks' && (!block.question?.trim() || !block.answer?.trim())) warnings.push(`Slide ${sIdx + 1}: Fill in Blank missing question or answer.`);
+        if (block.type === 'fill_blanks') {
+          const answers = normalizeFillBlankAnswers(block.question, block.answers, block.answer);
+          if (!block.question?.trim()) warnings.push(`Slide ${sIdx + 1}: Fill in Blank missing question.`);
+          if (answers.length === 0 || answers.some(answer => !String(answer || '').trim())) warnings.push(`Slide ${sIdx + 1}: Fill in Blank has one or more empty answers.`);
+        }
       });
     });
     if (emptyCount > 0) warnings.push(`${emptyCount} empty text block(s) detected.`);
@@ -2975,13 +3234,61 @@ function App() {
         return <ImageBlock block={block} onUpdate={updateBlock} />;
       case 'button':
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
-            <div className="cf-button-block">
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '0.75rem', width: '100%' }}>
+            <div
+              className="cf-button-block"
+              style={{
+                justifyContent:
+                  block.alignment === 'left'
+                    ? 'flex-start'
+                    : block.alignment === 'right'
+                      ? 'flex-end'
+                      : 'center',
+              }}
+            >
               <input
                 className="cf-button-input"
                 value={block.content}
                 onChange={(e) => updateBlock(block.id, { content: e.target.value })}
+                style={{ textAlign: block.alignment || 'center' }}
+                placeholder="Button label..."
               />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', maxWidth: 360 }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#8b6060', whiteSpace: 'nowrap' }}>
+                Align
+              </span>
+              <div style={{ display: 'flex', gap: '0.35rem' }}>
+                {[
+                  { value: 'left', icon: AlignLeft, label: 'Align left' },
+                  { value: 'center', icon: AlignCenter, label: 'Align center' },
+                  { value: 'right', icon: AlignRight, label: 'Align right' },
+                ].map(({ value, icon: Icon, label }) => {
+                  const isActive = (block.alignment || 'center') === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => updateBlock(block.id, { alignment: value })}
+                      title={label}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 6,
+                        border: `1px solid ${isActive ? '#8b1a1a' : '#EAD0D0'}`,
+                        background: isActive ? '#fff1f1' : '#fff',
+                        color: isActive ? '#8b1a1a' : '#8b6060',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Icon size={14} />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', maxWidth: 360 }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#8b6060', whiteSpace: 'nowrap' }}>
@@ -3052,6 +3359,9 @@ function App() {
               onChange={(e) => updateBlock(block.id, { question: e.target.value })}
               placeholder="Enter your question..."
             />
+            <p className="cf-fitb-hint" style={{ marginTop: '0.5rem', marginBottom: '0.75rem' }}>
+              Select the option that should be treated as the correct answer.
+            </p>
             {block.options.map((option, index) => (
               <div key={index} className="cf-quiz-option">
                 <input
@@ -3070,8 +3380,33 @@ function App() {
                     updateBlock(block.id, { options: newOptions });
                   }}
                 />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (block.options.length <= 2) return;
+                    const newOptions = block.options.filter((_, i) => i !== index);
+                    let newCorrectAnswer = block.correctAnswer;
+                    if (block.correctAnswer === index) {
+                      newCorrectAnswer = 0;
+                    } else if (block.correctAnswer > index) {
+                      newCorrectAnswer = block.correctAnswer - 1;
+                    }
+                    updateBlock(block.id, { options: newOptions, correctAnswer: newCorrectAnswer });
+                  }}
+                  disabled={block.options.length <= 2}
+                  style={{ background: 'transparent', color: block.options.length <= 2 ? '#d4b4b4' : '#ef4444', border: 'none', cursor: block.options.length <= 2 ? 'not-allowed' : 'pointer' }}
+                  title={block.options.length <= 2 ? 'A quiz needs at least two options' : 'Remove option'}
+                >
+                  <X size={14} />
+                </button>
               </div>
             ))}
+            <button
+              onClick={() => updateBlock(block.id, { options: [...block.options, ""] })}
+              style={{ marginTop: '0.5rem', background: 'transparent', border: '1px dashed #e8d8d8', color: '#8b6060', padding: '0.25rem 0.5rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem' }}
+            >
+              + Add Option
+            </button>
           </div>
         );
       case 'flashcard':
@@ -3100,12 +3435,13 @@ function App() {
                       updateBlock(block.id, { items: newItems });
                     }}
                     style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontSize: '1rem', color: '#1a0a0a' }}
+                    placeholder={`List item ${index + 1}...`}
                   />
                 </li>
               ))}
             </ul>
             <button
-              onClick={() => updateBlock(block.id, { items: [...block.items, "New item"] })}
+              onClick={() => updateBlock(block.id, { items: [...block.items, ""] })}
               style={{ marginTop: '0.5rem', background: 'transparent', border: '1px dashed #e8d8d8', color: '#8b6060', padding: '0.25rem 0.5rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem' }}
             >
               + Add Item
@@ -3204,7 +3540,7 @@ function App() {
               </div>
             ))}
             <button
-              onClick={() => updateBlock(block.id, { options: [...block.options, "New Option"] })}
+              onClick={() => updateBlock(block.id, { options: [...block.options, ""] })}
               style={{ marginTop: '0.5rem', background: 'transparent', border: '1px dashed #e8d8d8', color: '#8b6060', padding: '0.25rem 0.5rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem' }}
             >
               + Add Option
@@ -3284,7 +3620,7 @@ function App() {
               </div>
             ))}
             <button
-              onClick={() => updateBlock(block.id, { pairs: [...block.pairs, { leftItem: "New Left", rightItem: "New Right" }] })}
+              onClick={() => updateBlock(block.id, { pairs: [...block.pairs, { leftItem: "", rightItem: "" }] })}
               style={{ marginTop: '0.5rem', background: 'transparent', border: '1px dashed #e8d8d8', color: '#8b6060', padding: '0.25rem 0.5rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem' }}
             >
               + Add Pair
@@ -3343,6 +3679,27 @@ function App() {
           </div>
         );
       case 'fill_blanks':
+        {
+          const answers = normalizeFillBlankAnswers(block.question, block.answers, block.answer);
+          const updateFillBlankQuestion = (question) => {
+            const nextAnswers = normalizeFillBlankAnswers(question, block.answers, block.answer);
+            updateBlock(block.id, { question, answers: nextAnswers, answer: nextAnswers[0] || '' });
+          };
+          const updateFillBlankAnswer = (index, value) => {
+            const nextAnswers = answers.map((answer, answerIndex) => (
+              answerIndex === index ? value : answer
+            ));
+            updateBlock(block.id, { answers: nextAnswers, answer: nextAnswers[0] || '' });
+          };
+          const addFillBlankAnswer = () => {
+            const nextAnswers = [...answers, ''];
+            updateBlock(block.id, { answers: nextAnswers, answer: nextAnswers[0] || '' });
+          };
+          const removeFillBlankAnswer = (index) => {
+            if (answers.length <= 1) return;
+            const nextAnswers = answers.filter((_, answerIndex) => answerIndex !== index);
+            updateBlock(block.id, { answers: nextAnswers, answer: nextAnswers[0] || '' });
+          };
         return (
           <div className="cf-fitb-block">
             <div className="cf-assess-meta">
@@ -3391,44 +3748,103 @@ function App() {
             <input
               className="cf-quiz-q-input"
               value={block.question}
-              onChange={(e) => updateBlock(block.id, { question: e.target.value })}
-              placeholder="Use ____ to mark blank. e.g. The capital of France is ____."
+              onChange={(e) => updateFillBlankQuestion(e.target.value)}
+              placeholder="Enter the question or sentence..."
             />
-            <p className="cf-fitb-hint">Correct answer (learner must match this exactly):</p>
-            <input
-              className="cf-fitb-answer-input"
-              value={block.answer}
-              onChange={(e) => updateBlock(block.id, { answer: e.target.value })}
-              placeholder="e.g. Paris"
-            />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginTop: '0.75rem' }}>
+              <p className="cf-fitb-hint" style={{ marginBottom: 0 }}>
+                Add one answer for each blank you want the learner to complete.
+              </p>
+              <button
+                type="button"
+                onClick={addFillBlankAnswer}
+                style={{ padding: '0.35rem 0.65rem', borderRadius: 6, border: '1px solid #EAD0D0', background: '#fff', color: '#8b1a1a', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}
+              >
+                + Add Blank
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+              {answers.map((answer, index) => (
+                <div key={`${block.id}-answer-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    className="cf-fitb-answer-input"
+                    value={answer}
+                    onChange={(e) => updateFillBlankAnswer(index, e.target.value)}
+                    placeholder={`Answer for blank ${index + 1}`}
+                    style={{ marginTop: 0 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeFillBlankAnswer(index)}
+                    disabled={answers.length <= 1}
+                    style={{ background: 'transparent', color: answers.length <= 1 ? '#d4b4b4' : '#ef4444', border: 'none', cursor: answers.length <= 1 ? 'not-allowed' : 'pointer' }}
+                    title={answers.length <= 1 ? 'At least one blank is required' : 'Remove blank'}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         );
+        }
       case 'columns': {
+        const columns = Array.isArray(block.columns) && block.columns.length > 0
+          ? block.columns
+          : [[], []];
+        const updateColumns = (newCols) => updateBlock(block.id, { columns: newCols });
         const updateSubBlock = (colIdx, sbId, newData) => {
-          const newCols = block.columns.map((col, i) =>
+          const newCols = columns.map((col, i) =>
             i === colIdx ? col.map(sb => sb.id === sbId ? { ...sb, ...newData } : sb) : col
           );
-          updateBlock(block.id, { columns: newCols });
+          updateColumns(newCols);
         };
         const removeSubBlock = (colIdx, sbId) => {
-          const newCols = block.columns.map((col, i) =>
+          const newCols = columns.map((col, i) =>
             i === colIdx ? col.filter(sb => sb.id !== sbId) : col
           );
-          updateBlock(block.id, { columns: newCols });
+          updateColumns(newCols);
         };
         const addSubBlock = (colIdx, type) => {
           const newItem = type === 'text'
             ? { id: Date.now() + colIdx, type: 'text', content: '' }
             : { id: Date.now() + colIdx, type: 'image', image: null };
-          const newCols = block.columns.map((col, i) =>
+          const newCols = columns.map((col, i) =>
             i === colIdx ? [...col, newItem] : col
           );
-          updateBlock(block.id, { columns: newCols });
+          updateColumns(newCols);
+        };
+        const addColumn = () => updateColumns([...columns, []]);
+        const removeColumn = (colIdx) => {
+          if (columns.length <= 1) return;
+          updateColumns(columns.filter((_, i) => i !== colIdx));
         };
 
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem', width: '100%', margin: '0.5rem 0' }}>
-            {block.columns.map((col, colIdx) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', width: '100%', margin: '0.5rem 0' }}>
+            {!isPreviewOpen && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#8b6060', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                  Columns: {columns.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={addColumn}
+                  style={{ padding: '0.35rem 0.65rem', borderRadius: 6, border: '1px solid #EAD0D0', background: '#fff', color: '#8b1a1a', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
+                >
+                  + Add Column
+                </button>
+              </div>
+            )}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(0, 1fr))`,
+                gap: '1.25rem',
+                width: '100%',
+              }}
+            >
+            {columns.map((col, colIdx) => (
               <div key={colIdx} style={{
                 border: !isPreviewOpen && col.length === 0 ? '2px dashed #EAD0D0' : '1px solid #f5e8e8',
                 borderRadius: 12,
@@ -3436,7 +3852,25 @@ function App() {
                 padding: '1rem',
                 background: col.length === 0 ? '#fffafa' : '#fff',
                 display: 'flex', flexDirection: 'column', gap: '0.875rem',
+                minWidth: 0,
               }}>
+                {!isPreviewOpen && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#8b6060', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                      Column {colIdx + 1}
+                    </span>
+                    {columns.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeColumn(colIdx)}
+                        style={{ background: 'none', border: 'none', color: '#c24141', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, padding: 0 }}
+                        title="Remove column"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                )}
                 {col.map(sb => (
                   <div key={sb.id} style={{ position: 'relative' }}>
                     {!isPreviewOpen && (
@@ -3494,6 +3928,7 @@ function App() {
                 )}
               </div>
             ))}
+            </div>
           </div>
         );
       }
@@ -3571,11 +4006,12 @@ function App() {
   const loadAuthoringStateIntoEditor = (courseId, authoringState) => {
     const fallbackState = createDefaultAuthoringState();
     const nextState = authoringState || fallbackState;
+    const normalizedSlides = normalizeAuthoringSlides(nextState.slides || fallbackState.slides);
 
     setSelectedCourseId(courseId);
     setCourseTitle(nextState.courseTitle || fallbackState.courseTitle);
     setPassingScore(nextState.passingScore ?? fallbackState.passingScore);
-    setSlides(nextState.slides || fallbackState.slides);
+    setSlides(normalizedSlides);
     setActiveSlideId(null);
     setShowAIModal(false);
     setExportProgress(0);
@@ -3583,7 +4019,7 @@ function App() {
     prevSavedRef.current = {
       courseTitle: nextState.courseTitle || fallbackState.courseTitle,
       passingScore: nextState.passingScore ?? fallbackState.passingScore,
-      slides: nextState.slides || fallbackState.slides,
+      slides: normalizedSlides,
     };
     setHasUnsaved(false);
     setCurrentView('editor');
@@ -3676,12 +4112,37 @@ function App() {
               }
               {isGenerating ? 'Generating…' : 'AI Generate'}
             </button>
-            <button onClick={handleExportScorm} disabled={isExporting} className="cf-btn cf-btn-scorm">
-              <Download style={{ width: 13, height: 13 }} /> SCORM
-            </button>
-            <button onClick={handleExportXapi} disabled={isExporting} className="cf-btn cf-btn-xapi">
-              <Globe style={{ width: 13, height: 13 }} /> xAPI
-            </button>
+            <div ref={exportMenuRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => !isExporting && setIsExportMenuOpen(prev => !prev)}
+                disabled={isExporting}
+                className="cf-btn cf-btn-scorm"
+                style={{ minWidth: 150, justifyContent: 'space-between' }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <Download style={{ width: 13, height: 13 }} /> Export Lesson
+                </span>
+                <ChevronDown style={{ width: 13, height: 13, transform: isExportMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }} />
+              </button>
+              {isExportMenuOpen && !isExporting && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, minWidth: 170, background: '#fff', border: '1px solid #EAD0D0', borderRadius: 10, boxShadow: '0 10px 24px rgba(15, 23, 42, 0.12)', padding: 6, zIndex: 30 }}>
+                  <button
+                    type="button"
+                    onClick={() => { setIsExportMenuOpen(false); handleExportScorm(); }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.55rem', background: '#fff', color: '#8b1a1a', border: 'none', borderRadius: 8, padding: '0.65rem 0.75rem', cursor: 'pointer', fontFamily: 'Roboto', fontWeight: 600 }}
+                  >
+                    <Download style={{ width: 13, height: 13 }} /> Export as SCORM
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsExportMenuOpen(false); handleExportXapi(); }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.55rem', background: '#fff', color: '#8b1a1a', border: 'none', borderRadius: 8, padding: '0.65rem 0.75rem', cursor: 'pointer', fontFamily: 'Roboto', fontWeight: 600 }}
+                  >
+                    <Globe style={{ width: 13, height: 13 }} /> Export as xAPI
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -3918,12 +4379,21 @@ function App() {
                         >
                           <GripVertical style={{ width: 16, height: 16 }} />
                         </div>
-                        <button style={{ position: 'absolute', top: 12, right: 12, background: 'transparent', color: '#c4a0a0', border: 'none', cursor: 'pointer', transition: 'color 0.15s', zIndex: 2 }}
+                        <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', alignItems: 'center', gap: '0.25rem', zIndex: 2 }}>
+                        <button style={{ background: 'transparent', color: '#c4a0a0', border: 'none', cursor: 'pointer', transition: 'color 0.15s' }}
+                          onClick={(e) => { e.stopPropagation(); duplicateSlide(slide.id); }}
+                          onMouseOver={(e) => e.currentTarget.style.color = '#8b1a1a'}
+                          onMouseOut={(e) => e.currentTarget.style.color = '#c4a0a0'}
+                          title="Duplicate slide">
+                          <Copy style={{ width: 15, height: 15 }} />
+                        </button>
+                        <button style={{ background: 'transparent', color: '#c4a0a0', border: 'none', cursor: 'pointer', transition: 'color 0.15s' }}
                           onClick={(e) => { e.stopPropagation(); deleteSlide(slide.id); }}
                           onMouseOver={(e) => e.currentTarget.style.color = '#8b1a1a'}
                           onMouseOut={(e) => e.currentTarget.style.color = '#c4a0a0'}>
                           <Trash2 style={{ width: 16, height: 16 }} />
                         </button>
+                        </div>
                         <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#b08080', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Slide {index + 1}</div>
                         <h3 style={{ margin: '0 0 1rem 0', fontFamily: 'Roboto', fontSize: '1.25rem', color: '#1a0a0a', lineHeight: 1.3 }}>{slide.title || 'Untitled Slide'}</h3>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8125rem', color: '#8b6060', background: '#fff5f5', padding: '0.25rem 0.5rem', borderRadius: 6, width: 'fit-content' }}>
@@ -3943,7 +4413,7 @@ function App() {
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat'
               }}>
-                <div style={{ marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid #f0e0e0', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid #f0e0e0', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                   <button onClick={() => setActiveSlideId(null)} style={{ background: '#fdf8f8', border: '1px solid #e8d8d8', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', color: '#8b1a1a', display: 'flex', alignItems: 'center' }}>
                     <ChevronRight style={{ width: 18, height: 18, transform: 'rotate(180deg)' }} />
                   </button>
@@ -3954,6 +4424,70 @@ function App() {
                     placeholder="Slide Title..."
                     style={{ fontSize: '1.75rem', flex: 1 }}
                   />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
+                    <button
+                      type="button"
+                      onClick={() => duplicateSlide(activeSlideId)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        background: '#fff',
+                        border: '1px solid #e8d8d8',
+                        borderRadius: 8,
+                        padding: '0.55rem 0.9rem',
+                        cursor: 'pointer',
+                        color: '#8b1a1a',
+                        fontFamily: 'Roboto',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <Copy style={{ width: 15, height: 15 }} />
+                      Duplicate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goToAdjacentSlide(-1)}
+                      disabled={activeSlideIndex <= 0}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        background: activeSlideIndex <= 0 ? '#f5f0ee' : '#fff',
+                        border: '1px solid #e8d8d8',
+                        borderRadius: 8,
+                        padding: '0.55rem 0.9rem',
+                        cursor: activeSlideIndex <= 0 ? 'not-allowed' : 'pointer',
+                        color: activeSlideIndex <= 0 ? '#c4a0a0' : '#8b1a1a',
+                        fontFamily: 'Roboto',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <ChevronRight style={{ width: 16, height: 16, transform: 'rotate(180deg)' }} />
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goToAdjacentSlide(1)}
+                      disabled={activeSlideIndex >= slides.length - 1}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        background: activeSlideIndex >= slides.length - 1 ? '#f5f0ee' : '#8b1a1a',
+                        border: '1px solid #e8d8d8',
+                        borderRadius: 8,
+                        padding: '0.55rem 0.9rem',
+                        cursor: activeSlideIndex >= slides.length - 1 ? 'not-allowed' : 'pointer',
+                        color: activeSlideIndex >= slides.length - 1 ? '#c4a0a0' : '#fff',
+                        fontFamily: 'Roboto',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Next
+                      <ChevronRight style={{ width: 16, height: 16 }} />
+                    </button>
+                  </div>
                 </div>
 
                 {activeSlide.elements.length === 0 ? (
