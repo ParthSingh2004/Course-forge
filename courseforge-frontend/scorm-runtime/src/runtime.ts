@@ -277,6 +277,7 @@ class CourseForgeRuntime {
   private bindNavigationButtons(): void {
     const prevBtn = document.getElementById("cf-prev-btn") as HTMLButtonElement | null;
     const nextBtn = document.getElementById("cf-next-btn") as HTMLButtonElement | null;
+    const restartBtn = document.getElementById("cf-restart-btn") as HTMLButtonElement | null;
 
     if (prevBtn && !prevBtn.dataset.bound) {
       prevBtn.dataset.bound = "true";
@@ -291,6 +292,36 @@ class CourseForgeRuntime {
         this.nextSlide();
       });
     }
+
+    if (restartBtn && !restartBtn.dataset.bound) {
+      restartBtn.dataset.bound = "true";
+      restartBtn.addEventListener("click", () => {
+        this.restartCourse();
+      });
+    }
+  }
+
+  public restartCourse(): void {
+    const slideCount = this.course.slides.length;
+    this.state = createInitialState(slideCount, this.course.variables);
+    this.startTime = Date.now();
+    this.sessionFinished = false;
+
+    this.state.visitedSlides[0] = true;
+    this.renderSlide(0);
+    this.renderSidebar();
+    this.persistState();
+
+    if (this.scorm.isConnected) {
+      this.scorm.setValue("cmi.core.lesson_status", "incomplete");
+      this.scorm.setValue("cmi.core.score.raw", "0");
+      this.scorm.setValue("cmi.core.score.max", "100");
+      this.scorm.setValue("cmi.core.score.min", "0");
+      this.scorm.setValue("cmi.core.lesson_location", "0");
+      this.scorm.commit();
+    }
+
+    this.renderFeedback("Course restarted from the beginning.", "info");
   }
 
   private registerMediaListeners(): void {
@@ -1848,7 +1879,7 @@ class CourseForgeRuntime {
           return `
             <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center;">
               <div style="flex:1; padding:10px; background:#18181b; border-radius:6px; color:#fafafa; border:1px solid #27272a;">${p.leftItem}</div>
-              <select class="cf-rt-match-select" data-pair-idx="${idx}" style="flex:1; padding:10px; background:#09090b; border-radius:6px; color:#fafafa; border:1px solid #27272a; outline:none;" ${isCorrectAlready ? "disabled" : ""}>
+              <select class="cf-rt-match-select" data-pair-idx="${idx}" style="flex:1; padding:10px; background:#ffffff; border-radius:6px; color:#1a0a0a; border:1px solid #e8d0d0; outline:none;" ${isCorrectAlready ? "disabled" : ""}>
                 ${optionsHtml}
               </select>
             </div>
@@ -2376,6 +2407,7 @@ class CourseForgeRuntime {
 
     // Expose navigation methods globally for the HTML buttons
     (window as any).__cfRuntime = runtime;
+    (window as any).__cfRestart = () => runtime.restartCourse();
   },
 };
 

@@ -1064,8 +1064,8 @@ def _get_fallback_runtime_js() -> str:
           el.innerHTML = '<div class="cf-rt-quiz-badge">TRUE / FALSE</div>' +
             '<div class="cf-rt-quiz-question">' + comp.question + '</div>' +
             '<div style="display:flex;gap:10px;margin-top:12px;">' +
-              '<button id="tf-true-' + tfId + '" style="flex:1;padding:10px;border-radius:8px;border:2px solid #27272a;background:#09090b;color:#d4d4d8;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;" onclick="__cfTFSubmit(\'' + tfId + '\',true,\'' + tfCorrect + '\')">✓ True</button>' +
-              '<button id="tf-false-' + tfId + '" style="flex:1;padding:10px;border-radius:8px;border:2px solid #27272a;background:#09090b;color:#d4d4d8;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;" onclick="__cfTFSubmit(\'' + tfId + '\',false,\'' + tfCorrect + '\')">✗ False</button>' +
+              '<button id="tf-true-' + tfId + '" style="flex:1;padding:10px;border-radius:8px;border:2px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;" onclick="__cfTFSubmit(\'' + tfId + '\',true,\'' + tfCorrect + '\')">✓ True</button>' +
+              '<button id="tf-false-' + tfId + '" style="flex:1;padding:10px;border-radius:8px;border:2px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;" onclick="__cfTFSubmit(\'' + tfId + '\',false,\'' + tfCorrect + '\')">✗ False</button>' +
             '</div>' +
             '<div id="fb-' + tfId + '" style="margin-top:10px;font-size:13px;font-weight:600;"></div>';
         } else if (comp.type === 'fill_blanks') {
@@ -1151,7 +1151,7 @@ def _get_fallback_runtime_js() -> str:
             }
             pairsHtml += '<div style="display:flex;gap:10px;margin-bottom:10px;align-items:center;">' +
               '<div style="flex:1;padding:10px;background:#18181b;border-radius:6px;color:#fafafa;border:1px solid #27272a;">' + (pair.leftItem || '') + '</div>' +
-              '<select class="cf-rt-match-select" data-match-id="' + mtId + '" data-pair-idx="' + mpi + '" style="flex:1;padding:10px;background:#09090b;border-radius:6px;color:#fafafa;border:1px solid #27272a;outline:none;">' + optionsHtml + '</select>' +
+              '<select class="cf-rt-match-select" data-match-id="' + mtId + '" data-pair-idx="' + mpi + '" style="flex:1;padding:10px;background:#ffffff;border-radius:6px;color:#1a0a0a;border:1px solid #e8d0d0;outline:none;">' + optionsHtml + '</select>' +
             '</div>';
           }
           el.innerHTML = '<div class="cf-rt-quiz-badge">MATCHING</div>' +
@@ -1669,6 +1669,30 @@ def _get_fallback_runtime_js() -> str:
   window.__cfPrev = function() {
     if (currentSlide > 0) { currentSlide--; renderSlide(currentSlide); }
   };
+  window.__cfRestart = function() {
+    currentSlide = 0;
+    visitedSlides = {};
+    scorableComps = {};
+    mandatoryCompleted = {};
+    coursePassedFlag = false;
+    if (bgAudioElement) {
+      try {
+        bgAudioElement.pause();
+        bgAudioElement.currentTime = 0;
+      } catch(e) {}
+    }
+    renderSlide(currentSlide);
+    if (API) {
+      try {
+        API.LMSSetValue('cmi.core.lesson_location', '0');
+        API.LMSSetValue('cmi.core.lesson_status', 'incomplete');
+        API.LMSSetValue('cmi.core.score.min', '0');
+        API.LMSSetValue('cmi.core.score.max', '100');
+        API.LMSSetValue('cmi.core.score.raw', '0');
+        API.LMSCommit('');
+      } catch(e) {}
+    }
+  };
  
   // ---------------------------------------------------------------------------
   // BOOT
@@ -1785,6 +1809,9 @@ def generate_runtime_html(
  
   <!-- Navigation -->
   <nav class="cf-rt-nav">
+    <button class="cf-rt-nav-btn" id="cf-restart-btn" type="button" onclick="window.__cfRestart()">
+      &#8635; Restart
+    </button>
     <button class="cf-rt-nav-btn" id="cf-prev-btn" type="button">
       &#8592; Previous
     </button>
@@ -1917,13 +1944,13 @@ body {
 .cf-rt-quiz-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
 .cf-rt-quiz-option {
   display: flex; align-items: center; gap: 12px;
-  padding: 12px 16px; border: 1.5px solid #27272a;
+  padding: 12px 16px; border: 1.5px solid #e8d0d0;
   border-radius: 10px; cursor: pointer; transition: all 0.15s;
-  background: #09090b;
+  background: #ffffff;
 }
-.cf-rt-quiz-option:hover { border-color: #8b1a1a; background: #1a1a1e; }
-.cf-rt-quiz-option input[type="radio"] { accent-color: #c0392b; width: 16px; height: 16px; }
-.cf-rt-quiz-option-text { font-size: 14px; color: #d4d4d8; }
+.cf-rt-quiz-option:hover { border-color: #8b1a1a; background: #fff5f5; }
+.cf-rt-quiz-option input[type="radio"], .cf-rt-quiz-option input[type="checkbox"] { accent-color: #c0392b; width: 16px; height: 16px; }
+.cf-rt-quiz-option-text { font-size: 14px; color: #1a0a0a; }
 .cf-rt-quiz-submit {
   background: linear-gradient(135deg, #8b1a1a, #c0392b);
   color: #fff; border: none; border-radius: 8px;

@@ -2234,9 +2234,9 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
                     key={i}
                     onClick={() => !canContinue && handleQuizAnswer(i)}
                     style={{
-                      background: answeredCorrectly && i === activeQuiz.correctAnswerIndex ? '#16a34a' : '#171717',
-                      color: '#fff',
-                      border: '1px solid #450a0a',
+                      background: answeredCorrectly && i === activeQuiz.correctAnswerIndex ? '#16a34a' : '#ffffff',
+                      color: answeredCorrectly && i === activeQuiz.correctAnswerIndex ? '#fff' : '#1a0a0a',
+                      border: '1px solid #ead0d0',
                       padding: '0.75rem',
                       borderRadius: 6,
                       cursor: canContinue ? 'default' : 'pointer',
@@ -2244,8 +2244,8 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
                       fontSize: '1rem',
                       opacity: answeredCorrectly && i !== activeQuiz.correctAnswerIndex ? 0.5 : 1
                     }}
-                    onMouseOver={e => !canContinue && (e.currentTarget.style.background = '#7f1d1d')}
-                    onMouseOut={e => !canContinue && (e.currentTarget.style.background = answeredCorrectly && i === activeQuiz.correctAnswerIndex ? '#16a34a' : '#171717')}
+                    onMouseOver={e => !canContinue && (e.currentTarget.style.background = '#fff5f5')}
+                    onMouseOut={e => !canContinue && (e.currentTarget.style.background = answeredCorrectly && i === activeQuiz.correctAnswerIndex ? '#16a34a' : '#ffffff')}
                   >
                     {opt}
                   </button>
@@ -2330,7 +2330,7 @@ function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
                           newOpts[i] = e.target.value;
                           updateInteraction(int.id, { options: newOpts });
                         }}
-                        style={{ flex: 1, background: '#171717', color: '#fff', border: '1px solid #404040', padding: '0.4rem 0.5rem', borderRadius: 4, outline: 'none' }}
+                        style={{ flex: 1, background: '#fff', color: '#1a0a0a', border: '1px solid #ead0d0', padding: '0.4rem 0.5rem', borderRadius: 4, outline: 'none' }}
                       />
                       <button onClick={() => {
                         const newOpts = int.options.filter((_, idx) => idx !== i);
@@ -2669,6 +2669,7 @@ function App() {
   const [previewSlideIndex, setPreviewSlideIndex] = useState(0);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
+  const previewFrameRef = useRef(null);
 
 
   // Save / unsaved tracking
@@ -3236,6 +3237,19 @@ function App() {
     }
   };
 
+  const handlePreviewRestart = () => {
+    const iframeWindow = previewFrameRef.current?.contentWindow;
+    const runtime = iframeWindow?.__cfRuntime;
+    if (runtime && typeof runtime.restartCourse === 'function') {
+      runtime.restartCourse();
+      return;
+    }
+
+    if (previewFrameRef.current && previewBlobUrl) {
+      previewFrameRef.current.src = previewBlobUrl;
+    }
+  };
+
   const renderBlock = (block) => {
     switch (block.type) {
       case 'heading':
@@ -3425,7 +3439,7 @@ function App() {
                   style={{ background: 'transparent', color: block.options.length <= 2 ? '#d4b4b4' : '#ef4444', border: 'none', cursor: block.options.length <= 2 ? 'not-allowed' : 'pointer' }}
                   title={block.options.length <= 2 ? 'A quiz needs at least two options' : 'Remove option'}
                 >
-                  <X size={14} />
+                  <Trash2 size={14} />
                 </button>
               </div>
             ))}
@@ -4667,15 +4681,24 @@ function App() {
                   SCORM Preview — {courseTitle}
                 </span>
               </div>
-              <button
-                onClick={() => { setIsPreviewOpen(false); if (previewBlobUrl) { URL.revokeObjectURL(previewBlobUrl); setPreviewBlobUrl(null); } }}
-                style={{ background: 'transparent', border: '1px solid #3f3f46', color: '#a1a1aa', padding: '4px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontFamily: 'Roboto, sans-serif', display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                <X style={{ width: 12, height: 12 }} /> Close
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button
+                  onClick={handlePreviewRestart}
+                  style={{ background: 'transparent', border: '1px solid #3f3f46', color: '#a1a1aa', padding: '4px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontFamily: 'Roboto, sans-serif', display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  <RotateCcw style={{ width: 12, height: 12 }} /> Restart
+                </button>
+                <button
+                  onClick={() => { setIsPreviewOpen(false); if (previewBlobUrl) { URL.revokeObjectURL(previewBlobUrl); setPreviewBlobUrl(null); } }}
+                  style={{ background: 'transparent', border: '1px solid #3f3f46', color: '#a1a1aa', padding: '4px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontFamily: 'Roboto, sans-serif', display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  <X style={{ width: 12, height: 12 }} /> Close
+                </button>
+              </div>
             </div>
             {/* iframe — loads the actual SCORM runtime HTML */}
             <iframe
+              ref={previewFrameRef}
               src={previewBlobUrl}
               title="SCORM Preview"
               style={{ flex: 1, border: 'none', background: '#18181b', display: 'block', width: '100%' }}
