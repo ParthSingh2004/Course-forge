@@ -1659,25 +1659,14 @@ class CourseForgeRuntime {
         const existingScore = this.state.quizScores[fbId];
         const isCorrectAlready = existingScore && existingScore.score >= 1;
         const answers = normalizeFillBlankAnswers(comp);
-        let blankIndex = 0;
-        let qHtml = comp.question.replace(/____/g, () => {
-          const currentIndex = blankIndex++;
+        let qHtml = comp.question;
+        qHtml += `<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">${answers.map((answer, index) => {
           const valueAttr = isCorrectAlready
-            ? ` value="${escapeAttribute(answers[currentIndex] || "")}"`
+            ? ` value="${escapeAttribute(answer || "")}"`
             : "";
           const disabledAttr = isCorrectAlready ? " disabled" : "";
-          return `<input id="fitb-${fbId}-${currentIndex}" type="text" placeholder="Answer ${currentIndex + 1}" style="display:inline-block;min-width:120px;max-width:180px;margin:0 6px;padding:6px 10px;border-radius:8px;border:1.5px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;outline:none;font-family:inherit;vertical-align:middle;${isCorrectAlready ? "opacity:0.6;" : ""}"${valueAttr}${disabledAttr}/>`;
-        });
-        if (blankIndex < answers.length) {
-          qHtml += `<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">${answers.slice(blankIndex).map((answer, index) => {
-            const answerIndex = blankIndex + index;
-            const valueAttr = isCorrectAlready
-              ? ` value="${escapeAttribute(answer || "")}"`
-              : "";
-            const disabledAttr = isCorrectAlready ? " disabled" : "";
-            return `<input id="fitb-${fbId}-${answerIndex}" type="text" placeholder="Answer ${answerIndex + 1}" style="padding:10px 14px;border-radius:8px;border:1.5px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;outline:none;font-family:inherit;${isCorrectAlready ? "opacity:0.6;" : ""}"${valueAttr}${disabledAttr}/>`;
-          }).join("")}</div>`;
-        }
+          return `<input id="fitb-${fbId}-${index}" type="text" placeholder="Answer ${index + 1}" style="padding:10px 14px;border-radius:8px;border:1.5px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;outline:none;font-family:inherit;${isCorrectAlready ? "opacity:0.6;" : ""}"${valueAttr}${disabledAttr}/>`;
+        }).join("")}</div>`;
 
         const fbDiv = document.createElement("div");
         fbDiv.innerHTML = `

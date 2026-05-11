@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerClick, ListChecks, Trash2, GripVertical, FileUp, Globe, BookOpen, ChevronRight, CreditCard, Video, RotateCcw, Play, List, Quote, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify, ShieldCheck, ToggleLeft, PenLine, Mic, FileText, Table, Save, CheckCircle, Eye, X, ChevronDown, Copy } from 'lucide-react';
+import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerClick, ListChecks, Trash2, GripVertical, FileUp, Globe, BookOpen, ChevronRight, CreditCard, Video, RotateCcw, Play, List, Quote, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify, ShieldCheck, ToggleLeft, PenLine, Mic, FileText, Table, Save, CheckCircle, Eye, X, ChevronDown, Copy, Plus } from 'lucide-react';
 import Dashboard from './Dashboard';
 import { createLocalCourse, saveCourseToBrowser } from './utils/storage';
 
@@ -137,6 +137,13 @@ const cloneSlideWithFreshIds = (slide, copyNumber = null) => ({
   id: makeEditorId('slide'),
   title: copyNumber ? `${slide.title || 'Untitled Slide'} Copy ${copyNumber}` : `${slide.title || 'Untitled Slide'} Copy`,
   elements: (slide.elements || []).map(cloneBlockWithFreshIds),
+});
+
+const createBlankSlide = (slideNumber) => ({
+  id: makeEditorId('slide'),
+  type: 'slide',
+  title: `Slide ${slideNumber}`,
+  elements: [],
 });
 
 const STYLES = `
@@ -1904,6 +1911,14 @@ function ImageBlock({ block, onUpdate }) {
               <option value="75%">75%</option>
               <option value="100%">100%</option>
             </select>
+            <button
+              type="button"
+              onClick={() => onUpdate(block.id, { image: null, imageUrl: null, src: null, caption: '' })}
+              title="Remove image"
+              style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'transparent', border: '1px solid #EAD0D0', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', color: '#8b1a1a', fontSize: '0.7rem', fontWeight: 600 }}
+            >
+              <X style={{ width: 11, height: 11 }} /> Remove
+            </button>
           </div>
           <input
             type="text"
@@ -2443,19 +2458,40 @@ function VideoBlock({ block, onUpdate }) {
             </div>
           </div>
         ) : embedUrl ? (
-          <iframe
-            className="cf-video-embed"
-            src={embedUrl}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            title="Embedded video"
-          />
+          <div style={{ position: 'relative' }}>
+            <iframe
+              className="cf-video-embed"
+              src={embedUrl}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              title="Embedded video"
+            />
+            <button
+              type="button"
+              onClick={() => { onUpdate(block.id, { videoUrl: '', isLocal: false, fileName: '' }); setUrlDraft(''); }}
+              title="Remove video"
+              style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
+            >
+              <X style={{ width: 12, height: 12 }} /> Remove Video
+            </button>
+          </div>
         ) : (
-          <video
-            className="cf-video-native"
-            src={block.videoUrl}
-            controls
-          />
+          <div style={{ position: 'relative' }}>
+            <video
+              className="cf-video-native"
+              src={block.videoUrl}
+              controls
+              style={{ width: '100%', display: 'block' }}
+            />
+            <button
+              type="button"
+              onClick={() => { onUpdate(block.id, { videoUrl: '', isLocal: false, fileName: '' }); setUrlDraft(''); }}
+              title="Remove video"
+              style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
+            >
+              <X style={{ width: 12, height: 12 }} /> Remove Video
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -2792,8 +2828,24 @@ function App() {
   const closeAIModal = () => { setShowAIModal(false); setAiPrompt(''); };
 
   const addSlide = () => {
-    const newSlide = { id: Date.now(), type: 'slide', title: `Slide ${slides.length + 1}`, elements: [] };
+    const newSlide = createBlankSlide(slides.length + 1);
     setSlides(prev => [...prev, newSlide]);
+  };
+
+  const insertSlideNextTo = (slideId) => {
+    let insertedSlideId = null;
+    setSlides(prev => {
+      const slideIndex = prev.findIndex(s => s.id === slideId);
+      if (slideIndex < 0) return prev;
+
+      const insertedSlide = createBlankSlide(prev.length + 1);
+      insertedSlideId = insertedSlide.id;
+
+      const nextSlides = [...prev];
+      nextSlides.splice(slideIndex + 1, 0, insertedSlide);
+      return nextSlides;
+    });
+    if (insertedSlideId) setActiveSlideId(insertedSlideId);
   };
 
   const deleteSlide = (slideId) => {
@@ -3030,15 +3082,39 @@ function App() {
       if (!response.ok) throw new Error("Upload failed");
       const data = await response.json();
       const importedBlocks = data.blocks.map((block, index) => ({ ...block, id: Date.now() + index }));
-      const newSlides = importedBlocks.map((b, i) => {
+      const newSlides = data.blocks.map((b, i) => {
+        // Normalize background fields from the parser into the editor format
+        let background = b.background || null;
+        if (!background) {
+          if (b.backgroundColor) {
+            background = { type: 'color', value: b.backgroundColor };
+          } else if (b.backgroundImage) {
+            background = { type: 'image', value: b.backgroundImage };
+          }
+        }
+
+        // If a transition was detected, prepend an informational text block
+        let elements = (b.elements || []).map((el, j) => ({ ...el, id: Date.now() + i * 1000 + j + 1 }));
+        if (b.transition) {
+          elements = [
+            {
+              id: Date.now() + i * 1000,
+              type: 'text',
+              content: `<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:#8b1a1a;background:#fff5f5;padding:4px 10px;border-radius:4px;display:inline-block;">▶ TRANSITION: ${b.transition}</div>`,
+            },
+            ...elements,
+          ];
+        }
+
         if (b.type === 'slide') {
           return {
             ...b,
-            id: b.id || Date.now() + i,
-            elements: (b.elements || []).map((el, j) => ({ ...el, id: Date.now() + i * 1000 + j }))
+            id: b.id || (Date.now() + i),
+            background: background || undefined,
+            elements,
           };
         }
-        return { id: Date.now() + i, type: 'slide', title: `Imported Slide ${i + 1}`, elements: [b] };
+        return { id: Date.now() + i, type: 'slide', title: `Imported Slide ${i + 1}`, background: background || undefined, elements: [b] };
       });
       setSlides(prev => [...prev, ...newSlides]);
     } catch {
@@ -3102,7 +3178,7 @@ function App() {
     if (!validateCourseForExport()) return;
     setIsExporting(true);
     setExportProgress(0);
-    setExportLabel('Preparing course data…');
+    setExportLabel('Preparing SCORM 1.2 data…');
     try {
       // Stage 1: Preparing
       setExportProgress(10);
@@ -3120,7 +3196,7 @@ function App() {
         setExportProgress(pct);
       }, 400);
 
-      setExportLabel('Generating SCORM package…');
+      setExportLabel('Generating SCORM 1.2 package…');
       const response = await fetch(buildApiUrl('/api/export/scorm'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3149,7 +3225,7 @@ function App() {
       setExportProgress(100);
       await new Promise(r => setTimeout(r, 1200));
     } catch {
-      alert("Failed to export SCORM package.");
+      alert("Failed to export SCORM 1.2 package.");
     } finally {
       setIsExporting(false);
       setExportProgress(0);
@@ -3395,11 +3471,13 @@ function App() {
                 />
               </div>
             </div>
-            <input
+            <textarea
               className="cf-quiz-q-input"
               value={block.question}
               onChange={(e) => updateBlock(block.id, { question: e.target.value })}
               placeholder="Enter your question..."
+              rows={3}
+              style={{ resize: 'vertical', minHeight: 84 }}
             />
             <p className="cf-fitb-hint" style={{ marginTop: '0.5rem', marginBottom: '0.75rem' }}>
               Select the option that should be treated as the correct answer.
@@ -3540,11 +3618,13 @@ function App() {
                 />
               </div>
             </div>
-            <input
+            <textarea
               className="cf-quiz-q-input"
               value={block.question}
               onChange={(e) => updateBlock(block.id, { question: e.target.value })}
               placeholder="Enter your question..."
+              rows={3}
+              style={{ resize: 'vertical', minHeight: 84 }}
             />
             {block.options.map((option, index) => (
               <div key={index} className="cf-quiz-option">
@@ -3702,11 +3782,13 @@ function App() {
                 />
               </div>
             </div>
-            <input
+            <textarea
               className="cf-quiz-q-input"
               value={block.question}
               onChange={(e) => updateBlock(block.id, { question: e.target.value })}
               placeholder="Enter a statement..."
+              rows={3}
+              style={{ resize: 'vertical', minHeight: 84 }}
             />
             <div className="cf-tf-options">
               <button
@@ -3787,11 +3869,13 @@ function App() {
                 />
               </div>
             </div>
-            <input
+            <textarea
               className="cf-quiz-q-input"
               value={block.question}
               onChange={(e) => updateFillBlankQuestion(e.target.value)}
               placeholder="Enter the question or sentence..."
+              rows={3}
+              style={{ resize: 'vertical', minHeight: 84 }}
             />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginTop: '0.75rem' }}>
               <p className="cf-fitb-hint" style={{ marginBottom: 0 }}>
@@ -4003,7 +4087,16 @@ function App() {
               </button>
             </div>
             {block.audioUrl ? (
-              <audio className="cf-audio-player" controls src={block.audioUrl} />
+              <div>
+                <audio className="cf-audio-player" controls src={block.audioUrl} style={{ width: '100%' }} />
+                <button
+                  type="button"
+                  onClick={() => updateBlock(block.id, { audioUrl: '', mediaId: '', isUploading: false })}
+                  style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', border: '1px solid #EAD0D0', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', color: '#ffffff', fontSize: '0.75rem', fontWeight: 600 }}
+                >
+                  <X style={{ width: 12, height: 12 }} /> Remove Audio
+                </button>
+              </div>
             ) : (
               <label className="cf-audio-upload-zone">
                 <Mic style={{ width: 24, height: 24, opacity: 0.5, marginBottom: 6 }} />
@@ -4174,7 +4267,7 @@ function App() {
                     onClick={() => { setIsExportMenuOpen(false); handleExportScorm(); }}
                     style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.55rem', background: '#fff', color: '#8b1a1a', border: 'none', borderRadius: 8, padding: '0.65rem 0.75rem', cursor: 'pointer', fontFamily: 'Roboto', fontWeight: 600 }}
                   >
-                    <Download style={{ width: 13, height: 13 }} /> Export as SCORM
+                    <Download style={{ width: 13, height: 13 }} /> Export as SCORM 1.2
                   </button>
                   <button
                     type="button"
@@ -4487,6 +4580,27 @@ function App() {
                     >
                       <Copy style={{ width: 15, height: 15 }} />
                       Duplicate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => insertSlideNextTo(activeSlideId)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        background: '#fff',
+                        border: '1px solid #e8d8d8',
+                        borderRadius: 8,
+                        padding: '0.55rem 0.9rem',
+                        cursor: 'pointer',
+                        color: '#8b1a1a',
+                        fontFamily: 'Roboto',
+                        fontWeight: 600,
+                      }}
+                      title="Add a new slide after this slide"
+                    >
+                      <Plus style={{ width: 15, height: 15 }} />
+                      Add Slide
                     </button>
                     <button
                       type="button"

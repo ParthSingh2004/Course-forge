@@ -518,42 +518,6 @@ def blocks_to_slides(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return slides
  
  
-# ---------------------------------------------------------------------------
-# AUTO-GENERATE TRIGGER RULES FROM QUIZ BLOCKS
-# ---------------------------------------------------------------------------
- 
-def generate_quiz_triggers(slides: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Generate basic trigger rules for quiz components."""
-    triggers = []
- 
-    for slide in slides:
-        for layer in slide.get("layers", []):
-            for comp in layer.get("components", []):
-                if comp.get("type") not in ("quiz", "multi_select", "matching", "true_false", "fill_blanks"):
-                    continue
- 
-                quiz_id = comp["id"]
- 
-                # Trigger: show feedback on quiz submit
-                triggers.append({
-                    "id": _make_id("trigger"),
-                    "event": {"type": "quizSubmit", "quizId": quiz_id},
-                    "actions": [
-                        {
-                            "type": "showFeedback",
-                            "message": "Answer submitted!",
-                            "feedbackType": "info",
-                        }
-                    ],
-                    "oneShot": False,
-                })
- 
-    return triggers
- 
- 
-# ---------------------------------------------------------------------------
-# IMSMANIFEST.XML GENERATION (SCORM 1.2 COMPLIANT)
-# ---------------------------------------------------------------------------
  
 def generate_manifest(
     title: str,
@@ -1073,18 +1037,12 @@ def _get_fallback_runtime_js() -> str:
           var fbCS = comp.caseSensitive ? 'true' : 'false';
           var fbAnswers = Array.isArray(comp.answers) && comp.answers.length ? comp.answers : [comp.answer || ''];
           var fbAnsSafe = JSON.stringify(fbAnswers).replace(/'/g, "&#39;");
-          var fbBlankIndex = 0;
-          var fbQuestion = comp.question ? String(comp.question).replace(/____/g, function() {
-            var currentIndex = fbBlankIndex++;
-            return '<input id="fitb-' + fbId + '-' + currentIndex + '" type="text" placeholder="Answer ' + (currentIndex + 1) + '" style="display:inline-block;min-width:120px;max-width:180px;margin:0 6px;padding:6px 10px;border-radius:8px;border:1.5px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;outline:none;font-family:inherit;vertical-align:middle;"/>';
-          }) : "";
-          if (fbBlankIndex < fbAnswers.length) {
-            fbQuestion += '<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">';
-            for (var fi = fbBlankIndex; fi < fbAnswers.length; fi++) {
-              fbQuestion += '<input id="fitb-' + fbId + '-' + fi + '" type="text" placeholder="Answer ' + (fi + 1) + '" style="padding:10px 14px;border-radius:8px;border:1.5px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;outline:none;font-family:inherit;"/>';
-            }
-            fbQuestion += '</div>';
+          var fbQuestion = comp.question ? String(comp.question) : "";
+          fbQuestion += '<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">';
+          for (var fi = 0; fi < fbAnswers.length; fi++) {
+            fbQuestion += '<input id="fitb-' + fbId + '-' + fi + '" type="text" placeholder="Answer ' + (fi + 1) + '" style="padding:10px 14px;border-radius:8px;border:1.5px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;outline:none;font-family:inherit;"/>';
           }
+          fbQuestion += '</div>';
           el.innerHTML = '<div class="cf-rt-quiz-badge">FILL IN THE BLANK</div>' +
             '<div class="cf-rt-quiz-question">' + fbQuestion + '</div>' +
             '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">' +
@@ -2291,7 +2249,7 @@ def build_course_definition(
                   lockOnExhaust (bool)
     """
     slides = blocks_to_slides(blocks)
-    triggers = generate_quiz_triggers(slides)
+    triggers = []
  
     # Default policy — matches what the admin UI shows on first load
     resolved_policy = {
