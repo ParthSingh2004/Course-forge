@@ -1635,7 +1635,7 @@ class CourseForgeRuntime {
             ? ` value="${escapeAttribute(answers[currentIndex] || "")}"`
             : "";
           const disabledAttr = isCorrectAlready ? " disabled" : "";
-          return `<input id="fitb-${fbId}-${currentIndex}" type="text" placeholder="Answer ${currentIndex + 1}" style="display:inline-block;min-width:120px;max-width:180px;margin:0 6px;padding:6px 10px;border-radius:8px;border:1.5px solid #27272a;background:#09090b;color:#fafafa;font-size:14px;outline:none;font-family:inherit;vertical-align:middle;${isCorrectAlready ? "opacity:0.6;" : ""}"${valueAttr}${disabledAttr}/>`;
+          return `<input id="fitb-${fbId}-${currentIndex}" type="text" placeholder="Answer ${currentIndex + 1}" style="display:inline-block;min-width:120px;max-width:180px;margin:0 6px;padding:6px 10px;border-radius:8px;border:1.5px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;outline:none;font-family:inherit;vertical-align:middle;${isCorrectAlready ? "opacity:0.6;" : ""}"${valueAttr}${disabledAttr}/>`;
         });
         if (blankIndex < answers.length) {
           qHtml += `<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">${answers.slice(blankIndex).map((answer, index) => {
@@ -1644,7 +1644,7 @@ class CourseForgeRuntime {
               ? ` value="${escapeAttribute(answer || "")}"`
               : "";
             const disabledAttr = isCorrectAlready ? " disabled" : "";
-            return `<input id="fitb-${fbId}-${answerIndex}" type="text" placeholder="Answer ${answerIndex + 1}" style="padding:10px 14px;border-radius:8px;border:1.5px solid #27272a;background:#09090b;color:#fafafa;font-size:14px;outline:none;font-family:inherit;${isCorrectAlready ? "opacity:0.6;" : ""}"${valueAttr}${disabledAttr}/>`;
+            return `<input id="fitb-${fbId}-${answerIndex}" type="text" placeholder="Answer ${answerIndex + 1}" style="padding:10px 14px;border-radius:8px;border:1.5px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;outline:none;font-family:inherit;${isCorrectAlready ? "opacity:0.6;" : ""}"${valueAttr}${disabledAttr}/>`;
           }).join("")}</div>`;
         }
 

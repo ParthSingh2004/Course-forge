@@ -4149,7 +4149,7 @@ function App() {
                 style={{ minWidth: 150, justifyContent: 'space-between' }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                  <Download style={{ width: 13, height: 13 }} /> Export Lesson
+                  <Download style={{ width: 13, height: 13 }} /> Export
                 </span>
                 <ChevronDown style={{ width: 13, height: 13, transform: isExportMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }} />
               </button>

@@ -1076,12 +1076,12 @@ def _get_fallback_runtime_js() -> str:
           var fbBlankIndex = 0;
           var fbQuestion = comp.question ? String(comp.question).replace(/____/g, function() {
             var currentIndex = fbBlankIndex++;
-            return '<input id="fitb-' + fbId + '-' + currentIndex + '" type="text" placeholder="Answer ' + (currentIndex + 1) + '" style="display:inline-block;min-width:120px;max-width:180px;margin:0 6px;padding:6px 10px;border-radius:8px;border:1.5px solid #27272a;background:#09090b;color:#fafafa;font-size:14px;outline:none;font-family:inherit;vertical-align:middle;"/>';
+            return '<input id="fitb-' + fbId + '-' + currentIndex + '" type="text" placeholder="Answer ' + (currentIndex + 1) + '" style="display:inline-block;min-width:120px;max-width:180px;margin:0 6px;padding:6px 10px;border-radius:8px;border:1.5px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;outline:none;font-family:inherit;vertical-align:middle;"/>';
           }) : "";
           if (fbBlankIndex < fbAnswers.length) {
             fbQuestion += '<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">';
             for (var fi = fbBlankIndex; fi < fbAnswers.length; fi++) {
-              fbQuestion += '<input id="fitb-' + fbId + '-' + fi + '" type="text" placeholder="Answer ' + (fi + 1) + '" style="padding:10px 14px;border-radius:8px;border:1.5px solid #27272a;background:#09090b;color:#fafafa;font-size:14px;outline:none;font-family:inherit;"/>';
+              fbQuestion += '<input id="fitb-' + fbId + '-' + fi + '" type="text" placeholder="Answer ' + (fi + 1) + '" style="padding:10px 14px;border-radius:8px;border:1.5px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;outline:none;font-family:inherit;"/>';
             }
             fbQuestion += '</div>';
           }
