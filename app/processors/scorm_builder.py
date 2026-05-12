@@ -449,6 +449,9 @@ def _block_to_component(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
     animation = block.get("animation", "none")
     comp["animation"] = animation if animation in allowed_animations else "none"
     comp["animationDelay"] = block.get("animationDelay", 0)
+    # Pass blockFormat through to the runtime so wrappers can be styled
+    if "blockFormat" in block:
+        comp["blockFormat"] = block["blockFormat"]
     return comp
 
 

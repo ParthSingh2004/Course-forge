@@ -1104,6 +1104,49 @@ class CourseForgeRuntime {
 
     const delay = (comp as any).animationDelay || 0;
 
+    // Apply blockFormat styles (set by the author in the Format panel)
+    const fmt = (comp as any).blockFormat as Record<string, any> | undefined;
+    if (fmt) {
+      // Background color
+      if (fmt.bgColor && fmt.bgColor !== 'none') {
+        const alpha = fmt.bgOpacity !== undefined ? fmt.bgOpacity : 1;
+        const hex = fmt.bgColor.replace('#', '');
+        const r = parseInt(hex.substring(0, 2), 16);
+        const g = parseInt(hex.substring(2, 4), 16);
+        const b = parseInt(hex.substring(4, 6), 16);
+        wrapper.style.background = `rgba(${r},${g},${b},${alpha})`;
+      }
+      // Background image
+      if (fmt.bgImage) {
+        wrapper.style.backgroundImage = `url('${fmt.bgImage}')`;
+        wrapper.style.backgroundSize = fmt.bgImageSize || 'cover';
+        wrapper.style.backgroundPosition = 'center';
+        wrapper.style.backgroundRepeat = 'no-repeat';
+      }
+      // Padding
+      if (fmt.paddingV !== undefined || fmt.paddingH !== undefined) {
+        wrapper.style.padding = `${fmt.paddingV ?? 10}px ${fmt.paddingH ?? 12}px`;
+      }
+      // Border radius
+      if (fmt.borderRadius !== undefined) {
+        wrapper.style.borderRadius = `${fmt.borderRadius}px`;
+      }
+      // Border
+      if (fmt.borderWidth && fmt.borderWidth > 0) {
+        wrapper.style.border = `${fmt.borderWidth}px solid ${fmt.borderColor || '#e8c8c8'}`;
+      }
+      // Width / centering
+      if (fmt.width && fmt.width !== '100%') {
+        wrapper.style.width = fmt.width;
+        wrapper.style.marginLeft = 'auto';
+        wrapper.style.marginRight = 'auto';
+      }
+      // Min height (block length)
+      if (fmt.minHeight && fmt.minHeight > 0) {
+        wrapper.style.minHeight = `${fmt.minHeight}px`;
+      }
+    }
+
     switch (comp.type) {
       case "text": {
         const p = document.createElement("div");
