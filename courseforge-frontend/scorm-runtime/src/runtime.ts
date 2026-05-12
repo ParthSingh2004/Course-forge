@@ -1244,6 +1244,135 @@ class CourseForgeRuntime {
         break;
       }
 
+      case "image-stack": {
+        const stackSlides: any[] = (comp as any).slides || [];
+        let stackIdx = 0;
+        const quizDone: Record<string, boolean> = {};
+
+        const renderStack = () => {
+          wrapper.innerHTML = "";
+          const slide = stackSlides[stackIdx];
+          if (!slide) return;
+
+          // Progress bar
+          const pct = Math.round(((stackIdx + 1) / stackSlides.length) * 100);
+          const progRow = document.createElement("div");
+          progRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:10px;";
+          const label = document.createElement("span");
+          label.style.cssText = "font-size:0.78rem;color:#a3a3a3;white-space:nowrap;";
+          label.textContent = slide.type === "quiz" ? "🧩 Quiz" : `Slide ${stackIdx + 1} / ${stackSlides.length}`;
+          const progTrack = document.createElement("div");
+          progTrack.style.cssText = "flex:1;height:4px;border-radius:2px;background:#2a2a2a;overflow:hidden;";
+          const progFill = document.createElement("div");
+          progFill.style.cssText = `width:${pct}%;height:100%;background:#8B1A1A;transition:width 0.3s;`;
+          progTrack.appendChild(progFill);
+          const pctLabel = document.createElement("span");
+          pctLabel.style.cssText = "font-size:0.78rem;color:#a3a3a3;";
+          pctLabel.textContent = `${pct}%`;
+          progRow.appendChild(label); progRow.appendChild(progTrack); progRow.appendChild(pctLabel);
+          wrapper.appendChild(progRow);
+
+          // Slide card
+          const card = document.createElement("div");
+          card.style.cssText = "border-radius:10px;overflow:hidden;border:1px solid #2a2a2a;min-height:160px;background:#111;";
+
+          if (slide.type === "image") {
+            if (slide.imageUrl) {
+              const img = document.createElement("img");
+              img.src = slide.imageUrl;
+              img.style.cssText = "width:100%;max-height:400px;object-fit:cover;display:block;";
+              card.appendChild(img);
+            }
+            if (slide.caption) {
+              const cap = document.createElement("div");
+              cap.style.cssText = "padding:10px 14px;background:rgba(0,0,0,0.6);color:#d4d4d4;font-size:0.9rem;line-height:1.5;";
+              cap.textContent = slide.caption;
+              card.appendChild(cap);
+            }
+          } else if (slide.type === "quiz") {
+            const qWrap = document.createElement("div");
+            qWrap.style.cssText = "padding:18px;";
+
+            const qTitle = document.createElement("p");
+            qTitle.style.cssText = "color:#fff;font-weight:600;font-size:1rem;margin:0 0 14px 0;";
+            qTitle.textContent = slide.question || "Quiz question";
+            qWrap.appendChild(qTitle);
+
+            const feedbackEl = document.createElement("div");
+
+            (slide.options || []).forEach((opt: string, oi: number) => {
+              const btn = document.createElement("button");
+              btn.style.cssText = "width:100%;text-align:left;background:#1c1c1c;border:1px solid #404040;color:#d4d4d4;padding:9px 14px;border-radius:6px;cursor:pointer;font-size:0.9rem;margin-bottom:8px;transition:all 0.2s;";
+              btn.textContent = opt || `Option ${oi + 1}`;
+              btn.onclick = () => {
+                const correct = oi === slide.correctIndex;
+                if (correct) {
+                  quizDone[slide.id] = true;
+                  btn.style.background = "#052e16"; btn.style.borderColor = "#166534"; btn.style.color = "#4ade80";
+                  feedbackEl.innerHTML = `<div style="margin-top:10px;padding:9px 14px;background:#052e16;border:1px solid #166534;border-radius:6px;color:#4ade80;font-weight:600;font-size:0.88rem;">✅ Correct! You can continue.</div>`;
+                  nextBtn.disabled = false;
+                  nextBtn.style.opacity = "1";
+                  nextBtn.style.cursor = "pointer";
+                  nextBtn.textContent = "Next →";
+                } else {
+                  feedbackEl.innerHTML = `<div style="margin-top:10px;padding:9px 14px;background:#2a0a0a;border:1px solid #7f1d1d;border-radius:6px;color:#f87171;font-weight:600;font-size:0.88rem;display:flex;align-items:center;justify-content:space-between;">
+                    <span>❌ Incorrect — try again!</span>
+                    <button onclick="this.closest('[data-cf-feedback]').previousSibling && void 0" style="background:#7f1d1d;border:none;color:#fca5a5;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:0.8rem;" id="stack-retry-${slide.id}-${stackIdx}">Try Again</button>
+                  </div>`;
+                  // Re-enable buttons on Try Again
+                  const retryBtn = document.getElementById(`stack-retry-${slide.id}-${stackIdx}`);
+                  if (retryBtn) retryBtn.onclick = () => {
+                    feedbackEl.innerHTML = "";
+                    optBtns.forEach(b => { b.disabled = false; b.style.background = "#1c1c1c"; b.style.borderColor = "#404040"; b.style.color = "#d4d4d4"; });
+                  };
+                }
+                optBtns.forEach(b => { b.disabled = true; });
+              };
+              qWrap.appendChild(btn);
+            });
+
+            const optBtns = Array.from(qWrap.querySelectorAll("button")) as HTMLButtonElement[];
+            feedbackEl.setAttribute("data-cf-feedback", "1");
+            qWrap.appendChild(feedbackEl);
+            card.appendChild(qWrap);
+          }
+
+          wrapper.appendChild(card);
+
+          // Nav row
+          const nav = document.createElement("div");
+          nav.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-top:10px;";
+
+          const prevBtn = document.createElement("button");
+          prevBtn.textContent = "← Prev";
+          prevBtn.disabled = stackIdx === 0;
+          prevBtn.style.cssText = `padding:6px 14px;border-radius:6px;border:1px solid #2a2a2a;background:${stackIdx === 0 ? "#111" : "#1c1c1c"};color:${stackIdx === 0 ? "#555" : "#d4d4d4"};cursor:${stackIdx === 0 ? "not-allowed" : "pointer"};font-size:0.85rem;`;
+          prevBtn.onclick = () => { if (stackIdx > 0) { stackIdx--; renderStack(); } };
+
+          // Dots
+          const dots = document.createElement("div");
+          dots.style.cssText = "display:flex;gap:6px;align-items:center;";
+          stackSlides.forEach((s: any, di: number) => {
+            const d = document.createElement("div");
+            d.style.cssText = `width:${di === stackIdx ? "20px" : "8px"};height:8px;border-radius:4px;background:${di === stackIdx ? "#8B1A1A" : s.type === "quiz" ? "#4b5563" : "#3a3a3a"};transition:all 0.2s;`;
+            dots.appendChild(d);
+          });
+
+          const isQuizBlocked = slide.type === "quiz" && !quizDone[slide.id];
+          const nextBtn = document.createElement("button");
+          nextBtn.textContent = isQuizBlocked ? "🔒 Answer to continue" : "Next →";
+          nextBtn.disabled = stackIdx >= stackSlides.length - 1 || isQuizBlocked;
+          nextBtn.style.cssText = `padding:6px 14px;border-radius:6px;border:1px solid #2a2a2a;background:${isQuizBlocked ? "#2a0a0a" : "#1c1c1c"};color:${(stackIdx >= stackSlides.length - 1 || isQuizBlocked) ? "#555" : "#d4d4d4"};cursor:${(stackIdx >= stackSlides.length - 1 || isQuizBlocked) ? "not-allowed" : "pointer"};font-size:0.85rem;`;
+          nextBtn.onclick = () => { if (stackIdx < stackSlides.length - 1 && !isQuizBlocked) { stackIdx++; renderStack(); } };
+
+          nav.appendChild(prevBtn); nav.appendChild(dots); nav.appendChild(nextBtn);
+          wrapper.appendChild(nav);
+        };
+
+        renderStack();
+        break;
+      }
+
       case "interactive-video": {
         wrapper.style.position = "relative";
 
