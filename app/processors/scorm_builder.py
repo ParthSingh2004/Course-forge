@@ -327,7 +327,11 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
  
     if btype == "tabs":
         tabs_data = []
-        for tab in block.get("tabs", []):
+        raw_tabs = block.get("tabs")
+        if not raw_tabs or not isinstance(raw_tabs, list):
+            raw_tabs = [{"title": "Tab 1", "content": "", "image": None}, {"title": "Tab 2", "content": "", "image": None}]
+            
+        for tab in raw_tabs:
             tabs_data.append({
                 "title": tab.get("title", ""),
                 "content": tab.get("content", ""),

@@ -373,6 +373,9 @@ function App() {
     if (type === 'process') {
       newBlock.steps = [{ title: '', content: '' }, { title: '', content: '' }];
     }
+    if (type === 'tabs') {
+      newBlock.tabs = [{ title: 'Tab 1', content: '', image: null }, { title: 'Tab 2', content: '', image: null }];
+    }
     if (type === 'true_false') {
       newBlock.question = '';
       newBlock.correctAnswer = true;
