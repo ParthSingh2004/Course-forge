@@ -74,7 +74,7 @@ class CourseForgeRuntime {
   /**
    * FIX 1 — Cached LMS mastery score.
    * Read once from cmi.student_data.mastery_score immediately after
-   * LMSInitialize() so that checkCompletion() always has the correct,
+   * LMSInitialize() so that  always has the correct,
    * LMS-authoritative passing threshold available, even if the network or
    * LMS becomes unreachable later in the session.
    * null  → LMS did not supply a value; fall back to course policy.
@@ -591,7 +591,6 @@ class CourseForgeRuntime {
     }
 
     this.persistState();
-    this.checkCompletion();
   }
 
   async submitGenericQuiz(quizId: string, score: number): Promise<void> {
@@ -617,7 +616,6 @@ class CourseForgeRuntime {
     }
 
     this.persistState();
-    this.checkCompletion();
   }
 
   // -----------------------------------------------------------------------
