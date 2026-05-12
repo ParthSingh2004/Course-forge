@@ -78,10 +78,17 @@ export default function FlashcardBlock({ block, onUpdate }) {
         onUpdate(block.id, { imageUrl: null });
     };
 
-    // Determine front background based on whether an image URL exists
-    const frontBackgroundStyle = block.imageUrl
-        ? `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url(${block.imageUrl}) center/cover no-repeat`
-        : theme.frontBackground;
+    // Compute front face background styles separately (avoid shorthand conflicts with CSS class)
+    const frontBgStyle = block.imageUrl
+        ? {
+            backgroundImage: `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url("${block.imageUrl}")`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+        }
+        : {
+            background: theme.frontBackground,
+        };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
@@ -141,10 +148,10 @@ export default function FlashcardBlock({ block, onUpdate }) {
 
                     {/* Front */}
                     <div
-                        className="cf-flashcard-face cf-flashcard-front"
+                        className={`cf-flashcard-face cf-flashcard-front${block.imageUrl ? ' cf-flashcard-has-image' : ''}`}
                         style={{
                             position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
-                            background: frontBackgroundStyle,
+                            ...frontBgStyle,
                             border: theme.frontBorder,
                             boxShadow: theme.frontShadow,
                             display: 'flex', flexDirection: 'column', padding: '1.5rem', borderRadius: '12px'

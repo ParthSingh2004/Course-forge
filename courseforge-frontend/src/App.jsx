@@ -157,7 +157,7 @@ function App() {
   const [activeSlideId, setActiveSlideId] = useState(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
-  const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
+  const [previewHtml, setPreviewHtml] = useState(null);
   const previewFrameRef = useRef(null);
 
   const [hasUnsaved, setHasUnsaved] = useState(false);
@@ -764,10 +764,7 @@ function App() {
       });
       if (!res.ok) throw new Error('Preview generation failed');
       const html = await res.text();
-      const blob = new Blob([html], { type: 'text/html' });
-      if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
-      const url = URL.createObjectURL(blob);
-      setPreviewBlobUrl(url);
+      setPreviewHtml(html);
       setIsPreviewOpen(true);
     } catch (e) {
       alert('Could not build preview. Make sure the backend is running.\n' + e.message);
@@ -783,8 +780,10 @@ function App() {
       runtime.restartCourse();
       return;
     }
-    if (previewFrameRef.current && previewBlobUrl) {
-      previewFrameRef.current.src = previewBlobUrl;
+    if (previewFrameRef.current && previewHtml) {
+      // Reload by briefly clearing then resetting srcdoc
+      previewFrameRef.current.srcdoc = '';
+      requestAnimationFrame(() => { if (previewFrameRef.current) previewFrameRef.current.srcdoc = previewHtml; });
     }
   };
 
@@ -1797,7 +1796,7 @@ function App() {
       )}
 
       {/* SCORM Runtime Preview Modal */}
-      {isPreviewOpen && previewBlobUrl && (
+      {isPreviewOpen && previewHtml && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
           <div style={{ width: '100%', maxWidth: '1100px', height: '90vh', display: 'flex', flexDirection: 'column', borderRadius: 12, overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.7)', border: '1px solid #333' }}>
             <div style={{ background: '#0f0f0f', borderBottom: '1px solid #2a2a2a', padding: '0 1.25rem', height: 48, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -1814,7 +1813,7 @@ function App() {
                   <RotateCcw style={{ width: 12, height: 12 }} /> Restart
                 </button>
                 <button
-                  onClick={() => { setIsPreviewOpen(false); if (previewBlobUrl) { URL.revokeObjectURL(previewBlobUrl); setPreviewBlobUrl(null); } }}
+                  onClick={() => { setIsPreviewOpen(false); setPreviewHtml(null); }}
                   style={{ background: 'transparent', border: '1px solid #3f3f46', color: '#a1a1aa', padding: '4px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontFamily: 'Roboto, sans-serif', display: 'flex', alignItems: 'center', gap: 6 }}
                 >
                   <X style={{ width: 12, height: 12 }} /> Close
@@ -1823,10 +1822,10 @@ function App() {
             </div>
             <iframe
               ref={previewFrameRef}
-              src={previewBlobUrl}
+              srcDoc={previewHtml || ''}
               title="SCORM Preview"
               style={{ flex: 1, border: 'none', background: '#18181b', display: 'block', width: '100%' }}
-              sandbox="allow-scripts allow-same-origin allow-forms"
+              sandbox="allow-scripts allow-forms"
             />
           </div>
         </div>
