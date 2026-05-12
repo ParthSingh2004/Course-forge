@@ -204,7 +204,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             s_type = slide.get("type", "image")
             s = {"id": str(slide.get("id", _make_id("slide"))), "type": s_type}
             if s_type == "image":
-                s["imageUrl"] = _resolve_image_src(slide, "imageUrl")
+                s["imageUrl"] = _resolve_image_src(slide)
                 s["caption"] = slide.get("caption", "")
             elif s_type == "quiz":
                 s["question"] = slide.get("question", "")
