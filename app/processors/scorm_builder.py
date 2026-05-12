@@ -941,9 +941,10 @@ def _get_fallback_runtime_js() -> str:
                 activeHotspotId = hotspot.id;
                 activeHotspotPopup = document.createElement('div');
                 activeHotspotPopup.style.position = 'absolute';
-                activeHotspotPopup.style.top = '50%';
-                activeHotspotPopup.style.left = '50%';
-                activeHotspotPopup.style.transform = 'translate(-50%, -50%)';
+                activeHotspotPopup.style.top = hotspot.y + '%';
+                activeHotspotPopup.style.left = hotspot.x + '%';
+                activeHotspotPopup.style.transform = 'translate(' + (hotspot.x > 50 ? '-105%' : '5%') + ', ' + (hotspot.y > 50 ? '-105%' : '5%') + ')';
+                activeHotspotPopup.style.maxWidth = '300px';
                 activeHotspotPopup.style.background = '#000';
                 activeHotspotPopup.style.border = '1px solid #404040';
                 activeHotspotPopup.style.color = '#fff';

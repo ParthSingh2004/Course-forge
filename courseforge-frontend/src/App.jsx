@@ -2012,7 +2012,38 @@ function ImageBlock({ block, onUpdate }) {
 // ── Image Hotspot Component ──
 function ImageHotspotBlock({ block, onUpdate, readOnly }) {
   const [activeHotspotId, setActiveHotspotId] = useState(null);
+  const [draggingDot, setDraggingDot] = useState(null);
+  const [dragPos, setDragPos] = useState(null);
+  const imageRef = useRef(null);
   const imageSrc = block.imageUrl || block.image || block.src || '';
+
+  useEffect(() => {
+    if (!draggingDot) return;
+    const handleMouseMove = (e) => {
+      if (!imageRef.current) return;
+      const rect = imageRef.current.getBoundingClientRect();
+      let x = ((e.clientX - rect.left) / rect.width) * 100;
+      let y = ((e.clientY - rect.top) / rect.height) * 100;
+      setDragPos({ x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) });
+    };
+    const handleMouseUp = () => {
+      setDraggingDot(null);
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingDot]);
+
+  useEffect(() => {
+    if (!draggingDot && dragPos) {
+      const newHotspots = (block.hotspots || []).map(h => h.id === dragPos.id ? { ...h, x: dragPos.x, y: dragPos.y } : h);
+      onUpdate(block.id, { hotspots: newHotspots });
+      setDragPos(null);
+    }
+  }, [draggingDot, dragPos, block.id, block.hotspots, onUpdate]);
 
   const handleUpload = (e) => {
     const file = e.target.files?.[0];
@@ -2062,27 +2093,38 @@ function ImageHotspotBlock({ block, onUpdate, readOnly }) {
           <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleUpload} />
         </label>
       ) : (
-        <div style={{ position: 'relative', width: '100%', display: 'inline-block' }}>
+        <div ref={imageRef} style={{ position: 'relative', width: '100%', display: 'inline-block' }}>
           <img
             src={imageSrc}
             alt="Hotspot Base"
             style={{ width: '100%', borderRadius: 8, display: 'block', cursor: readOnly ? 'default' : 'crosshair' }}
             onClick={handleImageClick}
           />
-          {(block.hotspots || []).map(hotspot => (
+          {(block.hotspots || []).map(hotspot => {
+            const isDragging = draggingDot === hotspot.id;
+            const x = isDragging && dragPos ? dragPos.x : hotspot.x;
+            const y = isDragging && dragPos ? dragPos.y : hotspot.y;
+            return (
             <div
               key={hotspot.id}
+              onMouseDown={(e) => {
+                if (readOnly) return;
+                e.stopPropagation();
+                setDraggingDot(hotspot.id);
+                setDragPos({ id: hotspot.id, x: hotspot.x, y: hotspot.y });
+                setActiveHotspotId(hotspot.id);
+              }}
               className="absolute w-6 h-6 bg-red-700 rounded-full border-2 border-white transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
-              style={{ left: `${hotspot.x}%`, top: `${hotspot.y}%`, position: 'absolute', width: 24, height: 24, backgroundColor: '#b91c1c', borderRadius: '50%', border: '2px solid white', transform: 'translate(-50%, -50%)', zIndex: 10, cursor: 'pointer' }}
+              style={{ left: `${x}%`, top: `${y}%`, position: 'absolute', width: 24, height: 24, backgroundColor: '#b91c1c', borderRadius: '50%', border: '2px solid white', transform: 'translate(-50%, -50%)', zIndex: 10, cursor: readOnly ? 'pointer' : 'move' }}
               onClick={(e) => {
                 e.stopPropagation();
-                setActiveHotspotId(activeHotspotId === hotspot.id ? null : hotspot.id);
+                if (readOnly) setActiveHotspotId(activeHotspotId === hotspot.id ? null : hotspot.id);
               }}
             />
-          ))}
+          )})}
 
           {activeHotspot && readOnly && (
-            <div className="bg-black border border-neutral-700 text-white p-4 rounded-md shadow-xl z-50" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#000', border: '1px solid #404040', color: '#fff', padding: '1rem', borderRadius: 6, zIndex: 50, minWidth: 250 }}>
+            <div className="bg-black border border-neutral-700 text-white p-4 rounded-md shadow-xl z-50" style={{ position: 'absolute', top: `${activeHotspot.y}%`, left: `${activeHotspot.x}%`, transform: `translate(${activeHotspot.x > 50 ? '-105%' : '5%'}, ${activeHotspot.y > 50 ? '-105%' : '5%'})`, background: '#000', border: '1px solid #404040', color: '#fff', padding: '1rem', borderRadius: 6, zIndex: 50, minWidth: 250, maxWidth: 300 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <h4 style={{ margin: 0, fontSize: '1.1rem' }}>{activeHotspot.title}</h4>
                 <button onClick={() => setActiveHotspotId(null)} style={{ background: 'transparent', border: 'none', color: '#a3a3a3', cursor: 'pointer' }}><X size={16} /></button>
