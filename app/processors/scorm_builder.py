@@ -716,7 +716,9 @@ def _get_fallback_runtime_js() -> str:
   // ---------------------------------------------------------------------------
   // COMPLETION CHECK — called after every interaction and slide render
   // ---------------------------------------------------------------------------
-  function checkCompletion() {
+  function checkCompletion(explicitFinish) {
+    if (!explicitFinish) return;
+
     // FIX: Once the LMS has received 'passed', never re-evaluate. The learner
     //      has succeeded; further navigation must not downgrade the status.
     if (coursePassedFlag) return;
@@ -1698,6 +1700,7 @@ def _get_fallback_runtime_js() -> str:
   // Auto-finish on tab/window close
   window.addEventListener('beforeunload', function() {
     if (API) {
+      checkCompletion(true);
       try { API.LMSCommit(''); API.LMSFinish(''); } catch(e) {}
     }
   });

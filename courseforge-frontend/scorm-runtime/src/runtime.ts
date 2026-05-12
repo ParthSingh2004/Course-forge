@@ -591,6 +591,7 @@ class CourseForgeRuntime {
     }
 
     this.persistState();
+    this.reportScore();
   }
 
   async submitGenericQuiz(quizId: string, score: number): Promise<void> {
@@ -616,6 +617,7 @@ class CourseForgeRuntime {
     }
 
     this.persistState();
+    this.reportScore();
   }
 
   // -----------------------------------------------------------------------
@@ -768,6 +770,10 @@ class CourseForgeRuntime {
    * take precedence over the value baked into the exported package.
    */
   private checkCompletion(explicitFinish: boolean = false): void {
+    if (!explicitFinish) {
+      return;
+    }
+
     const allMandatoryDone = [...this.mandatoryIds].every(
       id => this.state.mandatoryCompleted.includes(id)
     );
