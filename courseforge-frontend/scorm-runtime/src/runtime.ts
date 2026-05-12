@@ -2022,17 +2022,19 @@ class CourseForgeRuntime {
         tableDiv.style.marginBottom = "1rem";
 
         const tableColor = (comp as any).tableColor || "#ffffff";
-        const headerColor = darkenColor(tableColor, 20);
+        const headerColor = (comp as any).headerColor || darkenColor(tableColor, 20);
 
-        let html = `<table style="width:100%; border-collapse:collapse; border:1px solid #3f3f46; color:#1a0a0a; font-size:14px;">`;
+        let html = `<table style="width:100%; border-collapse:collapse; border:1px solid #3f3f46; font-size:14px;">`;
         html += `<thead><tr>`;
         for (const h of comp.headers || []) {
+          // headers may be rich HTML from the editor
           html += `<th style="border:1px solid #3f3f46; padding:10px; background:${headerColor}; font-weight:600; text-align:left;">${h}</th>`;
         }
         html += `</tr></thead><tbody>`;
         for (const row of comp.rows || []) {
           html += `<tr>`;
           for (const cell of row) {
+            // cells may be rich HTML from the editor
             html += `<td style="border:1px solid #3f3f46; padding:10px; background:${tableColor};">${cell}</td>`;
           }
           html += `</tr>`;

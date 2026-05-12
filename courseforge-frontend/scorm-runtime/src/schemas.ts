@@ -200,6 +200,8 @@ export const ComponentSchema = z.discriminatedUnion("type", [
     id: z.string(),
     headers: z.array(z.string()),
     rows: z.array(z.array(z.string())),
+    tableColor: z.string().optional(),
+    headerColor: z.string().optional(),
   }),
   z.object({
     ...BaseComponentProps,

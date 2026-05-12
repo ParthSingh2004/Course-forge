@@ -2608,6 +2608,41 @@ function darkenColor(hex, amount = 30) {
 }
 
 // ── Table component ──
+function TableCellEditor({ value, onChange, bgColor, isHeader }) {
+  const [editing, setEditing] = React.useState(false);
+  return editing ? (
+    <div style={{ minWidth: 140 }}>
+      <RichTextEditor
+        value={value}
+        onChange={onChange}
+        compactToolbar
+        style={{ border: 'none', borderRadius: 0, background: 'transparent' }}
+      />
+      <button
+        onMouseDown={(e) => { e.preventDefault(); setEditing(false); }}
+        style={{ marginTop: 4, padding: '2px 10px', borderRadius: 4, border: '1px solid #EAD0D0', background: 'white', cursor: 'pointer', fontSize: 11, color: '#8b1a1a', fontWeight: 700 }}
+      >
+        Done
+      </button>
+    </div>
+  ) : (
+    <div
+      onClick={() => setEditing(true)}
+      title="Click to edit"
+      style={{
+        minHeight: 28, cursor: 'text', padding: '2px 4px',
+        fontWeight: isHeader ? 700 : 400,
+        color: '#1A0A0A',
+        fontSize: 14,
+        lineHeight: 1.4,
+        outline: 'none',
+        minWidth: 80,
+      }}
+      dangerouslySetInnerHTML={{ __html: value || `<span style="color:#aaa">${isHeader ? 'Header…' : 'Cell…'}</span>` }}
+    />
+  );
+}
+
 function TableBlock({ block, onUpdate }) {
   const updateHeader = (colIdx, val) => {
     const newHeaders = [...block.headers];
@@ -2615,7 +2650,7 @@ function TableBlock({ block, onUpdate }) {
     onUpdate(block.id, { headers: newHeaders });
   };
   const updateCell = (rowIdx, colIdx, val) => {
-    const newRows = [...block.rows];
+    const newRows = block.rows.map(r => [...r]);
     newRows[rowIdx][colIdx] = val;
     onUpdate(block.id, { rows: newRows });
   };
@@ -2641,48 +2676,61 @@ function TableBlock({ block, onUpdate }) {
   };
 
   const tableColor = block.tableColor || '#ffffff';
-  const headerColor = darkenColor(tableColor, 20);
+  const headerColor = block.headerColor || darkenColor(tableColor, 20);
 
   return (
     <div className="cf-table-block" style={{ background: 'white', borderRadius: 12, border: '1px solid #EAD0D0', padding: '1rem', overflowX: 'auto' }}>
-      <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-        <button onClick={addRow} style={{ padding: '0.25rem 0.5rem', borderRadius: 4, border: '1px solid #EAD0D0', background: 'white', cursor: 'pointer', fontSize: '0.8125rem' }}>+ Add Row</button>
-        <button onClick={addCol} style={{ padding: '0.25rem 0.5rem', borderRadius: 4, border: '1px solid #EAD0D0', background: 'white', cursor: 'pointer', fontSize: '0.8125rem' }}>+ Add Column</button>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.75rem', color: '#8b6060', fontWeight: 600 }}>Table Color:</span>
-          <input 
-            type="color" 
-            value={tableColor} 
-            onChange={(e) => onUpdate(block.id, { tableColor: e.target.value })}
-            style={{ width: 24, height: 24, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
-          />
+      {/* Toolbar */}
+      <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <button onClick={addRow} style={{ padding: '0.25rem 0.625rem', borderRadius: 4, border: '1px solid #EAD0D0', background: 'white', cursor: 'pointer', fontSize: '0.8125rem' }}>+ Row</button>
+        <button onClick={addCol} style={{ padding: '0.25rem 0.625rem', borderRadius: 4, border: '1px solid #EAD0D0', background: 'white', cursor: 'pointer', fontSize: '0.8125rem' }}>+ Column</button>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', color: '#8b6060', fontWeight: 600, cursor: 'pointer' }}>
+            Header Color
+            <input
+              type="color"
+              value={headerColor}
+              onChange={(e) => onUpdate(block.id, { headerColor: e.target.value })}
+              style={{ width: 28, height: 28, padding: 0, border: '1px solid #EAD0D0', borderRadius: 4, cursor: 'pointer' }}
+            />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', color: '#8b6060', fontWeight: 600, cursor: 'pointer' }}>
+            Cell Color
+            <input
+              type="color"
+              value={tableColor}
+              onChange={(e) => onUpdate(block.id, { tableColor: e.target.value })}
+              style={{ width: 28, height: 28, padding: 0, border: '1px solid #EAD0D0', borderRadius: 4, cursor: 'pointer' }}
+            />
+          </label>
         </div>
       </div>
+      {/* Table */}
       <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #F0E0E0' }}>
         <thead>
           <tr>
             {block.headers.map((h, i) => (
-              <th key={i} style={{ border: '1px solid #F0E0E0', padding: '0.5rem', background: headerColor, position: 'relative' }}>
-                <input value={h} onChange={(e) => updateHeader(i, e.target.value)} style={{ width: 'calc(100% - 20px)', border: 'none', background: 'transparent', fontWeight: 600, outline: 'none', color: '#1A0A0A' }} placeholder="Header..." />
+              <th key={i} style={{ border: '1px solid #E0D0D0', padding: '0.5rem', background: headerColor, position: 'relative', verticalAlign: 'top' }}>
+                <TableCellEditor value={h} onChange={(v) => updateHeader(i, v)} bgColor={headerColor} isHeader />
                 {block.headers.length > 1 && (
-                  <button onClick={() => deleteCol(i)} style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#C4A0A0', cursor: 'pointer', padding: 0 }} title="Delete column">
-                    <Trash2 style={{ width: 12, height: 12 }} />
+                  <button onClick={() => deleteCol(i)} style={{ position: 'absolute', right: 3, top: 3, background: 'none', border: 'none', color: '#C4A0A0', cursor: 'pointer', padding: 0 }} title="Delete column">
+                    <Trash2 style={{ width: 11, height: 11 }} />
                   </button>
                 )}
               </th>
             ))}
-            <th style={{ width: 40, border: '1px solid #F0E0E0', background: headerColor }}></th>
+            <th style={{ width: 36, border: '1px solid #E0D0D0', background: headerColor }}></th>
           </tr>
         </thead>
         <tbody>
           {block.rows.map((row, rIdx) => (
             <tr key={rIdx}>
               {row.map((cell, cIdx) => (
-                <td key={cIdx} style={{ border: '1px solid #F0E0E0', padding: '0.5rem', background: tableColor }}>
-                  <input value={cell} onChange={(e) => updateCell(rIdx, cIdx, e.target.value)} style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', color: '#1A0A0A' }} placeholder="Cell data..." />
+                <td key={cIdx} style={{ border: '1px solid #F0E0E0', padding: '0.5rem', background: tableColor, verticalAlign: 'top' }}>
+                  <TableCellEditor value={cell} onChange={(v) => updateCell(rIdx, cIdx, v)} bgColor={tableColor} isHeader={false} />
                 </td>
               ))}
-              <td style={{ border: '1px solid #F0E0E0', textAlign: 'center', width: 40, background: tableColor }}>
+              <td style={{ border: '1px solid #F0E0E0', textAlign: 'center', width: 36, background: tableColor, verticalAlign: 'middle' }}>
                 {block.rows.length > 1 && (
                   <button onClick={() => deleteRow(rIdx)} style={{ background: 'none', border: 'none', color: '#C4A0A0', cursor: 'pointer' }} title="Delete row">
                     <Trash2 style={{ width: 14, height: 14 }} />
@@ -2693,6 +2741,7 @@ function TableBlock({ block, onUpdate }) {
           ))}
         </tbody>
       </table>
+      <p style={{ margin: '0.5rem 0 0', fontSize: '0.6875rem', color: '#8b6060' }}>Click any cell to open the rich text editor · Done to save</p>
     </div>
   );
 }
@@ -3006,6 +3055,7 @@ function App() {
         ['', '']
       ];
       newBlock.tableColor = '#ffffff';
+      newBlock.headerColor = '#d5b4b4';
     }
     if (type === 'columns') {
       newBlock.columns = [[], []];
