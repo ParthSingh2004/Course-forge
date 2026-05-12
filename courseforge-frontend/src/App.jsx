@@ -2610,36 +2610,92 @@ function darkenColor(hex, amount = 30) {
 // ── Table component ──
 function TableCellEditor({ value, onChange, bgColor, isHeader }) {
   const [editing, setEditing] = useState(false);
-  return editing ? (
-    <div style={{ minWidth: 140 }}>
-      <RichTextEditor
-        value={value}
-        onChange={onChange}
-        compactToolbar
-        style={{ border: 'none', borderRadius: 0, background: 'transparent' }}
+  const [popupPos, setPopupPos] = useState({ top: 0, left: 0 });
+  const cellRef = useRef(null);
+  const popupRef = useRef(null);
+
+  const openEditor = () => {
+    if (cellRef.current) {
+      const rect = cellRef.current.getBoundingClientRect();
+      const popupWidth = 340;
+      let left = rect.left;
+      // keep popup within viewport
+      if (left + popupWidth > window.innerWidth - 8) {
+        left = window.innerWidth - popupWidth - 8;
+      }
+      setPopupPos({ top: rect.bottom + 6, left: Math.max(8, left) });
+    }
+    setEditing(true);
+  };
+
+  // Close when clicking outside the popup
+  useEffect(() => {
+    if (!editing) return;
+    const handler = (e) => {
+      if (popupRef.current && !popupRef.current.contains(e.target) &&
+          cellRef.current && !cellRef.current.contains(e.target)) {
+        setEditing(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [editing]);
+
+  return (
+    <>
+      {/* Cell display — always stable size */}
+      <div
+        ref={cellRef}
+        onClick={openEditor}
+        title="Click to edit"
+        style={{
+          minHeight: 28, cursor: 'text', padding: '2px 4px',
+          fontWeight: isHeader ? 700 : 400,
+          color: '#1A0A0A', fontSize: 14, lineHeight: 1.4,
+          outline: 'none', minWidth: 80,
+          border: editing ? '1.5px solid #8b1a1a' : '1.5px solid transparent',
+          borderRadius: 3,
+        }}
+        dangerouslySetInnerHTML={{ __html: value || `<span style="color:#aaa">${isHeader ? 'Header…' : 'Cell…'}</span>` }}
       />
-      <button
-        onMouseDown={(e) => { e.preventDefault(); setEditing(false); }}
-        style={{ marginTop: 4, padding: '2px 10px', borderRadius: 4, border: '1px solid #EAD0D0', background: 'white', cursor: 'pointer', fontSize: 11, color: '#8b1a1a', fontWeight: 700 }}
-      >
-        Done
-      </button>
-    </div>
-  ) : (
-    <div
-      onClick={() => setEditing(true)}
-      title="Click to edit"
-      style={{
-        minHeight: 28, cursor: 'text', padding: '2px 4px',
-        fontWeight: isHeader ? 700 : 400,
-        color: '#1A0A0A',
-        fontSize: 14,
-        lineHeight: 1.4,
-        outline: 'none',
-        minWidth: 80,
-      }}
-      dangerouslySetInnerHTML={{ __html: value || `<span style="color:#aaa">${isHeader ? 'Header…' : 'Cell…'}</span>` }}
-    />
+      {/* Floating popup editor — rendered outside the table DOM flow */}
+      {editing && (
+        <div
+          ref={popupRef}
+          style={{
+            position: 'fixed',
+            top: popupPos.top,
+            left: popupPos.left,
+            width: 340,
+            zIndex: 99999,
+            background: 'white',
+            border: '1px solid #EAD0D0',
+            borderRadius: 10,
+            boxShadow: '0 8px 32px rgba(139,26,26,0.18), 0 2px 8px rgba(0,0,0,0.10)',
+            overflow: 'hidden',
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div style={{ padding: '6px 10px', background: '#FDF8F8', borderBottom: '1px solid #EAD0D0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#8b6060', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              {isHeader ? 'Edit Header' : 'Edit Cell'}
+            </span>
+            <button
+              onMouseDown={(e) => { e.preventDefault(); setEditing(false); }}
+              style={{ background: '#8b1a1a', color: 'white', border: 'none', borderRadius: 5, padding: '3px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
+            >
+              Done
+            </button>
+          </div>
+          <RichTextEditor
+            value={value}
+            onChange={onChange}
+            compactToolbar
+            style={{ border: 'none', borderRadius: 0 }}
+          />
+        </div>
+      )}
+    </>
   );
 }
 
