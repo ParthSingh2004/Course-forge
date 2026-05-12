@@ -769,7 +769,7 @@ class CourseForgeRuntime {
    * supply a mastery score. This ensures LMS-administrator overrides always
    * take precedence over the value baked into the exported package.
    */
-  private checkCompletion(): void {
+  private checkCompletion(explicitFinish: boolean = false): void {
     const allMandatoryDone = [...this.mandatoryIds].every(
       id => this.state.mandatoryCompleted.includes(id)
     );
@@ -784,7 +784,17 @@ class CourseForgeRuntime {
       const passingThreshold = this.lmsMasteryScore ?? this.course.policy?.passingScore ?? 0;
 
       const passed = pct >= passingThreshold;
-      const status = passed ? "passed" : "failed";
+      let status: string;
+      
+      if (passed) {
+        status = "passed";
+      } else if (explicitFinish) {
+        status = "failed";
+      } else {
+        // The user hasn't met the passing threshold yet, and hasn't explicitly clicked Finish.
+        // We do not mark as failed immediately to allow them to answer remaining questions.
+        return;
+      }
 
       if (this.scorm.isConnected) {
         this.scorm.setValue("cmi.core.lesson_status", status);
@@ -2361,7 +2371,7 @@ class CourseForgeRuntime {
         }
 
         this.reportScore();
-        this.checkCompletion();
+        this.checkCompletion(true);
         const score = this.calculateScore();
         const xapiReporter = (window as any).__CF_XAPI_REPORT_COMPLETION;
         if (typeof xapiReporter === "function") {

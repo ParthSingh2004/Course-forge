@@ -268,12 +268,11 @@ def _try_extract_audio_from_shape(shape, slide, slide_w, slide_h,
             return
         seen_rids.add(rid)
 
-        part = slide.part.related_parts.get(rid)
-
-        # FIX (Bug 3): related_parts only contains embedded parts.
-        # Linked audio (r:link pointing to an external file) returns None here.
-        # Log it explicitly instead of dropping silently.
-        if part is None:
+        rel = slide.part.rels.get(rid)
+        
+        # FIX (Bug 3): linked audio (r:link pointing to an external file) has
+        # rel.is_external == True. Only embedded audio is supported.
+        if rel is None or getattr(rel, "is_external", False):
             print(
                 f"[pptx_parser] audio '{getattr(shape, 'name', '?')}' on slide "
                 f"uses a linked (external) file (rId={rid}). "
@@ -281,6 +280,8 @@ def _try_extract_audio_from_shape(shape, slide, slide_w, slide_h,
                 f"'Embed media in file' enabled to include this track."
             )
             return
+
+        part = rel.target_part
 
         ext = part.partname.rsplit(".", 1)[-1].lower()
         mime = _AUDIO_MIMES.get(ext, "audio/mpeg")
