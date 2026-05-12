@@ -87,6 +87,20 @@ export const ComponentSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...BaseComponentProps,
+    type: z.literal("image-stack"),
+    id: z.string(),
+    slides: z.array(z.object({
+      id: z.string(),
+      type: z.string(),
+      imageUrl: z.string().optional(),
+      caption: z.string().optional(),
+      question: z.string().optional(),
+      options: z.array(z.string()).optional(),
+      correctIndex: z.number().optional(),
+    })).default([]),
+  }),
+  z.object({
+    ...BaseComponentProps,
     type: z.literal("button"),
     id: z.string(),
     label: z.string(),

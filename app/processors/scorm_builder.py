@@ -196,6 +196,28 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "hotspots": block.get("hotspots", []),
         }
 
+    if btype == "image-stack":
+        slides = []
+        for slide in block.get("slides", []):
+            if not isinstance(slide, dict):
+                continue
+            s_type = slide.get("type", "image")
+            s = {"id": str(slide.get("id", _make_id("slide"))), "type": s_type}
+            if s_type == "image":
+                s["imageUrl"] = _resolve_image_src(slide, "imageUrl")
+                s["caption"] = slide.get("caption", "")
+            elif s_type == "quiz":
+                s["question"] = slide.get("question", "")
+                s["options"] = slide.get("options", [])
+                s["correctIndex"] = slide.get("correctIndex", 0)
+            slides.append(s)
+
+        return {
+            "type": "image-stack",
+            "id": bid,
+            "slides": slides,
+        }
+
     if btype == "interactive-video":
         url = block.get("videoUrl") or block.get("video_url") or ""
         interactions = []
