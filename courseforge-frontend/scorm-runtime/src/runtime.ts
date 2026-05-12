@@ -2495,10 +2495,15 @@ class CourseForgeRuntime {
   }
 
   private renderFlashcardHTML(fc: Extract<Component, { type: "flashcard" }>): string {
+    const imageUrl = (fc as any).imageUrl as string | undefined;
+    const frontBg = imageUrl
+      ? `linear-gradient(rgba(0,0,0,0.4),rgba(0,0,0,0.4)),url('${imageUrl}') center/cover no-repeat`
+      : (fc.frontBackground || "linear-gradient(145deg, #1a0a0a 0%, #3d1010 60%, #6b1a1a 100%)");
+
     return `
       <div class="cf-rt-flashcard-scene">
         <div class="cf-rt-flashcard-inner">
-          <div class="cf-rt-flashcard-face cf-rt-flashcard-front" style="background:${fc.frontBackground || "linear-gradient(145deg, #1a0a0a 0%, #3d1010 60%, #6b1a1a 100%)"};border:1px solid ${fc.frontBorder || "#4d2020"};box-shadow:0 8px 32px ${fc.frontShadow || "rgba(139,26,26,0.25)"};">
+          <div class="cf-rt-flashcard-face cf-rt-flashcard-front" style="background:${frontBg};border:1px solid ${fc.frontBorder || "#4d2020"};box-shadow:0 8px 32px ${fc.frontShadow || "rgba(139,26,26,0.25)"};background-size:cover;background-position:center;">
             <div class="cf-rt-flashcard-label" style="color:${fc.frontBadgeColor || "rgba(255,255,255,0.68)"};">QUESTION</div>
             <div class="cf-rt-flashcard-text">${fc.front}</div>
             <div class="cf-rt-flashcard-hint" style="color:rgba(255,255,255,0.78);">↻ Click to flip</div>
