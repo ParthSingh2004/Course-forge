@@ -325,6 +325,20 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "steps": block.get("steps", []),
         }
  
+    if btype == "tabs":
+        tabs_data = []
+        for tab in block.get("tabs", []):
+            tabs_data.append({
+                "title": tab.get("title", ""),
+                "content": tab.get("content", ""),
+                "image": _resolve_image_src(tab) if tab.get("image") else None
+            })
+        return {
+            "type": "tabs",
+            "id": bid,
+            "tabs": tabs_data,
+        }
+ 
     if btype == "list":
         return {
             "type": "list",

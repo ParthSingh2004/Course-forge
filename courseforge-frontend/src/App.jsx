@@ -26,6 +26,7 @@ import ListBlock from './components/blocks/ListBlock';
 import QuoteBlock from './components/blocks/QuoteBlock';
 import MultiSelectBlock from './components/blocks/MultiSelectBlock';
 import MatchingBlock from './components/blocks/MatchingBlock';
+import TabsBlock from './components/blocks/TabsBlock';
 
 // --- API Utilities ---
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://course-forge-tpxk.onrender.com').replace(/\/+$/, '');
@@ -811,6 +812,7 @@ function App() {
       case 'fill_blanks': return <FillBlankBlock block={block} onUpdate={updateBlock} />;
       case 'columns': return <ColumnsGridBlock block={block} onUpdate={updateBlock} readOnly={isPreviewOpen} />;
       case 'audio': return <AudioBlock block={block} onUpdate={updateBlock} />;
+      case 'tabs': return <TabsBlock block={block} onUpdate={updateBlock} />;
       default:
         return (
           <div style={{ color: '#B08080', fontSize: '0.8125rem', padding: '1rem', background: '#FFF5F5', borderRadius: 8, border: '1px dashed #E8C8C8' }}>
@@ -1087,6 +1089,7 @@ function App() {
                     { type: 'audio', icon: <Mic style={{ width: 14, height: 14 }} />, label: 'Audio' },
                     { type: 'table', icon: <Table style={{ width: 14, height: 14 }} />, label: 'Table' },
                     { type: 'columns', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Columns' },
+                    { type: 'tabs', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Tabs' },
                   ].map(({ type, icon, label }) => (
                     <button
                       key={type}

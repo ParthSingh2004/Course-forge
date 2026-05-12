@@ -1287,6 +1287,105 @@ class CourseForgeRuntime {
         break;
       }
 
+      case "tabs": {
+        const tabs: any[] = (comp as any).tabs || [];
+        if (tabs.length === 0) break;
+
+        let currentTab = 0;
+
+        const renderTabContent = () => {
+          wrapper.innerHTML = "";
+          
+          // Tab bar
+          const tabBar = document.createElement("div");
+          tabBar.style.cssText = "display:flex;gap:0.5rem;border-bottom:1px solid #EAD0D0;margin-bottom:1rem;overflow-x:auto;padding-bottom:0.5rem;";
+          
+          tabs.forEach((tab, i) => {
+            const btn = document.createElement("button");
+            btn.textContent = tab.title || `Tab ${i + 1}`;
+            btn.style.cssText = `padding:0.5rem 1rem;cursor:pointer;font-weight:${i === currentTab ? 600 : 400};color:${i === currentTab ? '#8B1A1A' : '#666'};border:none;background:transparent;border-bottom:${i === currentTab ? '2px solid #8B1A1A' : '2px solid transparent'};white-space:nowrap;font-family:inherit;font-size:1rem;`;
+            btn.onclick = () => {
+              currentTab = i;
+              renderTabContent();
+            };
+            tabBar.appendChild(btn);
+          });
+          wrapper.appendChild(tabBar);
+
+          // Content area
+          const contentArea = document.createElement("div");
+          contentArea.style.cssText = "background:#FDF8F8;border-radius:8px;padding:1.5rem;border:1px solid #F0E0E0;";
+
+          const activeTab = tabs[currentTab];
+          
+          const titleEl = document.createElement("h3");
+          titleEl.style.cssText = "margin:0 0 1rem 0;color:#1A0A0A;font-size:1.25rem;";
+          titleEl.textContent = activeTab.title;
+          contentArea.appendChild(titleEl);
+
+          const innerFlex = document.createElement("div");
+          innerFlex.style.cssText = "display:flex;gap:1.5rem;flex-direction:column;";
+
+          if (activeTab.image) {
+            const imgWrap = document.createElement("div");
+            imgWrap.style.cssText = "width:100%;max-width:300px;margin:0 auto;";
+            const img = document.createElement("img");
+            img.src = activeTab.image;
+            img.style.cssText = "width:100%;border-radius:8px;object-fit:contain;max-height:200px;";
+            imgWrap.appendChild(img);
+            innerFlex.appendChild(imgWrap);
+          }
+
+          if (activeTab.content) {
+            const textEl = document.createElement("div");
+            textEl.style.cssText = "line-height:1.6;color:#333;";
+            textEl.innerHTML = activeTab.content;
+            innerFlex.appendChild(textEl);
+          }
+
+          contentArea.appendChild(innerFlex);
+          wrapper.appendChild(contentArea);
+
+          // Prev/Next Nav
+          const navArea = document.createElement("div");
+          navArea.style.cssText = "display:flex;justify-content:space-between;margin-top:1rem;align-items:center;";
+
+          const prevBtn = document.createElement("button");
+          prevBtn.textContent = "← Prev";
+          prevBtn.disabled = currentTab === 0;
+          prevBtn.style.cssText = `padding:0.5rem 1rem;border-radius:4px;border:1px solid #EAD0D0;background:${currentTab === 0 ? '#F5F0EE' : 'white'};color:${currentTab === 0 ? '#C4A0A0' : '#8B1A1A'};cursor:${currentTab === 0 ? 'not-allowed' : 'pointer'};font-family:inherit;font-size:0.875rem;`;
+          prevBtn.onclick = () => {
+            if (currentTab > 0) {
+              currentTab--;
+              renderTabContent();
+            }
+          };
+
+          const slideCount = document.createElement("div");
+          slideCount.style.cssText = "font-size:0.875rem;color:#666;";
+          slideCount.textContent = `Slide ${currentTab + 1} of ${tabs.length}`;
+
+          const nextBtn = document.createElement("button");
+          nextBtn.textContent = "Next →";
+          nextBtn.disabled = currentTab === tabs.length - 1;
+          nextBtn.style.cssText = `padding:0.5rem 1rem;border-radius:4px;border:1px solid #EAD0D0;background:${currentTab === tabs.length - 1 ? '#F5F0EE' : 'white'};color:${currentTab === tabs.length - 1 ? '#C4A0A0' : '#8B1A1A'};cursor:${currentTab === tabs.length - 1 ? 'not-allowed' : 'pointer'};font-family:inherit;font-size:0.875rem;`;
+          nextBtn.onclick = () => {
+            if (currentTab < tabs.length - 1) {
+              currentTab++;
+              renderTabContent();
+            }
+          };
+
+          navArea.appendChild(prevBtn);
+          navArea.appendChild(slideCount);
+          navArea.appendChild(nextBtn);
+
+          wrapper.appendChild(navArea);
+        };
+
+        renderTabContent();
+        break;
+      }
       case "image-stack": {
         const stackSlides: any[] = (comp as any).slides || [];
         let stackIdx = 0;
