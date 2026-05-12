@@ -2012,38 +2012,7 @@ function ImageBlock({ block, onUpdate }) {
 // ── Image Hotspot Component ──
 function ImageHotspotBlock({ block, onUpdate, readOnly }) {
   const [activeHotspotId, setActiveHotspotId] = useState(null);
-  const [draggingDot, setDraggingDot] = useState(null);
-  const [dragPos, setDragPos] = useState(null);
-  const imageRef = useRef(null);
   const imageSrc = block.imageUrl || block.image || block.src || '';
-
-  useEffect(() => {
-    if (!draggingDot) return;
-    const handleMouseMove = (e) => {
-      if (!imageRef.current) return;
-      const rect = imageRef.current.getBoundingClientRect();
-      let x = ((e.clientX - rect.left) / rect.width) * 100;
-      let y = ((e.clientY - rect.top) / rect.height) * 100;
-      setDragPos({ x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) });
-    };
-    const handleMouseUp = () => {
-      setDraggingDot(null);
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [draggingDot]);
-
-  useEffect(() => {
-    if (!draggingDot && dragPos) {
-      const newHotspots = (block.hotspots || []).map(h => h.id === dragPos.id ? { ...h, x: dragPos.x, y: dragPos.y } : h);
-      onUpdate(block.id, { hotspots: newHotspots });
-      setDragPos(null);
-    }
-  }, [draggingDot, dragPos, block.id, block.hotspots, onUpdate]);
 
   const handleUpload = (e) => {
     const file = e.target.files?.[0];
@@ -2061,15 +2030,22 @@ function ImageHotspotBlock({ block, onUpdate, readOnly }) {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
-    const newHotspot = {
-      id: Date.now().toString(),
-      x,
-      y,
-      title: "New Hotspot",
-      content: "Hotspot content..."
-    };
-    onUpdate(block.id, { hotspots: [...(block.hotspots || []), newHotspot] });
-    setActiveHotspotId(newHotspot.id);
+
+    if (activeHotspotId) {
+      // Move the currently active hotspot
+      updateHotspot(activeHotspotId, { x, y });
+    } else {
+      // Create a new hotspot
+      const newHotspot = {
+        id: Date.now().toString(),
+        x,
+        y,
+        title: "New Hotspot",
+        content: "Hotspot content..."
+      };
+      onUpdate(block.id, { hotspots: [...(block.hotspots || []), newHotspot] });
+      setActiveHotspotId(newHotspot.id);
+    }
   };
 
   const updateHotspot = (id, data) => {
@@ -2093,41 +2069,35 @@ function ImageHotspotBlock({ block, onUpdate, readOnly }) {
           <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleUpload} />
         </label>
       ) : (
-        <div ref={imageRef} style={{ position: 'relative', width: '100%', display: 'inline-block' }}>
+        <div style={{ position: 'relative', width: '100%', display: 'inline-block' }}>
           <img
             src={imageSrc}
             alt="Hotspot Base"
-            style={{ width: '100%', borderRadius: 8, display: 'block', cursor: readOnly ? 'default' : 'crosshair' }}
+            draggable="false"
+            style={{ width: '100%', borderRadius: 8, display: 'block', cursor: readOnly ? 'default' : (activeHotspotId ? 'crosshair' : 'copy'), userSelect: 'none' }}
             onClick={handleImageClick}
           />
           {(block.hotspots || []).map(hotspot => {
-            const isDragging = draggingDot === hotspot.id;
-            const x = isDragging && dragPos ? dragPos.x : hotspot.x;
-            const y = isDragging && dragPos ? dragPos.y : hotspot.y;
+            const isActive = activeHotspotId === hotspot.id;
             return (
             <div
               key={hotspot.id}
-              onMouseDown={(e) => {
-                if (readOnly) return;
-                e.stopPropagation();
-                setDraggingDot(hotspot.id);
-                setDragPos({ id: hotspot.id, x: hotspot.x, y: hotspot.y });
-                setActiveHotspotId(hotspot.id);
-              }}
               className="absolute w-6 h-6 bg-red-700 rounded-full border-2 border-white transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
-              style={{ left: `${x}%`, top: `${y}%`, position: 'absolute', width: 24, height: 24, backgroundColor: '#b91c1c', borderRadius: '50%', border: '2px solid white', transform: 'translate(-50%, -50%)', zIndex: 10, cursor: readOnly ? 'pointer' : 'move' }}
+              style={{ left: `${hotspot.x}%`, top: `${hotspot.y}%`, position: 'absolute', width: 24, height: 24, backgroundColor: '#b91c1c', borderRadius: '50%', border: '2px solid white', transform: 'translate(-50%, -50%)', zIndex: 10, cursor: 'pointer', boxShadow: isActive && !readOnly ? '0 0 0 4px rgba(185,28,28,0.4)' : 'none' }}
               onClick={(e) => {
                 e.stopPropagation();
-                if (readOnly) setActiveHotspotId(activeHotspotId === hotspot.id ? null : hotspot.id);
+                setActiveHotspotId(activeHotspotId === hotspot.id ? null : hotspot.id);
               }}
             />
           )})}
 
-          {activeHotspot && readOnly && (
-            <div className="bg-black border border-neutral-700 text-white p-4 rounded-md shadow-xl z-50" style={{ position: 'absolute', top: `${activeHotspot.y}%`, left: `${activeHotspot.x}%`, transform: `translate(${activeHotspot.x > 50 ? '-105%' : '5%'}, ${activeHotspot.y > 50 ? '-105%' : '5%'})`, background: '#000', border: '1px solid #404040', color: '#fff', padding: '1rem', borderRadius: 6, zIndex: 50, minWidth: 250, maxWidth: 300 }}>
+          {activeHotspot && (
+            <div className="bg-black border border-neutral-700 text-white p-4 rounded-md shadow-xl z-50" style={{ position: 'absolute', top: `${activeHotspot.y}%`, left: `${activeHotspot.x}%`, transform: `translate(${activeHotspot.x > 50 ? '-105%' : '5%'}, ${activeHotspot.y > 50 ? '-105%' : '5%'})`, background: activeHotspot.popupColor || '#000000', border: '1px solid #404040', color: '#fff', padding: '1rem', borderRadius: 6, zIndex: 50, minWidth: 250, maxWidth: 300, pointerEvents: readOnly ? 'auto' : 'none' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <h4 style={{ margin: 0, fontSize: '1.1rem' }}>{activeHotspot.title}</h4>
-                <button onClick={() => setActiveHotspotId(null)} style={{ background: 'transparent', border: 'none', color: '#a3a3a3', cursor: 'pointer' }}><X size={16} /></button>
+                {readOnly && (
+                  <button onClick={() => setActiveHotspotId(null)} style={{ background: 'transparent', border: 'none', color: '#a3a3a3', cursor: 'pointer' }}><X size={16} /></button>
+                )}
               </div>
               <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.5 }}>{activeHotspot.content}</p>
             </div>
@@ -2137,9 +2107,20 @@ function ImageHotspotBlock({ block, onUpdate, readOnly }) {
 
       {!readOnly && activeHotspot && (
         <div className="bg-neutral-900 border border-red-800 p-3 mt-2 rounded" style={{ background: '#171717', border: '1px solid #991b1b', padding: '0.75rem', marginTop: '0.5rem', borderRadius: 6 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
             <span style={{ color: '#fff', fontSize: '0.875rem', fontWeight: 'bold' }}>Edit Hotspot</span>
-            <button onClick={() => removeHotspot(activeHotspot.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={16} /></button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ color: '#a3a3a3', fontSize: '0.8rem' }}>Color:</label>
+                <input
+                  type="color"
+                  value={activeHotspot.popupColor || '#000000'}
+                  onChange={(e) => updateHotspot(activeHotspot.id, { popupColor: e.target.value })}
+                  style={{ width: 24, height: 24, padding: 0, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'transparent' }}
+                />
+              </div>
+              <button onClick={() => removeHotspot(activeHotspot.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Trash2 size={16} /></button>
+            </div>
           </div>
           <input
             value={activeHotspot.title}

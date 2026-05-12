@@ -945,7 +945,7 @@ def _get_fallback_runtime_js() -> str:
                 activeHotspotPopup.style.left = hotspot.x + '%';
                 activeHotspotPopup.style.transform = 'translate(' + (hotspot.x > 50 ? '-105%' : '5%') + ', ' + (hotspot.y > 50 ? '-105%' : '5%') + ')';
                 activeHotspotPopup.style.maxWidth = '300px';
-                activeHotspotPopup.style.background = '#000';
+                activeHotspotPopup.style.background = hotspot.popupColor || '#000';
                 activeHotspotPopup.style.border = '1px solid #404040';
                 activeHotspotPopup.style.color = '#fff';
                 activeHotspotPopup.style.padding = '1rem';

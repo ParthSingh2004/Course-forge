@@ -82,6 +82,7 @@ export const ComponentSchema = z.discriminatedUnion("type", [
       y: z.number(),
       title: z.string(),
       content: z.string(),
+      popupColor: z.string().optional(),
     })).default([]),
   }),
   z.object({

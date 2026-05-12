@@ -1191,16 +1191,17 @@ class CourseForgeRuntime {
 
               activePopup = document.createElement("div");
               activePopup.style.position = "absolute";
-              activePopup.style.top = "50%";
-              activePopup.style.left = "50%";
-              activePopup.style.transform = "translate(-50%, -50%)";
-              activePopup.style.background = "#000";
+              activePopup.style.top = `${hotspot.y}%`;
+              activePopup.style.left = `${hotspot.x}%`;
+              activePopup.style.transform = `translate(${hotspot.x > 50 ? '-105%' : '5%'}, ${hotspot.y > 50 ? '-105%' : '5%'})`;
+              activePopup.style.background = hotspot.popupColor || "#000";
               activePopup.style.border = "1px solid #404040";
               activePopup.style.color = "#fff";
               activePopup.style.padding = "1rem";
               activePopup.style.borderRadius = "6px";
               activePopup.style.zIndex = "50";
               activePopup.style.minWidth = "250px";
+              activePopup.style.maxWidth = "300px";
 
               const header = document.createElement("div");
               header.style.display = "flex";
