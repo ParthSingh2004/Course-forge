@@ -1151,16 +1151,31 @@ def _get_fallback_runtime_js() -> str:
             }, 0);
           })(comp);
         } else if (comp.type === 'table') {
-          var tableHtml = '<div style="overflow-x:auto;margin-bottom:1rem;"><table style="width:100%;border-collapse:collapse;border:1px solid #3f3f46;color:#fafafa;font-size:14px;"><thead><tr>';
+          var tableColor = comp.tableColor || '#ffffff';
+          var darkenColor = function(hex, amount) {
+            if (!hex) return '#f0f0f0';
+            var usePound = false;
+            if (hex[0] === '#') { hex = hex.slice(1); usePound = true; }
+            var num = parseInt(hex, 16);
+            var r = (num >> 16) - amount;
+            if (r < 0) r = 0;
+            var g = ((num >> 8) & 0x00FF) - amount;
+            if (g < 0) g = 0;
+            var b = (num & 0x0000FF) - amount;
+            if (b < 0) b = 0;
+            return (usePound ? '#' : '') + (b | (g << 8) | (r << 16)).toString(16).padStart(6, '0');
+          };
+          var hColor = darkenColor(tableColor, 20);
+          var tableHtml = '<div style="overflow-x:auto;margin-bottom:1rem;"><table style="width:100%;border-collapse:collapse;border:1px solid #3f3f46;color:#1a0a0a;font-size:14px;"><thead><tr>';
           for (var thi = 0; thi < (comp.headers || []).length; thi++) {
-            tableHtml += '<th style="border:1px solid #3f3f46;padding:10px;background:#18181b;font-weight:600;text-align:left;">' + comp.headers[thi] + '</th>';
+            tableHtml += '<th style="border:1px solid #3f3f46;padding:10px;background:' + hColor + ';font-weight:600;text-align:left;">' + comp.headers[thi] + '</th>';
           }
           tableHtml += '</tr></thead><tbody>';
           for (var tri = 0; tri < (comp.rows || []).length; tri++) {
             tableHtml += '<tr>';
             var row = comp.rows[tri] || [];
             for (var tdi = 0; tdi < row.length; tdi++) {
-              tableHtml += '<td style="border:1px solid #3f3f46;padding:10px;background:#09090b;">' + row[tdi] + '</td>';
+              tableHtml += '<td style="border:1px solid #3f3f46;padding:10px;background:' + tableColor + ';">' + row[tdi] + '</td>';
             }
             tableHtml += '</tr>';
           }
@@ -1724,7 +1739,7 @@ def generate_runtime_html(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{safe_title}</title>
-<link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&amp;family=Open+Sans:wght@400;600;700&amp;family=Montserrat:wght@400;600;700&amp;family=Lato:wght@400;700&amp;family=Playfair+Display:wght@400;700&amp;family=Lora:wght@400;700&amp;display=swap" rel="stylesheet">
 <style>
 {_get_runtime_css()}
 </style>

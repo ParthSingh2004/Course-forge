@@ -38,6 +38,26 @@ function escapeAttribute(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
+function darkenColor(hex: string, amount: number = 30): string {
+  if (!hex) return "#f0f0f0";
+  let usePound = false;
+  if (hex[0] === "#") {
+    hex = hex.slice(1);
+    usePound = true;
+  }
+  const num = parseInt(hex, 16);
+  let r = (num >> 16) - amount;
+  if (r < 0) r = 0;
+  let g = ((num >> 8) & 0x00ff) - amount;
+  if (g < 0) g = 0;
+  let b = (num & 0x0000ff) - amount;
+  if (b < 0) b = 0;
+  return (
+    (usePound ? "#" : "") +
+    (b | (g << 8) | (r << 16)).toString(16).padStart(6, "0")
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Runtime Class
 // ---------------------------------------------------------------------------
@@ -1991,16 +2011,19 @@ class CourseForgeRuntime {
         tableDiv.style.overflowX = "auto";
         tableDiv.style.marginBottom = "1rem";
 
-        let html = `<table style="width:100%; border-collapse:collapse; border:1px solid #3f3f46; color:#fafafa; font-size:14px;">`;
+        const tableColor = (comp as any).tableColor || "#ffffff";
+        const headerColor = darkenColor(tableColor, 20);
+
+        let html = `<table style="width:100%; border-collapse:collapse; border:1px solid #3f3f46; color:#1a0a0a; font-size:14px;">`;
         html += `<thead><tr>`;
         for (const h of comp.headers || []) {
-          html += `<th style="border:1px solid #3f3f46; padding:10px; background:#18181b; font-weight:600; text-align:left;">${h}</th>`;
+          html += `<th style="border:1px solid #3f3f46; padding:10px; background:${headerColor}; font-weight:600; text-align:left;">${h}</th>`;
         }
         html += `</tr></thead><tbody>`;
         for (const row of comp.rows || []) {
           html += `<tr>`;
           for (const cell of row) {
-            html += `<td style="border:1px solid #3f3f46; padding:10px; background:#09090b;">${cell}</td>`;
+            html += `<td style="border:1px solid #3f3f46; padding:10px; background:${tableColor};">${cell}</td>`;
           }
           html += `</tr>`;
         }

@@ -698,6 +698,35 @@ def _build_course_html(title: str, blocks: List[Dict[str, Any]], script: str = "
 async def upload_pptx(file: UploadFile = File(...)):
     contents = await file.read()
     slides = await extract_slides(contents)
+    
+    for slide in slides:
+        for element in slide.get("elements", []):
+            if element.get("type") == "audio" and element.get("audioUrl", "").startswith("data:"):
+                audio_url = element["audioUrl"]
+                media_id = element.get("mediaId")
+                
+                try:
+                    header, b64_data = audio_url.split(",", 1)
+                    mime_type = header.split(";")[0].split(":")[1]
+                    audio_bytes = base64.b64decode(b64_data)
+                    
+                    if not media_id:
+                        media_id = uuid.uuid4().hex
+                        element["mediaId"] = media_id
+                        
+                    ext = mime_type.split("/")[-1] if "/" in mime_type else "mp3"
+                    filename = f"audio_{media_id}.{ext}"
+                    
+                    _MEDIA_STORE[media_id] = {
+                        "filename": filename,
+                        "bytes": audio_bytes,
+                        "mime": mime_type,
+                    }
+                    
+                    element["audioUrl"] = f"/api/media/{media_id}"
+                except Exception as e:
+                    print(f"Failed to wire PPTX audio to media store: {e}")
+                    
     return {"status": "success", "blocks": slides}
 
 

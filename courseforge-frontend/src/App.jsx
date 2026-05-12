@@ -147,7 +147,7 @@ const createBlankSlide = (slideNumber) => ({
 });
 
 const STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Open+Sans:wght@400;600;700&family=Montserrat:wght@400;600;700&family=Lato:wght@400;700&family=Playfair+Display:wght@400;700&family=Lora:wght@400;700&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; }
 
@@ -1648,6 +1648,11 @@ function RichTextEditor({ value, onChange, placeholder, style, className, compac
         <select value={currentFont} onMouseDown={saveSelection} onChange={(e) => { e.preventDefault(); exec('fontName', e.target.value); }} style={{ padding: '2px 4px', border: '1px solid #EAD0D0', borderRadius: 4, fontSize: '12px', background: 'white', maxWidth: compactToolbar ? 110 : 'none' }}>
           <option value="" disabled>Font</option>
           <option value="Roboto">Roboto</option>
+          <option value="Open Sans">Open Sans</option>
+          <option value="Montserrat">Montserrat</option>
+          <option value="Lato">Lato</option>
+          <option value="Playfair Display">Playfair Display</option>
+          <option value="Lora">Lora</option>
           <option value="Arial">Arial</option>
           <option value="Times New Roman">Times New Roman</option>
           <option value="Calibri">Calibri</option>
@@ -2585,6 +2590,23 @@ function ProcessBlock({ block, onUpdate }) {
   );
 }
 
+function darkenColor(hex, amount = 30) {
+  if (!hex) return '#f0f0f0';
+  let usePound = false;
+  if (hex[0] === "#") {
+    hex = hex.slice(1);
+    usePound = true;
+  }
+  const num = parseInt(hex, 16);
+  let r = (num >> 16) - amount;
+  if (r < 0) r = 0;
+  let g = ((num >> 8) & 0x00FF) - amount;
+  if (g < 0) g = 0;
+  let b = (num & 0x0000FF) - amount;
+  if (b < 0) b = 0;
+  return (usePound ? "#" : "") + (b | (g << 8) | (r << 16)).toString(16).padStart(6, '0');
+}
+
 // ── Table component ──
 function TableBlock({ block, onUpdate }) {
   const updateHeader = (colIdx, val) => {
@@ -2618,17 +2640,29 @@ function TableBlock({ block, onUpdate }) {
     onUpdate(block.id, { headers: newHeaders, rows: newRows });
   };
 
+  const tableColor = block.tableColor || '#ffffff';
+  const headerColor = darkenColor(tableColor, 20);
+
   return (
     <div className="cf-table-block" style={{ background: 'white', borderRadius: 12, border: '1px solid #EAD0D0', padding: '1rem', overflowX: 'auto' }}>
-      <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
+      <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
         <button onClick={addRow} style={{ padding: '0.25rem 0.5rem', borderRadius: 4, border: '1px solid #EAD0D0', background: 'white', cursor: 'pointer', fontSize: '0.8125rem' }}>+ Add Row</button>
         <button onClick={addCol} style={{ padding: '0.25rem 0.5rem', borderRadius: 4, border: '1px solid #EAD0D0', background: 'white', cursor: 'pointer', fontSize: '0.8125rem' }}>+ Add Column</button>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontSize: '0.75rem', color: '#8b6060', fontWeight: 600 }}>Table Color:</span>
+          <input 
+            type="color" 
+            value={tableColor} 
+            onChange={(e) => onUpdate(block.id, { tableColor: e.target.value })}
+            style={{ width: 24, height: 24, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
+          />
+        </div>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #F0E0E0' }}>
         <thead>
           <tr>
             {block.headers.map((h, i) => (
-              <th key={i} style={{ border: '1px solid #F0E0E0', padding: '0.5rem', background: '#FDF8F8', position: 'relative' }}>
+              <th key={i} style={{ border: '1px solid #F0E0E0', padding: '0.5rem', background: headerColor, position: 'relative' }}>
                 <input value={h} onChange={(e) => updateHeader(i, e.target.value)} style={{ width: 'calc(100% - 20px)', border: 'none', background: 'transparent', fontWeight: 600, outline: 'none', color: '#1A0A0A' }} placeholder="Header..." />
                 {block.headers.length > 1 && (
                   <button onClick={() => deleteCol(i)} style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#C4A0A0', cursor: 'pointer', padding: 0 }} title="Delete column">
@@ -2637,18 +2671,18 @@ function TableBlock({ block, onUpdate }) {
                 )}
               </th>
             ))}
-            <th style={{ width: 40, border: '1px solid #F0E0E0', background: '#FDF8F8' }}></th>
+            <th style={{ width: 40, border: '1px solid #F0E0E0', background: headerColor }}></th>
           </tr>
         </thead>
         <tbody>
           {block.rows.map((row, rIdx) => (
             <tr key={rIdx}>
               {row.map((cell, cIdx) => (
-                <td key={cIdx} style={{ border: '1px solid #F0E0E0', padding: '0.5rem' }}>
+                <td key={cIdx} style={{ border: '1px solid #F0E0E0', padding: '0.5rem', background: tableColor }}>
                   <input value={cell} onChange={(e) => updateCell(rIdx, cIdx, e.target.value)} style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', color: '#1A0A0A' }} placeholder="Cell data..." />
                 </td>
               ))}
-              <td style={{ border: '1px solid #F0E0E0', textAlign: 'center', width: 40 }}>
+              <td style={{ border: '1px solid #F0E0E0', textAlign: 'center', width: 40, background: tableColor }}>
                 {block.rows.length > 1 && (
                   <button onClick={() => deleteRow(rIdx)} style={{ background: 'none', border: 'none', color: '#C4A0A0', cursor: 'pointer' }} title="Delete row">
                     <Trash2 style={{ width: 14, height: 14 }} />
@@ -2798,6 +2832,7 @@ function App() {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const exportAbortController = useRef(null);
   const [isUploading, setIsUploading] = useState(false);
   const [draggedIdx, setDraggedIdx] = useState(null);
   const [dragEnabledIdx, setDragEnabledIdx] = useState(null);
@@ -2970,6 +3005,7 @@ function App() {
         ['', ''],
         ['', '']
       ];
+      newBlock.tableColor = '#ffffff';
     }
     if (type === 'columns') {
       newBlock.columns = [[], []];
@@ -3094,7 +3130,13 @@ function App() {
         }
 
         // If a transition was detected, prepend an informational text block
-        let elements = (b.elements || []).map((el, j) => ({ ...el, id: Date.now() + i * 1000 + j + 1 }));
+        let elements = (b.elements || []).map((el, j) => {
+          let updatedEl = { ...el, id: Date.now() + i * 1000 + j + 1 };
+          if (updatedEl.type === 'audio' && updatedEl.audioUrl && updatedEl.audioUrl.startsWith('/api/')) {
+            updatedEl.audioUrl = buildBackendAssetUrl(updatedEl.audioUrl);
+          }
+          return updatedEl;
+        });
         if (b.transition) {
           elements = [
             {
@@ -3197,10 +3239,12 @@ function App() {
       }, 400);
 
       setExportLabel('Generating SCORM 1.2 package…');
+      exportAbortController.current = new AbortController();
       const response = await fetch(buildApiUrl('/api/export/scorm'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
+        signal: exportAbortController.current.signal
       });
       clearInterval(ticker);
 
@@ -3224,8 +3268,12 @@ function App() {
       setExportLabel('Done!');
       setExportProgress(100);
       await new Promise(r => setTimeout(r, 1200));
-    } catch {
-      alert("Failed to export SCORM 1.2 package.");
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.log('SCORM export cancelled by user.');
+      } else {
+        alert("Failed to export SCORM 1.2 package.");
+      }
     } finally {
       setIsExporting(false);
       setExportProgress(0);
@@ -3253,10 +3301,12 @@ function App() {
       }, 300);
 
       setExportLabel('Generating xAPI package…');
+      exportAbortController.current = new AbortController();
       const response = await fetch(buildApiUrl('/api/export/xapi'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
+        signal: exportAbortController.current.signal
       });
       clearInterval(ticker);
 
@@ -3279,8 +3329,12 @@ function App() {
       setExportLabel('Done!');
       setExportProgress(100);
       await new Promise(r => setTimeout(r, 1200));
-    } catch {
-      alert("Failed to export xAPI package.");
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.log('xAPI export cancelled by user.');
+      } else {
+        alert("Failed to export xAPI package.");
+      }
     } finally {
       setIsExporting(false);
       setExportProgress(0);
@@ -4301,8 +4355,18 @@ function App() {
                 <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#1a0a0a', fontFamily: 'Roboto' }}>
                   {exportLabel}
                 </div>
-                <div style={{ fontSize: '0.6875rem', color: '#8b6060', marginTop: 2 }}>
-                  {exportProgress}%
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+                  <div style={{ fontSize: '0.6875rem', color: '#8b6060' }}>
+                    {exportProgress}%
+                  </div>
+                  {exportProgress < 100 && (
+                    <button
+                      onClick={() => exportAbortController.current?.abort()}
+                      style={{ background: 'transparent', border: '1px solid #ead0d0', color: '#8b1a1a', borderRadius: 4, padding: '2px 8px', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      Cancel
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
