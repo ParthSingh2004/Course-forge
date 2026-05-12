@@ -2609,7 +2609,7 @@ function darkenColor(hex, amount = 30) {
 
 // ── Table component ──
 function TableCellEditor({ value, onChange, bgColor, isHeader }) {
-  const [editing, setEditing] = React.useState(false);
+  const [editing, setEditing] = useState(false);
   return editing ? (
     <div style={{ minWidth: 140 }}>
       <RichTextEditor
