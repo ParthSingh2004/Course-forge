@@ -64,8 +64,46 @@ _SCHEME_COLOR_MAP = {
     "accent6": "#0891b2",
 }
 
+def _build_theme_color_map(prs) -> dict:
+    """Extract actual hex colors from the presentation's theme XML."""
+    theme_colors = {}
+    try:
+        if not prs.slides:
+            return theme_colors
+        # Navigate to the theme part via the slide master
+        theme_part = prs.slides[0].slide_layout.slide_master.part.theme_part
+        clrScheme = theme_part.element.find(f".//{qn('a:themeElements')}//{qn('a:clrScheme')}")
+        
+        # Fallback if xpath is finicky
+        if clrScheme is None:
+            themeElements = theme_part.element.find(qn('a:themeElements'))
+            if themeElements is not None:
+                clrScheme = themeElements.find(qn('a:clrScheme'))
 
-def _extract_hex_from_color_choice(color_parent) -> str:
+        if clrScheme is not None:
+            for child in clrScheme:
+                tag_name = child.tag.split('}')[-1]
+                
+                # Check for sRGB explicit colors
+                srgbClr = child.find(qn('a:srgbClr'))
+                if srgbClr is not None:
+                    val = srgbClr.get("val")
+                    if val:
+                        theme_colors[tag_name] = f"#{val.lower()}"
+                    continue
+                
+                # Check for system colors
+                sysClr = child.find(qn('a:sysClr'))
+                if sysClr is not None:
+                    val = sysClr.get("lastClr")
+                    if val:
+                        theme_colors[tag_name] = f"#{val.lower()}"
+    except Exception as e:
+        print(f"[pptx_parser] Could not extract theme colors: {e}")
+    return theme_colors
+
+
+def _extract_hex_from_color_choice(color_parent, theme_map=None) -> str:
     """Extract a CSS hex color from pptx color XML when python-pptx fill helpers miss."""
     if color_parent is None:
         return ""
@@ -82,7 +120,14 @@ def _extract_hex_from_color_choice(color_parent) -> str:
     try:
         scheme = color_parent.find(qn("a:schemeClr"))
         if scheme is not None:
-            return _SCHEME_COLOR_MAP.get((scheme.get("val") or "").strip(), "")
+            val = (scheme.get("val") or "").strip()
+            
+            # 1. Prioritize dynamic theme map
+            if theme_map and val in theme_map:
+                return theme_map[val]
+                
+            # 2. Fallback to hardcoded tailwind map
+            return _SCHEME_COLOR_MAP.get(val, "")
     except Exception:
         pass
 
@@ -188,7 +233,7 @@ def _get_indent_level(para) -> int:
 
 # ── Background extraction ────────────────────────────────────────────────────
 
-def _extract_slide_background(slide) -> dict:
+def _extract_slide_background(slide, theme_map=None) -> dict:
     """
     Return background info:  { "type": "color"|"image"|"none", "value": ... }
     """
@@ -211,7 +256,7 @@ def _extract_slide_background(slide) -> dict:
             if bgPr is not None:
                 solidFill = bgPr.find(qn("a:solidFill"))
                 if solidFill is not None:
-                    hex_color = _extract_hex_from_color_choice(solidFill)
+                    hex_color = _extract_hex_from_color_choice(solidFill, theme_map)
                     if hex_color:
                         return {"type": "color", "value": hex_color}
 
@@ -228,7 +273,7 @@ def _extract_slide_background(slide) -> dict:
 
             bgRef = bg._element.find(f".//{qn('p:bgRef')}")
             if bgRef is not None:
-                hex_color = _extract_hex_from_color_choice(bgRef)
+                hex_color = _extract_hex_from_color_choice(bgRef, theme_map)
                 if hex_color:
                     return {"type": "color", "value": hex_color}
         except Exception:
@@ -283,20 +328,10 @@ _AUDIO_MIMES = {
     "wma": "audio/x-ms-wma",
 }
 
-# FIX (Bug 2): Whitelist of XML tag names that actually carry audio rIds.
-# The old code used a greedy fallback that grabbed the first r:embed it found,
-# which was usually the speaker-icon image rId, not the audio file rId.
 _AUDIO_XML_TAGS = {"audioFile", "wavAudioFile", "audioCd"}
 
 
 def _find_audio_rid(element) -> str | None:
-    """
-    Walk an element tree and return the rId of the first audio relationship.
-    Only inspects known audio-bearing XML tags to avoid grabbing image rIds.
-
-    FIX (Bug 2): replaces the old two-phase approach that fell back to grabbing
-    any r:embed/r:link attribute from any element, which picked up image rIds.
-    """
     for el in element.iter():
         local = el.tag.split("}")[-1] if "}" in el.tag else el.tag
         if local in _AUDIO_XML_TAGS:
@@ -308,16 +343,6 @@ def _find_audio_rid(element) -> str | None:
 
 def _try_extract_audio_from_shape(shape, slide, slide_w, slide_h,
                                    audio_blocks: list, seen_rids: set) -> None:
-    """
-    Attempt to extract audio from a single shape.
-    All exceptions are caught and logged so one bad shape can't silently kill
-    the rest of the extraction (FIX Bug 4).
-
-    FIX (Bug 1): called for EVERY shape on the slide, not just MEDIA-typed ones,
-    because audio inserted via Insert → Audio from File is often stored as a
-    PICTURE shape (the speaker icon) with an audio relationship — python-pptx
-    does not classify those as MSO_SHAPE_TYPE.MEDIA.
-    """
     try:
         rid = _find_audio_rid(shape._element)
         if not rid or rid in seen_rids:
@@ -326,8 +351,6 @@ def _try_extract_audio_from_shape(shape, slide, slide_w, slide_h,
 
         rel = slide.part.rels.get(rid)
         
-        # FIX (Bug 3): linked audio (r:link pointing to an external file) has
-        # rel.is_external == True. Only embedded audio is supported.
         if rel is None or getattr(rel, "is_external", False):
             print(
                 f"[pptx_parser] audio '{getattr(shape, 'name', '?')}' on slide "
@@ -343,8 +366,6 @@ def _try_extract_audio_from_shape(shape, slide, slide_w, slide_h,
         mime = _AUDIO_MIMES.get(ext, "audio/mpeg")
         blob = part.blob
 
-        # FIX (Gap 4): warn when audio is large so callers can switch to
-        # file-based export instead of inlining as a data URI.
         _MAX_INLINE_BYTES = 2 * 1024 * 1024  # 2 MB
         if len(blob) > _MAX_INLINE_BYTES:
             print(
@@ -355,12 +376,8 @@ def _try_extract_audio_from_shape(shape, slide, slide_w, slide_h,
                 f"larger than {_MAX_INLINE_BYTES // 1024} KB."
             )
 
-        # FIX (Gap 1): derive a stable mediaId from the file content so the
-        # SCORM engine can look the asset up in the package manifest.
         media_id = hashlib.md5(blob).hexdigest()[:12]
 
-        # FIX (Gap 3): capture on-slide position so the frontend renderer can
-        # place the audio player widget at the correct location.
         position = {}
         try:
             position = {
@@ -378,35 +395,20 @@ def _try_extract_audio_from_shape(shape, slide, slide_w, slide_h,
             "type":      "audio",
             "label":     getattr(shape, "name", None) or "Audio Track",
             "audioUrl":  _blob_to_data_uri(blob, mime),
-            "mediaId":   media_id,      # FIX Gap 1: was always ""
-            "autoPlay":  True,          # FIX Gap 2: was missing
-            "loop":      False,         # FIX Gap 2: was missing
-            "controls":  True,          # FIX Gap 2: was missing
+            "mediaId":   media_id,
+            "autoPlay":  True,
+            "loop":      False,
+            "controls":  True,
             "mandatory":  False,
-            "position":   position,     # FIX Gap 3: was missing
+            "position":   position,
         })
 
     except Exception as err:
-        # FIX (Bug 4): surface errors instead of swallowing them silently.
         print(f"[pptx_parser] failed to extract audio from shape "
               f"'{getattr(shape, 'name', '?')}': {err}")
 
 
 def _extract_embedded_audio(slide, slide_w: int, slide_h: int) -> list:
-    """
-    Return list of audio block dicts for any audio embedded in the slide.
-
-    FIX (Bug 1): iterates ALL shapes (not only MSO_SHAPE_TYPE.MEDIA) because
-    audio shapes inserted from a file are frequently stored as PICTURE shapes
-    with an audio relationship, which python-pptx does not classify as MEDIA.
-
-    FIX (Bug 2): uses a whitelist-based rId search instead of the old greedy
-    fallback that grabbed the first r:embed it found (often an image rId).
-
-    FIX (Bug 3): logs linked (external) audio rather than dropping it silently.
-
-    FIX (Bug 4): logs all exceptions rather than swallowing them with bare pass.
-    """
     audio_blocks: list = []
     seen_rids: set = set()
 
@@ -450,12 +452,6 @@ def _extract_table(shape) -> dict | None:
 # ── Shape-level text parsing (rich text, lists) ──────────────────────────────
 
 def _extract_text_shapes(shape) -> list:
-    """
-    Given a text-bearing shape, return one or more CourseForge blocks:
-    - Detects numbered/bulleted lists → list block
-    - Falls back to rich-text HTML → text block
-    - Handles headings (placeholder idx 0 = title, idx 1 = body)
-    """
     if not hasattr(shape, "text_frame"):
         return []
 
@@ -524,6 +520,9 @@ def _extract_notes(slide) -> str | None:
 
 async def extract_slides(file_bytes: bytes):
     prs = Presentation(io.BytesIO(file_bytes))
+    
+    # 1. Build the dynamic theme color map for this specific presentation
+    theme_map = _build_theme_color_map(prs)
 
     # Slide dimensions in EMU — needed to convert shape positions to percentages.
     slide_w = prs.slide_width
@@ -548,14 +547,13 @@ async def extract_slides(file_bytes: bytes):
                 break
 
         # ── Background ────────────────────────────────────────────────────────
-        bg = _extract_slide_background(slide)
+        # 2. Pass the generated theme_map into the background extractor
+        bg = _extract_slide_background(slide, theme_map)
 
         # ── Transition ────────────────────────────────────────────────────────
         transition = _extract_transition(slide)
 
         # ── Embedded audio ────────────────────────────────────────────────────
-        # FIX: pass slide dimensions so audio positions can be expressed as
-        # percentages; the scan now covers all shapes, not just MEDIA shapes.
         audio_blocks = _extract_embedded_audio(slide, slide_w, slide_h)
         elements.extend(audio_blocks)
 
@@ -573,10 +571,6 @@ async def extract_slides(file_bytes: bytes):
             content_type = "image/png"
 
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                # Skip shapes that were already handled as audio carriers.
-                # _extract_embedded_audio scanned every shape; if this PICTURE
-                # shape contained an audio rId, it was already emitted as an
-                # audio block — we should not also emit it as an image.
                 if _find_audio_rid(shape._element):
                     continue
                 image_blob = shape.image.blob
