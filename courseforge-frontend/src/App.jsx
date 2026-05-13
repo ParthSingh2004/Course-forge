@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerClick, ListChecks, Trash2, GripVertical, FileUp, Globe, BookOpen, ChevronRight, CreditCard, Video, RotateCcw, Play, List, Quote, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify, ShieldCheck, ToggleLeft, PenLine, Mic, FileText, Table, Save, CheckCircle, Eye, X, ChevronDown, Copy, Plus, RefreshCw } from 'lucide-react';
+import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerClick, ListChecks, Trash2, GripVertical, FileUp, Globe, BookOpen, ChevronRight, CreditCard, Video, RotateCcw, Play, List, Quote, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify, ShieldCheck, ToggleLeft, PenLine, Mic, FileText, Table, Save, CheckCircle, Eye, X, ChevronDown, Copy, Plus, RefreshCw, Square } from 'lucide-react';
 
 // Core UI & Storage
 import Dashboard from './Dashboard';
@@ -28,6 +28,7 @@ import MultiSelectBlock from './components/blocks/MultiSelectBlock';
 import MatchingBlock from './components/blocks/MatchingBlock';
 import TabsBlock from './components/blocks/TabsBlock';
 import ScenarioBlock from './components/blocks/ScenarioBlock';
+import CanvasBlock from './components/blocks/CanvasBlock';
 
 // --- API Utilities ---
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://course-forge-tpxk.onrender.com').replace(/\/+$/, '');
@@ -98,6 +99,13 @@ const cloneBlockWithFreshIds = (block) => {
     clonedBlock.hotspots = (block.hotspots || []).map(hotspot => ({
       ...hotspot,
       id: makeEditorId('hotspot'),
+    }));
+  }
+
+  if (block.type === 'canvas') {
+    clonedBlock.items = (block.items || []).map(item => ({
+      ...item,
+      id: makeEditorId('canvasitem'),
     }));
   }
 
@@ -440,6 +448,10 @@ function App() {
     }
     if (type === 'scenario') {
       newBlock.slides = [];
+    }
+    if (type === 'canvas') {
+      newBlock.items = [];
+      newBlock.canvasBg = '#ffffff';
     }
     setSlides(prev => prev.map(s => {
       if (s.id !== activeSlideId) return s;
@@ -820,6 +832,7 @@ function App() {
       case 'audio': return <AudioBlock block={block} onUpdate={updateBlock} />;
       case 'tabs': return <TabsBlock block={block} onUpdate={updateBlock} />;
       case 'scenario': return <ScenarioBlock block={block} onUpdate={updateBlock} />;
+      case 'canvas': return <CanvasBlock block={block} onUpdate={updateBlock} />;
       default:
         return (
           <div style={{ color: '#B08080', fontSize: '0.8125rem', padding: '1rem', background: '#FFF5F5', borderRadius: 8, border: '1px dashed #E8C8C8' }}>
@@ -1098,6 +1111,7 @@ function App() {
                     { type: 'columns', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Columns' },
                     { type: 'tabs', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Tabs' },
                     { type: 'scenario', icon: <BookOpen style={{ width: 14, height: 14 }} />, label: 'Scenario' },
+                    { type: 'canvas', icon: <Square style={{ width: 14, height: 14 }} />, label: 'Canvas' },
                   ].map(({ type, icon, label }) => (
                     <button
                       key={type}

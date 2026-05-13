@@ -307,6 +307,58 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "id": bid,
             "slides": scenario_slides,
         }
+
+    if btype == "canvas":
+        raw_items = block.get("items")
+        if not isinstance(raw_items, list):
+            raw_items = []
+
+        serialized_items = []
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                continue
+            item_type = str(raw_item.get("type") or "").strip().lower()
+            if item_type not in {"rect", "circle", "triangle", "text"}:
+                continue
+
+            def _safe_float(value: Any, fallback: float) -> float:
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return fallback
+
+            item = {
+                "id": str(raw_item.get("id", _make_id("canvas_item"))),
+                "type": item_type,
+                "x": _clamp(_safe_float(raw_item.get("x"), 0), 0, 100),
+                "y": _clamp(_safe_float(raw_item.get("y"), 0), 0, 100),
+                "w": _clamp(_safe_float(raw_item.get("w"), 20), 1, 100),
+                "h": _clamp(_safe_float(raw_item.get("h"), 20), 1, 100),
+                "zIndex": int(_safe_float(raw_item.get("zIndex"), 0)),
+                "color": str(raw_item.get("color") or ("#111827" if item_type == "text" else DEFAULT_FLASHCARD_COLOR)),
+            }
+
+            if item_type == "text":
+                item.update({
+                    "text": str(raw_item.get("text") or ""),
+                    "fontSize": _clamp(_safe_float(raw_item.get("fontSize"), 16), 8, 120),
+                    "fontFamily": str(raw_item.get("fontFamily") or "inherit"),
+                    "fontWeight": str(raw_item.get("fontWeight") or "normal"),
+                    "fontStyle": str(raw_item.get("fontStyle") or "normal"),
+                    "textDecoration": str(raw_item.get("textDecoration") or "none"),
+                    "textAlign": str(raw_item.get("textAlign") or "left"),
+                    "lineHeight": _clamp(_safe_float(raw_item.get("lineHeight"), 1.5), 0.8, 3),
+                    "letterSpacing": _safe_float(raw_item.get("letterSpacing"), 0),
+                })
+
+            serialized_items.append(item)
+
+        return {
+            "type": "canvas",
+            "id": bid,
+            "canvasBg": str(block.get("canvasBg") or "#ffffff"),
+            "items": serialized_items,
+        }
  
     if btype == "button":
         return {
@@ -1103,6 +1155,83 @@ def _get_fallback_runtime_js() -> str:
               el.appendChild(dot);
             })(hotspotItems[hi]);
           }
+        } else if (comp.type === 'canvas') {
+          var canvasWrap = document.createElement('div');
+          canvasWrap.style.position = 'relative';
+          canvasWrap.style.width = '100%';
+          canvasWrap.style.minHeight = '420px';
+          canvasWrap.style.aspectRatio = '16 / 10';
+          canvasWrap.style.overflow = 'hidden';
+          canvasWrap.style.borderRadius = '12px';
+          canvasWrap.style.background = comp.canvasBg || '#ffffff';
+          canvasWrap.style.boxShadow = 'inset 0 0 0 1px rgba(17,24,39,0.06)';
+
+          var canvasItems = Array.isArray(comp.items) ? comp.items.slice() : [];
+          canvasItems.sort(function(a, b) {
+            return Number(a.zIndex || 0) - Number(b.zIndex || 0);
+          });
+
+          for (var cii = 0; cii < canvasItems.length; cii++) {
+            var canvasItem = canvasItems[cii] || {};
+            var itemEl = document.createElement('div');
+            itemEl.style.position = 'absolute';
+            itemEl.style.left = (canvasItem.x || 0) + '%';
+            itemEl.style.top = (canvasItem.y || 0) + '%';
+            itemEl.style.width = (canvasItem.w || 20) + '%';
+            itemEl.style.height = (canvasItem.h || 20) + '%';
+            itemEl.style.zIndex = String(canvasItem.zIndex || 0);
+            itemEl.style.boxSizing = 'border-box';
+            itemEl.style.pointerEvents = 'none';
+
+            if (canvasItem.type === 'rect' || canvasItem.type === 'circle') {
+              var shape = document.createElement('div');
+              shape.style.width = '100%';
+              shape.style.height = '100%';
+              shape.style.background = canvasItem.color || '#3b82f6';
+              shape.style.borderRadius = canvasItem.type === 'circle' ? '50%' : '4px';
+              itemEl.appendChild(shape);
+            } else if (canvasItem.type === 'triangle') {
+              var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+              svg.setAttribute('viewBox', '0 0 100 100');
+              svg.setAttribute('preserveAspectRatio', 'none');
+              svg.setAttribute('width', '100%');
+              svg.setAttribute('height', '100%');
+              svg.style.display = 'block';
+
+              var polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+              polygon.setAttribute('points', '50,0 100,100 0,100');
+              polygon.setAttribute('fill', canvasItem.color || '#3b82f6');
+              svg.appendChild(polygon);
+              itemEl.appendChild(svg);
+            } else if (canvasItem.type === 'text') {
+              itemEl.style.height = 'auto';
+
+              var textEl = document.createElement('div');
+              textEl.style.width = '100%';
+              textEl.style.height = '100%';
+              textEl.style.color = canvasItem.color || '#111827';
+              textEl.style.fontSize = String(canvasItem.fontSize || 16) + 'px';
+              textEl.style.fontFamily = canvasItem.fontFamily || 'inherit';
+              textEl.style.fontWeight = canvasItem.fontWeight || 'normal';
+              textEl.style.fontStyle = canvasItem.fontStyle || 'normal';
+              textEl.style.textDecoration = canvasItem.textDecoration || 'none';
+              textEl.style.textAlign = canvasItem.textAlign || 'left';
+              textEl.style.lineHeight = String(canvasItem.lineHeight || 1.5);
+              textEl.style.letterSpacing = String(canvasItem.letterSpacing || 0) + 'px';
+              textEl.style.whiteSpace = 'pre-wrap';
+              textEl.style.wordBreak = 'break-word';
+              textEl.style.background = 'transparent';
+              textEl.style.border = 'none';
+              textEl.style.padding = '0';
+              textEl.style.margin = '0';
+              textEl.textContent = canvasItem.text || '';
+              itemEl.appendChild(textEl);
+            }
+
+            canvasWrap.appendChild(itemEl);
+          }
+
+          el.appendChild(canvasWrap);
         } else if (comp.type === 'scenario') {
           (function(scenarioComp, scenarioEl) {
             var rawSlides = Array.isArray(scenarioComp.slides) ? scenarioComp.slides.slice() : [];

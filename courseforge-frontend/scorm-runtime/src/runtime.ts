@@ -1287,6 +1287,81 @@ class CourseForgeRuntime {
         break;
       }
 
+      case "canvas": {
+        const canvasWrap = document.createElement("div");
+        canvasWrap.style.position = "relative";
+        canvasWrap.style.width = "100%";
+        canvasWrap.style.minHeight = "420px";
+        canvasWrap.style.aspectRatio = "16 / 10";
+        canvasWrap.style.overflow = "hidden";
+        canvasWrap.style.borderRadius = "12px";
+        canvasWrap.style.background = comp.canvasBg || "#ffffff";
+        canvasWrap.style.boxShadow = "inset 0 0 0 1px rgba(17,24,39,0.06)";
+
+        const items = [...(comp.items || [])].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+        items.forEach((item) => {
+          const itemEl = document.createElement("div");
+          itemEl.style.position = "absolute";
+          itemEl.style.left = `${item.x}%`;
+          itemEl.style.top = `${item.y}%`;
+          itemEl.style.width = `${item.w}%`;
+          itemEl.style.height = `${item.h}%`;
+          itemEl.style.zIndex = String(item.zIndex || 0);
+          itemEl.style.boxSizing = "border-box";
+          itemEl.style.pointerEvents = "none";
+
+          if (item.type === "rect" || item.type === "circle") {
+            const shape = document.createElement("div");
+            shape.style.width = "100%";
+            shape.style.height = "100%";
+            shape.style.background = item.color || "#3b82f6";
+            shape.style.borderRadius = item.type === "circle" ? "50%" : "4px";
+            itemEl.appendChild(shape);
+          } else if (item.type === "triangle") {
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("viewBox", "0 0 100 100");
+            svg.setAttribute("preserveAspectRatio", "none");
+            svg.setAttribute("width", "100%");
+            svg.setAttribute("height", "100%");
+            svg.style.display = "block";
+
+            const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            polygon.setAttribute("points", "50,0 100,100 0,100");
+            polygon.setAttribute("fill", item.color || "#3b82f6");
+            svg.appendChild(polygon);
+            itemEl.appendChild(svg);
+          } else if (item.type === "text") {
+            itemEl.style.height = "auto";
+
+            const text = document.createElement("div");
+            text.style.width = "100%";
+            text.style.height = "100%";
+            text.style.color = item.color || "#111827";
+            text.style.fontSize = `${item.fontSize || 16}px`;
+            text.style.fontFamily = item.fontFamily || "inherit";
+            text.style.fontWeight = item.fontWeight || "normal";
+            text.style.fontStyle = item.fontStyle || "normal";
+            text.style.textDecoration = item.textDecoration || "none";
+            text.style.textAlign = (item.textAlign as any) || "left";
+            text.style.lineHeight = String(item.lineHeight || 1.5);
+            text.style.letterSpacing = `${item.letterSpacing || 0}px`;
+            text.style.whiteSpace = "pre-wrap";
+            text.style.wordBreak = "break-word";
+            text.style.background = "transparent";
+            text.style.border = "none";
+            text.style.padding = "0";
+            text.style.margin = "0";
+            text.textContent = item.text || "";
+            itemEl.appendChild(text);
+          }
+
+          canvasWrap.appendChild(itemEl);
+        });
+
+        wrapper.appendChild(canvasWrap);
+        break;
+      }
+
       case "scenario": {
         type ScenarioScene = Extract<Component, { type: "scenario" }>["slides"][number];
         type ScenarioDialogue = ScenarioScene["dialogues"][number];
