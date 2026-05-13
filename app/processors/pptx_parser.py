@@ -47,6 +47,48 @@ def _rgb_to_hex(rgb) -> str:
         return ""
 
 
+_SCHEME_COLOR_MAP = {
+    "bg1": "#ffffff",
+    "lt1": "#ffffff",
+    "bg2": "#000000",
+    "lt2": "#f3f4f6",
+    "tx1": "#000000",
+    "dk1": "#000000",
+    "tx2": "#1f2937",
+    "dk2": "#1f2937",
+    "accent1": "#4f46e5",
+    "accent2": "#059669",
+    "accent3": "#dc2626",
+    "accent4": "#d97706",
+    "accent5": "#7c3aed",
+    "accent6": "#0891b2",
+}
+
+
+def _extract_hex_from_color_choice(color_parent) -> str:
+    """Extract a CSS hex color from pptx color XML when python-pptx fill helpers miss."""
+    if color_parent is None:
+        return ""
+
+    try:
+        srgb = color_parent.find(qn("a:srgbClr"))
+        if srgb is not None:
+            val = (srgb.get("val") or "").strip()
+            if re.fullmatch(r"[0-9A-Fa-f]{6}", val):
+                return f"#{val.lower()}"
+    except Exception:
+        pass
+
+    try:
+        scheme = color_parent.find(qn("a:schemeClr"))
+        if scheme is not None:
+            return _SCHEME_COLOR_MAP.get((scheme.get("val") or "").strip(), "")
+    except Exception:
+        pass
+
+    return ""
+
+
 def _emu_to_pct(val, total) -> float:
     """Convert EMU position/size to a percentage of the slide dimension."""
     try:
@@ -158,13 +200,21 @@ def _extract_slide_background(slide) -> dict:
         if fill_type is not None and str(fill_type) in ("SOLID", "1"):
             try:
                 color = fill.fore_color.rgb
-                return {"type": "color", "value": _rgb_to_hex(color)}
+                hex_color = _rgb_to_hex(color)
+                if hex_color:
+                    return {"type": "color", "value": hex_color}
             except Exception:
                 pass
 
         try:
             bgPr = bg._element.find(f".//{qn('p:bgPr')}")
             if bgPr is not None:
+                solidFill = bgPr.find(qn("a:solidFill"))
+                if solidFill is not None:
+                    hex_color = _extract_hex_from_color_choice(solidFill)
+                    if hex_color:
+                        return {"type": "color", "value": hex_color}
+
                 blipFill = bgPr.find(qn("a:blipFill"))
                 if blipFill is not None:
                     blip = blipFill.find(qn("a:blip"))
@@ -175,6 +225,12 @@ def _extract_slide_background(slide) -> dict:
                             if part:
                                 blob, mime = _compress_image(part.blob)
                                 return {"type": "image", "value": _blob_to_data_uri(blob, mime)}
+
+            bgRef = bg._element.find(f".//{qn('p:bgRef')}")
+            if bgRef is not None:
+                hex_color = _extract_hex_from_color_choice(bgRef)
+                if hex_color:
+                    return {"type": "color", "value": hex_color}
         except Exception:
             pass
 
@@ -580,6 +636,9 @@ async def extract_slides(file_bytes: bytes):
             "slideNumber": i + 1,
             "elements": elements,
         }
+
+        if bg["type"] in ("color", "image") and bg["value"]:
+            slide_block["background"] = bg
 
         if bg["type"] == "color":
             slide_block["backgroundColor"] = bg["value"]

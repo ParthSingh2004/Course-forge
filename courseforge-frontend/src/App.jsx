@@ -553,6 +553,9 @@ function App() {
       const data = await response.json();
       const newSlides = data.blocks.map((b, i) => {
         let background = b.background || null;
+        if (background?.type === 'none' || !background?.value) {
+          background = null;
+        }
         if (!background) {
           if (b.backgroundColor) {
             background = { type: 'color', value: b.backgroundColor };
@@ -1197,7 +1200,7 @@ function App() {
                         style={{ width: '100%', height: '36px', cursor: 'pointer', border: '1px solid #EAD0D0', borderRadius: '4px', padding: '2px', background: 'white' }}
                       />
                     ) : (
-                      <label className="cf-sidebar-file-label">
+                      <label className="cf-sidebar-file-label" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                         <ImageIcon style={{ width: 15, height: 15, color: '#8B6060', marginRight: '6px' }} />
                         Upload Image
                         <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgUpload} />
@@ -1220,7 +1223,7 @@ function App() {
                         </button>
                       </div>
                     ) : (
-                      <label className="cf-sidebar-file-label" style={{ marginTop: '4px' }}>
+                      <label className="cf-sidebar-file-label" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: '4px' }}>
                         <Mic style={{ width: 15, height: 15, color: '#8B6060', marginRight: '6px' }} />
                         Upload Audio
                         <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={handleBgAudioUpload} />
