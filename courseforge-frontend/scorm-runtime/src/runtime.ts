@@ -1316,10 +1316,11 @@ class CourseForgeRuntime {
         const scenarioSlides: ScenarioScene[] = [...fallbackScenes, errorScene];
         let currentScenarioIndex = 0;
 
-        const actionMeta: Record<ScenarioDialogue["action"], { badge: string; border: string; bg: string; text: string }> = {
-          next: { badge: "NEXT", border: "#22c55e", bg: "#14532d", text: "#4ade80" },
-          error: { badge: "ERROR", border: "#ef4444", bg: "#450a0a", text: "#fca5a5" },
-          restart: { badge: "RESTART", border: "#f59e0b", bg: "#451a03", text: "#fbbf24" },
+        const actionMeta: Record<ScenarioDialogue["action"], { interactive: boolean }> = {
+          next: { interactive: true },
+          error: { interactive: true },
+          restart: { interactive: true },
+          static: { interactive: false },
         };
 
         const renderScenarioScene = () => {
@@ -1416,6 +1417,7 @@ class CourseForgeRuntime {
           const dialogues = Array.isArray(activeScene?.dialogues) ? activeScene.dialogues : [];
           dialogues.forEach((dialogue) => {
             const meta = actionMeta[dialogue.action] ?? actionMeta.next;
+            const isInteractive = meta.interactive;
 
             const hotspot = document.createElement("button");
             hotspot.type = "button";
@@ -1425,29 +1427,18 @@ class CourseForgeRuntime {
             hotspot.style.transform = "translate(-50%, -50%)";
             hotspot.style.minWidth = "140px";
             hotspot.style.maxWidth = "220px";
-            hotspot.style.padding = "10px 12px 11px";
+            hotspot.style.padding = "12px 14px";
             hotspot.style.borderRadius = "12px";
-            hotspot.style.border = `2px solid ${meta.border}`;
-            hotspot.style.background = "rgba(9,9,11,0.86)";
-            hotspot.style.boxShadow = "0 14px 32px rgba(0,0,0,0.34)";
-            hotspot.style.cursor = "pointer";
+            hotspot.style.border = "1.5px solid rgba(255,255,255,0.26)";
+            hotspot.style.background = "rgba(17,24,39,0.74)";
+            hotspot.style.boxShadow = "0 14px 32px rgba(0,0,0,0.24)";
+            hotspot.style.cursor = isInteractive ? "pointer" : "default";
             hotspot.style.textAlign = "left";
             hotspot.style.backdropFilter = "blur(4px)";
-
-            const badge = document.createElement("div");
-            badge.style.display = "inline-flex";
-            badge.style.alignItems = "center";
-            badge.style.justifyContent = "center";
-            badge.style.padding = "2px 6px";
-            badge.style.marginBottom = "7px";
-            badge.style.borderRadius = "999px";
-            badge.style.background = meta.bg;
-            badge.style.color = meta.text;
-            badge.style.fontSize = "0.58rem";
-            badge.style.fontWeight = "700";
-            badge.style.letterSpacing = "0.08em";
-            badge.textContent = meta.badge;
-            hotspot.appendChild(badge);
+            hotspot.style.opacity = isInteractive ? "1" : "0.94";
+            if (!isInteractive) {
+              hotspot.disabled = true;
+            }
 
             const body = document.createElement("div");
             body.style.color = "#f3f4f6";
@@ -1458,16 +1449,18 @@ class CourseForgeRuntime {
             body.textContent = dialogue.text || "Continue";
             hotspot.appendChild(body);
 
-            hotspot.addEventListener("click", () => {
-              if (dialogue.action === "error") {
-                currentScenarioIndex = scenarioSlides.length - 1;
-              } else if (dialogue.action === "restart") {
-                currentScenarioIndex = 0;
-              } else {
-                currentScenarioIndex = Math.min(currentScenarioIndex + 1, fallbackScenes.length - 1);
-              }
-              renderScenarioScene();
-            });
+            if (isInteractive) {
+              hotspot.addEventListener("click", () => {
+                if (dialogue.action === "error") {
+                  currentScenarioIndex = scenarioSlides.length - 1;
+                } else if (dialogue.action === "restart") {
+                  currentScenarioIndex = 0;
+                } else {
+                  currentScenarioIndex = Math.min(currentScenarioIndex + 1, fallbackScenes.length - 1);
+                }
+                renderScenarioScene();
+              });
+            }
 
             stage.appendChild(hotspot);
           });

@@ -112,7 +112,7 @@ export const ComponentSchema = z.discriminatedUnion("type", [
         text: z.string().default(""),
         x: z.number(),
         y: z.number(),
-        action: z.enum(["next", "error", "restart"]).default("next"),
+        action: z.enum(["next", "error", "restart", "static"]).default("next"),
       })).default([]),
     })).default([]),
   }),

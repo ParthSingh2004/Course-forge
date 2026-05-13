@@ -18,6 +18,7 @@ const ACTION_META = {
     next: { label: 'Advance to next slide', border: '#22c55e', badgeBg: '#dcfce7', badgeText: '#166534' },
     error: { label: 'Send to Error slide', border: '#ef4444', badgeBg: '#fee2e2', badgeText: '#991b1b' },
     restart: { label: 'Restart from slide 1', border: '#f59e0b', badgeBg: '#fef3c7', badgeText: '#92400e' },
+    static: { label: 'Static dialogue only', border: '#64748b', badgeBg: '#e2e8f0', badgeText: '#475569' },
 };
 
 // ─── Factories ────────────────────────────────────────────────────────────────
@@ -150,7 +151,7 @@ export default function SpatialScenarioBlock({ block, onUpdate }) {
     // ── Derived ────────────────────────────────────────────────────────────
     const activeSlide = slides[activeIndex];
     const selectedDialogue = activeSlide?.dialogues.find(d => d.id === selectedDialogueId);
-    const availableActions = activeSlide?.isErrorSlide ? ['restart'] : ['next', 'error'];
+    const availableActions = activeSlide?.isErrorSlide ? ['restart', 'static'] : ['next', 'error', 'static'];
     const sceneCount = slides.filter(s => !s.isErrorSlide).length;
 
     // ── Render ─────────────────────────────────────────────────────────────
@@ -405,7 +406,7 @@ export default function SpatialScenarioBlock({ block, onUpdate }) {
                                                 letterSpacing: '0.05em', textTransform: 'uppercase',
                                                 flexShrink: 0,
                                             }}>
-                                                {d.action}
+                                                {d.action === 'static' ? 'dialogue' : d.action}
                                             </span>
                                         </div>
                                         {/* Text */}
@@ -533,7 +534,7 @@ export default function SpatialScenarioBlock({ block, onUpdate }) {
 
                             {/* Button text */}
                             <div>
-                                <Label>Button Text</Label>
+                                <Label>Box Text</Label>
                                 <textarea
                                     value={selectedDialogue.text}
                                     onChange={e => updateDialogue(selectedDialogue.id, { text: e.target.value })}

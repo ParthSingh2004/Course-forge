@@ -255,7 +255,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
                 if not isinstance(raw_dialogue, dict):
                     continue
                 action = str(raw_dialogue.get("action") or ("restart" if is_error_slide else "next")).strip().lower()
-                if action not in {"next", "error", "restart"}:
+                if action not in {"next", "error", "restart", "static"}:
                     action = "restart" if is_error_slide else "next"
                 try:
                     x = float(raw_dialogue.get("x", 50))
@@ -1141,9 +1141,10 @@ def _get_fallback_runtime_js() -> str:
             var scenarioSlides = learnerScenes.concat([errorScene]);
             var currentScenarioIndex = 0;
             var actionMeta = {
-              next: { badge: 'NEXT', border: '#22c55e', bg: '#14532d', text: '#4ade80' },
-              error: { badge: 'ERROR', border: '#ef4444', bg: '#450a0a', text: '#fca5a5' },
-              restart: { badge: 'RESTART', border: '#f59e0b', bg: '#451a03', text: '#fbbf24' }
+              next: { interactive: true },
+              error: { interactive: true },
+              restart: { interactive: true },
+              static: { interactive: false }
             };
 
             function renderScenarioScene() {
@@ -1240,6 +1241,7 @@ def _get_fallback_runtime_js() -> str:
               for (var di = 0; di < dialogues.length; di++) {
                 (function(dialogue) {
                   var meta = actionMeta[dialogue.action] || actionMeta.next;
+                  var isInteractive = !!meta.interactive;
                   var hotspot = document.createElement('button');
                   hotspot.type = 'button';
                   hotspot.style.position = 'absolute';
@@ -1248,29 +1250,18 @@ def _get_fallback_runtime_js() -> str:
                   hotspot.style.transform = 'translate(-50%, -50%)';
                   hotspot.style.minWidth = '140px';
                   hotspot.style.maxWidth = '220px';
-                  hotspot.style.padding = '10px 12px 11px';
+                  hotspot.style.padding = '12px 14px';
                   hotspot.style.borderRadius = '12px';
-                  hotspot.style.border = '2px solid ' + meta.border;
-                  hotspot.style.background = 'rgba(9,9,11,0.86)';
-                  hotspot.style.boxShadow = '0 14px 32px rgba(0,0,0,0.34)';
-                  hotspot.style.cursor = 'pointer';
+                  hotspot.style.border = '1.5px solid rgba(255,255,255,0.26)';
+                  hotspot.style.background = 'rgba(17,24,39,0.74)';
+                  hotspot.style.boxShadow = '0 14px 32px rgba(0,0,0,0.24)';
+                  hotspot.style.cursor = isInteractive ? 'pointer' : 'default';
                   hotspot.style.textAlign = 'left';
                   hotspot.style.backdropFilter = 'blur(4px)';
-
-                  var badge = document.createElement('div');
-                  badge.style.display = 'inline-flex';
-                  badge.style.alignItems = 'center';
-                  badge.style.justifyContent = 'center';
-                  badge.style.padding = '2px 6px';
-                  badge.style.marginBottom = '7px';
-                  badge.style.borderRadius = '999px';
-                  badge.style.background = meta.bg;
-                  badge.style.color = meta.text;
-                  badge.style.fontSize = '0.58rem';
-                  badge.style.fontWeight = '700';
-                  badge.style.letterSpacing = '0.08em';
-                  badge.textContent = meta.badge;
-                  hotspot.appendChild(badge);
+                  hotspot.style.opacity = isInteractive ? '1' : '0.94';
+                  if (!isInteractive) {
+                    hotspot.disabled = true;
+                  }
 
                   var body = document.createElement('div');
                   body.style.color = '#f3f4f6';
@@ -1281,16 +1272,18 @@ def _get_fallback_runtime_js() -> str:
                   body.textContent = dialogue.text || 'Continue';
                   hotspot.appendChild(body);
 
-                  hotspot.onclick = function() {
-                    if (dialogue.action === 'error') {
-                      currentScenarioIndex = scenarioSlides.length - 1;
-                    } else if (dialogue.action === 'restart') {
-                      currentScenarioIndex = 0;
-                    } else {
-                      currentScenarioIndex = Math.min(currentScenarioIndex + 1, learnerScenes.length - 1);
-                    }
-                    renderScenarioScene();
-                  };
+                  if (isInteractive) {
+                    hotspot.onclick = function() {
+                      if (dialogue.action === 'error') {
+                        currentScenarioIndex = scenarioSlides.length - 1;
+                      } else if (dialogue.action === 'restart') {
+                        currentScenarioIndex = 0;
+                      } else {
+                        currentScenarioIndex = Math.min(currentScenarioIndex + 1, learnerScenes.length - 1);
+                      }
+                      renderScenarioScene();
+                    };
+                  }
 
                   stage.appendChild(hotspot);
                 })(dialogues[di]);
