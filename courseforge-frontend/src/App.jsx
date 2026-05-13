@@ -1197,7 +1197,7 @@ function App() {
                         style={{ width: '100%', height: '36px', cursor: 'pointer', border: '1px solid #EAD0D0', borderRadius: '4px', padding: '2px', background: 'white' }}
                       />
                     ) : (
-                      <label className="cf-sidebar-file-label" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                      <label className="cf-sidebar-file-label">
                         <ImageIcon style={{ width: 15, height: 15, color: '#8B6060', marginRight: '6px' }} />
                         Upload Image
                         <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgUpload} />
@@ -1220,7 +1220,7 @@ function App() {
                         </button>
                       </div>
                     ) : (
-                      <label className="cf-sidebar-file-label" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: '4px' }}>
+                      <label className="cf-sidebar-file-label" style={{ marginTop: '4px' }}>
                         <Mic style={{ width: 15, height: 15, color: '#8B6060', marginRight: '6px' }} />
                         Upload Audio
                         <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={handleBgAudioUpload} />
@@ -1468,9 +1468,9 @@ function App() {
                     } else if (fmt.bgColor && fmt.bgColor !== 'none') {
                       const alpha = fmt.bgOpacity !== undefined ? fmt.bgOpacity : 1;
                       const hex = fmt.bgColor.replace('#', '');
-                      const r = parseInt(hex.substring(0,2),16);
-                      const g = parseInt(hex.substring(2,4),16);
-                      const b = parseInt(hex.substring(4,6),16);
+                      const r = parseInt(hex.substring(0, 2), 16);
+                      const g = parseInt(hex.substring(2, 4), 16);
+                      const b = parseInt(hex.substring(4, 6), 16);
                       wrapperStyle.background = `rgba(${r},${g},${b},${alpha})`;
                     }
                     if (fmt.paddingV !== undefined || fmt.paddingH !== undefined) {
@@ -1494,254 +1494,254 @@ function App() {
                     const isFormatOpen = formatPopoverId === block.id;
 
                     return (
-                    <div
-                      key={block.id}
-                      draggable={true}
-                      onDragStart={(e) => {
-                        if (e.target.closest('input, textarea, .cf-rich-text-editor, button, select')) {
-                          e.preventDefault();
-                          return;
-                        }
-                        handleDragStart(e, index);
-                      }}
-                      onDragOver={handleDragOver}
-                      onDrop={(e) => handleDrop(e, index)}
-                      onDragEnd={handleDragEnd}
-                      className={`cf-block-wrapper ${draggedIdx === index ? 'dragging' : ''} ${newBlockIds.has(block.id) ? 'cf-block-enter' : ''}`}
-                      style={wrapperStyle}
-                    >
                       <div
-                        className="cf-block-grip"
-                        onMouseEnter={() => setDragEnabledIdx(index)}
-                        onMouseLeave={() => setDragEnabledIdx(null)}
+                        key={block.id}
+                        draggable={true}
+                        onDragStart={(e) => {
+                          if (e.target.closest('input, textarea, .cf-rich-text-editor, button, select')) {
+                            e.preventDefault();
+                            return;
+                          }
+                          handleDragStart(e, index);
+                        }}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, index)}
+                        onDragEnd={handleDragEnd}
+                        className={`cf-block-wrapper ${draggedIdx === index ? 'dragging' : ''} ${newBlockIds.has(block.id) ? 'cf-block-enter' : ''}`}
+                        style={wrapperStyle}
                       >
-                        <GripVertical style={{ width: 15, height: 15 }} />
-                      </div>
-                      <div className="cf-block-controls">
-                        <select
-                          className="cf-animation-select"
-                          value={block.animation || 'none'}
-                          onChange={(e) => updateBlock(block.id, { animation: e.target.value })}
+                        <div
+                          className="cf-block-grip"
+                          onMouseEnter={() => setDragEnabledIdx(index)}
+                          onMouseLeave={() => setDragEnabledIdx(null)}
                         >
-                          <option value="none">No Animation</option>
-                          <option value="fade-in">Fade In</option>
-                          <option value="fade-in-up">Fade In Up</option>
-                          <option value="slide-in-left">Slide In Left</option>
-                          <option value="slide-in-right">Slide In Right</option>
-                          <option value="slide-in-up">Slide In Up</option>
-                          <option value="slide-in-down">Slide In Down</option>
-                          <option value="zoom-in">Zoom In</option>
-                          <option value="zoom-out">Zoom Out</option>
-                          <option value="flip-in">Flip In</option>
-                          <option value="bounce-in">Bounce In</option>
-                        </select>
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          className="cf-animation-delay"
-                          title="Delay (seconds)"
-                          value={block.animationDelay || 0}
-                          onChange={(e) => updateBlock(block.id, { animationDelay: parseFloat(e.target.value) || 0 })}
-                        />
-                        {/* Format button */}
-                        <div style={{ position: 'relative' }}>
-                          <button
-                            className="cf-block-format-btn"
-                            title="Block formatting"
-                            onClick={(e) => { e.stopPropagation(); setFormatPopoverId(isFormatOpen ? null : block.id); }}
+                          <GripVertical style={{ width: 15, height: 15 }} />
+                        </div>
+                        <div className="cf-block-controls">
+                          <select
+                            className="cf-animation-select"
+                            value={block.animation || 'none'}
+                            onChange={(e) => updateBlock(block.id, { animation: e.target.value })}
                           >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                              <rect x="3" y="3" width="18" height="18" rx="2"/>
-                              <path d="M3 9h18M9 21V9"/>
-                            </svg>
-                          </button>
-                          {isFormatOpen && (
-                            <div
-                              className="cf-format-panel"
-                              onClick={(e) => e.stopPropagation()}
+                            <option value="none">No Animation</option>
+                            <option value="fade-in">Fade In</option>
+                            <option value="fade-in-up">Fade In Up</option>
+                            <option value="slide-in-left">Slide In Left</option>
+                            <option value="slide-in-right">Slide In Right</option>
+                            <option value="slide-in-up">Slide In Up</option>
+                            <option value="slide-in-down">Slide In Down</option>
+                            <option value="zoom-in">Zoom In</option>
+                            <option value="zoom-out">Zoom Out</option>
+                            <option value="flip-in">Flip In</option>
+                            <option value="bounce-in">Bounce In</option>
+                          </select>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            className="cf-animation-delay"
+                            title="Delay (seconds)"
+                            value={block.animationDelay || 0}
+                            onChange={(e) => updateBlock(block.id, { animationDelay: parseFloat(e.target.value) || 0 })}
+                          />
+                          {/* Format button */}
+                          <div style={{ position: 'relative' }}>
+                            <button
+                              className="cf-block-format-btn"
+                              title="Block formatting"
+                              onClick={(e) => { e.stopPropagation(); setFormatPopoverId(isFormatOpen ? null : block.id); }}
                             >
-                              <div className="cf-format-panel-header">
-                                <span>Block Format</span>
-                                <button onClick={() => setFormatPopoverId(null)} className="cf-format-panel-close">✕</button>
-                              </div>
-
-                              {/* Width */}
-                              <div className="cf-format-row">
-                                <label className="cf-format-label">Width</label>
-                                <div className="cf-format-width-btns">
-                                  {['100%','75%','50%','33%'].map(w => (
-                                    <button
-                                      key={w}
-                                      onClick={() => updateBlock(block.id, { blockFormat: { ...fmt, width: w } })}
-                                      className={`cf-format-width-btn ${(fmt.width || '100%') === w ? 'active' : ''}`}
-                                    >{w}</button>
-                                  ))}
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                <path d="M3 9h18M9 21V9" />
+                              </svg>
+                            </button>
+                            {isFormatOpen && (
+                              <div
+                                className="cf-format-panel"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="cf-format-panel-header">
+                                  <span>Block Format</span>
+                                  <button onClick={() => setFormatPopoverId(null)} className="cf-format-panel-close">✕</button>
                                 </div>
-                              </div>
 
-                              {/* Background — tabs: Color / Image */}
-                              <div className="cf-format-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                                  <label className="cf-format-label">BG Color</label>
+                                {/* Width */}
+                                <div className="cf-format-row">
+                                  <label className="cf-format-label">Width</label>
+                                  <div className="cf-format-width-btns">
+                                    {['100%', '75%', '50%', '33%'].map(w => (
+                                      <button
+                                        key={w}
+                                        onClick={() => updateBlock(block.id, { blockFormat: { ...fmt, width: w } })}
+                                        className={`cf-format-width-btn ${(fmt.width || '100%') === w ? 'active' : ''}`}
+                                      >{w}</button>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Background — tabs: Color / Image */}
+                                <div className="cf-format-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                    <label className="cf-format-label">BG Color</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      <input
+                                        type="color"
+                                        value={fmt.bgColor && fmt.bgColor !== 'none' ? fmt.bgColor : '#ffffff'}
+                                        onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, bgColor: e.target.value, bgImage: undefined } })}
+                                        className="cf-format-color-input"
+                                        title="Background colour"
+                                        disabled={!!fmt.bgImage}
+                                      />
+                                      <input
+                                        type="range"
+                                        min="0" max="1" step="0.05"
+                                        value={fmt.bgOpacity !== undefined ? fmt.bgOpacity : 1}
+                                        onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, bgOpacity: parseFloat(e.target.value) } })}
+                                        className="cf-format-range"
+                                        title="Opacity"
+                                        disabled={!!fmt.bgImage}
+                                      />
+                                      <span className="cf-format-range-val">{Math.round((fmt.bgOpacity !== undefined ? fmt.bgOpacity : 1) * 100)}%</span>
+                                      {fmt.bgColor && fmt.bgColor !== 'none' && !fmt.bgImage && (
+                                        <button onClick={() => updateBlock(block.id, { blockFormat: { ...fmt, bgColor: 'none' } })} className="cf-format-clear-btn" title="Remove colour">✕</button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {/* Image background */}
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingTop: 4, borderTop: '1px dashed #f0d8d8' }}>
+                                    <label className="cf-format-label">BG Image</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      {fmt.bgImage ? (
+                                        <>
+                                          <div style={{ width: 28, height: 28, borderRadius: 4, backgroundImage: `url('${fmt.bgImage}')`, backgroundSize: 'cover', border: '1px solid #ead0d0', flexShrink: 0 }} />
+                                          <select
+                                            value={fmt.bgImageSize || 'cover'}
+                                            onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, bgImageSize: e.target.value } })}
+                                            style={{ fontSize: '0.65rem', border: '1px solid #ead0d0', borderRadius: 4, padding: '2px 4px', color: '#8b6060', background: '#fff' }}
+                                          >
+                                            <option value="cover">Cover</option>
+                                            <option value="contain">Contain</option>
+                                            <option value="100% 100%">Stretch</option>
+                                          </select>
+                                          <button onClick={() => updateBlock(block.id, { blockFormat: { ...fmt, bgImage: undefined } })} className="cf-format-clear-btn" title="Remove image">✕</button>
+                                        </>
+                                      ) : (
+                                        <label className="cf-format-img-upload-btn">
+                                          ＋ Upload
+                                          <input
+                                            type="file" accept="image/*" style={{ display: 'none' }}
+                                            onChange={(e) => {
+                                              const file = e.target.files?.[0];
+                                              if (!file) return;
+                                              const reader = new FileReader();
+                                              reader.onloadend = () => updateBlock(block.id, { blockFormat: { ...fmt, bgImage: reader.result, bgColor: 'none' } });
+                                              reader.readAsDataURL(file);
+                                              e.target.value = null;
+                                            }}
+                                          />
+                                        </label>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Padding */}
+                                <div className="cf-format-row">
+                                  <label className="cf-format-label">Padding</label>
+                                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                    <div className="cf-format-num-wrap">
+                                      <label style={{ fontSize: '0.6rem', color: '#aaa' }}>V</label>
+                                      <input
+                                        type="number" min="0" max="120"
+                                        value={fmt.paddingV !== undefined ? fmt.paddingV : 10}
+                                        onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, paddingV: parseInt(e.target.value) || 0 } })}
+                                        className="cf-format-num"
+                                      />
+                                    </div>
+                                    <div className="cf-format-num-wrap">
+                                      <label style={{ fontSize: '0.6rem', color: '#aaa' }}>H</label>
+                                      <input
+                                        type="number" min="0" max="120"
+                                        value={fmt.paddingH !== undefined ? fmt.paddingH : 12}
+                                        onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, paddingH: parseInt(e.target.value) || 0 } })}
+                                        className="cf-format-num"
+                                      />
+                                    </div>
+                                    <span style={{ fontSize: '0.65rem', color: '#aaa' }}>px</span>
+                                  </div>
+                                </div>
+
+                                {/* Border Radius */}
+                                <div className="cf-format-row">
+                                  <label className="cf-format-label">Rounding</label>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <input
+                                      type="range" min="0" max="32" step="1"
+                                      value={fmt.borderRadius !== undefined ? fmt.borderRadius : 0}
+                                      onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, borderRadius: parseInt(e.target.value) } })}
+                                      className="cf-format-range"
+                                    />
+                                    <span className="cf-format-range-val">{fmt.borderRadius ?? 0}px</span>
+                                  </div>
+                                </div>
+
+                                {/* Border */}
+                                <div className="cf-format-row">
+                                  <label className="cf-format-label">Border</label>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                     <input
                                       type="color"
-                                      value={fmt.bgColor && fmt.bgColor !== 'none' ? fmt.bgColor : '#ffffff'}
-                                      onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, bgColor: e.target.value, bgImage: undefined } })}
+                                      value={fmt.borderColor || '#e8c8c8'}
+                                      onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, borderColor: e.target.value, borderWidth: fmt.borderWidth || 1 } })}
                                       className="cf-format-color-input"
-                                      title="Background colour"
-                                      disabled={!!fmt.bgImage}
+                                      title="Border colour"
                                     />
                                     <input
-                                      type="range"
-                                      min="0" max="1" step="0.05"
-                                      value={fmt.bgOpacity !== undefined ? fmt.bgOpacity : 1}
-                                      onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, bgOpacity: parseFloat(e.target.value) } })}
-                                      className="cf-format-range"
-                                      title="Opacity"
-                                      disabled={!!fmt.bgImage}
+                                      type="number" min="0" max="8" step="1"
+                                      value={fmt.borderWidth || 0}
+                                      onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, borderWidth: parseInt(e.target.value) || 0 } })}
+                                      className="cf-format-num"
+                                      title="Border width (px)"
                                     />
-                                    <span className="cf-format-range-val">{Math.round((fmt.bgOpacity !== undefined ? fmt.bgOpacity : 1) * 100)}%</span>
-                                    {fmt.bgColor && fmt.bgColor !== 'none' && !fmt.bgImage && (
-                                      <button onClick={() => updateBlock(block.id, { blockFormat: { ...fmt, bgColor: 'none' } })} className="cf-format-clear-btn" title="Remove colour">✕</button>
-                                    )}
+                                    <span style={{ fontSize: '0.65rem', color: '#aaa' }}>px</span>
                                   </div>
                                 </div>
-                                {/* Image background */}
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingTop: 4, borderTop: '1px dashed #f0d8d8' }}>
-                                  <label className="cf-format-label">BG Image</label>
+
+                                {/* Min Height (Block Length) */}
+                                <div className="cf-format-row">
+                                  <label className="cf-format-label">Min Height</label>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    {fmt.bgImage ? (
-                                      <>
-                                        <div style={{ width: 28, height: 28, borderRadius: 4, backgroundImage: `url('${fmt.bgImage}')`, backgroundSize: 'cover', border: '1px solid #ead0d0', flexShrink: 0 }} />
-                                        <select
-                                          value={fmt.bgImageSize || 'cover'}
-                                          onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, bgImageSize: e.target.value } })}
-                                          style={{ fontSize: '0.65rem', border: '1px solid #ead0d0', borderRadius: 4, padding: '2px 4px', color: '#8b6060', background: '#fff' }}
-                                        >
-                                          <option value="cover">Cover</option>
-                                          <option value="contain">Contain</option>
-                                          <option value="100% 100%">Stretch</option>
-                                        </select>
-                                        <button onClick={() => updateBlock(block.id, { blockFormat: { ...fmt, bgImage: undefined } })} className="cf-format-clear-btn" title="Remove image">✕</button>
-                                      </>
-                                    ) : (
-                                      <label className="cf-format-img-upload-btn">
-                                        ＋ Upload
-                                        <input
-                                          type="file" accept="image/*" style={{ display: 'none' }}
-                                          onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (!file) return;
-                                            const reader = new FileReader();
-                                            reader.onloadend = () => updateBlock(block.id, { blockFormat: { ...fmt, bgImage: reader.result, bgColor: 'none' } });
-                                            reader.readAsDataURL(file);
-                                            e.target.value = null;
-                                          }}
-                                        />
-                                      </label>
+                                    <input
+                                      type="range" min="0" max="600" step="10"
+                                      value={fmt.minHeight || 0}
+                                      onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, minHeight: parseInt(e.target.value) } })}
+                                      className="cf-format-range"
+                                      title="Minimum block height"
+                                    />
+                                    <span className="cf-format-range-val">{fmt.minHeight ? `${fmt.minHeight}px` : 'auto'}</span>
+                                    {fmt.minHeight > 0 && (
+                                      <button onClick={() => updateBlock(block.id, { blockFormat: { ...fmt, minHeight: 0 } })} className="cf-format-clear-btn" title="Reset height">✕</button>
                                     )}
                                   </div>
                                 </div>
-                              </div>
 
-                              {/* Padding */}
-                              <div className="cf-format-row">
-                                <label className="cf-format-label">Padding</label>
-                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                  <div className="cf-format-num-wrap">
-                                    <label style={{ fontSize: '0.6rem', color: '#aaa' }}>V</label>
-                                    <input
-                                      type="number" min="0" max="120"
-                                      value={fmt.paddingV !== undefined ? fmt.paddingV : 10}
-                                      onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, paddingV: parseInt(e.target.value) || 0 } })}
-                                      className="cf-format-num"
-                                    />
-                                  </div>
-                                  <div className="cf-format-num-wrap">
-                                    <label style={{ fontSize: '0.6rem', color: '#aaa' }}>H</label>
-                                    <input
-                                      type="number" min="0" max="120"
-                                      value={fmt.paddingH !== undefined ? fmt.paddingH : 12}
-                                      onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, paddingH: parseInt(e.target.value) || 0 } })}
-                                      className="cf-format-num"
-                                    />
-                                  </div>
-                                  <span style={{ fontSize: '0.65rem', color: '#aaa' }}>px</span>
-                                </div>
+                                {/* Reset button */}
+                                <button
+                                  onClick={() => updateBlock(block.id, { blockFormat: {} })}
+                                  className="cf-format-reset-btn"
+                                >Reset formatting</button>
                               </div>
-
-                              {/* Border Radius */}
-                              <div className="cf-format-row">
-                                <label className="cf-format-label">Rounding</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <input
-                                    type="range" min="0" max="32" step="1"
-                                    value={fmt.borderRadius !== undefined ? fmt.borderRadius : 0}
-                                    onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, borderRadius: parseInt(e.target.value) } })}
-                                    className="cf-format-range"
-                                  />
-                                  <span className="cf-format-range-val">{fmt.borderRadius ?? 0}px</span>
-                                </div>
-                              </div>
-
-                              {/* Border */}
-                              <div className="cf-format-row">
-                                <label className="cf-format-label">Border</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <input
-                                    type="color"
-                                    value={fmt.borderColor || '#e8c8c8'}
-                                    onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, borderColor: e.target.value, borderWidth: fmt.borderWidth || 1 } })}
-                                    className="cf-format-color-input"
-                                    title="Border colour"
-                                  />
-                                  <input
-                                    type="number" min="0" max="8" step="1"
-                                    value={fmt.borderWidth || 0}
-                                    onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, borderWidth: parseInt(e.target.value) || 0 } })}
-                                    className="cf-format-num"
-                                    title="Border width (px)"
-                                  />
-                                  <span style={{ fontSize: '0.65rem', color: '#aaa' }}>px</span>
-                                </div>
-                              </div>
-
-                              {/* Min Height (Block Length) */}
-                              <div className="cf-format-row">
-                                <label className="cf-format-label">Min Height</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <input
-                                    type="range" min="0" max="600" step="10"
-                                    value={fmt.minHeight || 0}
-                                    onChange={(e) => updateBlock(block.id, { blockFormat: { ...fmt, minHeight: parseInt(e.target.value) } })}
-                                    className="cf-format-range"
-                                    title="Minimum block height"
-                                  />
-                                  <span className="cf-format-range-val">{fmt.minHeight ? `${fmt.minHeight}px` : 'auto'}</span>
-                                  {fmt.minHeight > 0 && (
-                                    <button onClick={() => updateBlock(block.id, { blockFormat: { ...fmt, minHeight: 0 } })} className="cf-format-clear-btn" title="Reset height">✕</button>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Reset button */}
-                              <button
-                                onClick={() => updateBlock(block.id, { blockFormat: {} })}
-                                className="cf-format-reset-btn"
-                              >Reset formatting</button>
-                            </div>
-                          )}
+                            )}
+                          </div>
+                          <button className="cf-block-delete" onClick={() => deleteBlock(block.id)} title="Delete Block">
+                            <Trash2 style={{ width: 12, height: 12 }} />
+                          </button>
                         </div>
-                        <button className="cf-block-delete" onClick={() => deleteBlock(block.id)} title="Delete Block">
-                          <Trash2 style={{ width: 12, height: 12 }} />
-                        </button>
+                        <div style={blockAlignStyle}>
+                          {renderBlock(block)}
+                        </div>
                       </div>
-                      <div style={blockAlignStyle}>
-                        {renderBlock(block)}
-                      </div>
-                    </div>
                     );
                   })
                 )}
