@@ -475,6 +475,23 @@ function App() {
     }));
   };
 
+  const duplicateBlock = (id) => {
+    setSlides(prev => prev.map(s => {
+      if (s.id !== activeSlideId) return s;
+      const idx = s.elements.findIndex(b => b.id === id);
+      if (idx < 0) return s;
+      const cloned = cloneBlockWithFreshIds(s.elements[idx]);
+      const nextElements = [...s.elements];
+      nextElements.splice(idx + 1, 0, cloned);
+      // Flash the new block
+      setTimeout(() => {
+        setNewBlockIds(prev => new Set([...prev, cloned.id]));
+        setTimeout(() => setNewBlockIds(prev => { const n = new Set(prev); n.delete(cloned.id); return n; }), 400);
+      }, 0);
+      return { ...s, elements: nextElements };
+    }));
+  };
+
   const handleDragStart = (e, index) => { setDraggedIdx(index); e.dataTransfer.effectAllowed = "move"; };
   const handleDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; };
   const handleDrop = (e, targetIndex) => {
@@ -811,7 +828,7 @@ function App() {
     switch (block.type) {
       case 'heading':
       case 'heading-1':
-        return <RichTextEditor className="cf-heading-input" value={block.content} onChange={(val) => updateBlock(block.id, { content: val })} placeholder="Heading..." />;
+        return <RichTextEditor className={`cf-heading-input cf-heading-${block.headingLevel || 'h1'}`} value={block.content} onChange={(val) => updateBlock(block.id, { content: val })} placeholder="Heading..." />;
       case 'text':
       case 'ai-generated':
         return <RichTextEditor className="cf-text-area" value={block.content} onChange={(val) => updateBlock(block.id, { content: val })} placeholder="Enter your text here..." />;
@@ -1547,6 +1564,21 @@ function App() {
                             value={block.animationDelay || 0}
                             onChange={(e) => updateBlock(block.id, { animationDelay: parseFloat(e.target.value) || 0 })}
                           />
+                          {/* H1 / H2 / H3 level picker — only for heading blocks */}
+                          {(block.type === 'heading' || block.type === 'heading-1') && (
+                            <div className="cf-heading-level-group">
+                              {['h1', 'h2', 'h3'].map(level => (
+                                <button
+                                  key={level}
+                                  className={`cf-heading-level-btn${(block.headingLevel || 'h1') === level ? ' active' : ''}`}
+                                  onClick={() => updateBlock(block.id, { headingLevel: level })}
+                                  title={`Set as ${level.toUpperCase()}`}
+                                >
+                                  {level.toUpperCase()}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           {/* Format button */}
                           <div style={{ position: 'relative' }}>
                             <button
@@ -1737,6 +1769,9 @@ function App() {
                               </div>
                             )}
                           </div>
+                          <button className="cf-block-duplicate" onClick={() => duplicateBlock(block.id)} title="Duplicate Block">
+                            <Copy style={{ width: 12, height: 12 }} />
+                          </button>
                           <button className="cf-block-delete" onClick={() => deleteBlock(block.id)} title="Delete Block">
                             <Trash2 style={{ width: 12, height: 12 }} />
                           </button>
