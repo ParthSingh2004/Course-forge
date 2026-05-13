@@ -2499,7 +2499,7 @@ class CourseForgeRuntime {
 
     // Use individual CSS longhand properties to avoid shorthand parsing issues
     const frontBgStyles = imageUrl
-      ? `background-image:linear-gradient(rgba(0,0,0,0.4),rgba(0,0,0,0.4)),url("${imageUrl}");background-size:cover;background-position:center;background-repeat:no-repeat;`
+      ? `background: linear-gradient(rgba(0,0,0,0.4),rgba(0,0,0,0.4)), url('${imageUrl}') center / cover no-repeat;`
       : `background:${fc.frontBackground || "linear-gradient(145deg, #1a0a0a 0%, #3d1010 60%, #6b1a1a 100%)"};`;
 
     return `

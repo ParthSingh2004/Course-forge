@@ -923,6 +923,7 @@
 }
 
 .cf-flashcard-front {
+  background: linear-gradient(145deg, #1A0A0A 0%, #3D1010 60%, #6B1A1A 100%);
   border: 1px solid #4D2020;
   box-shadow: 0 8px 32px rgba(139, 26, 26, 0.25);
 }

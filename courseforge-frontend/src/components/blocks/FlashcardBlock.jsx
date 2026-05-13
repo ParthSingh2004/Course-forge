@@ -78,16 +78,12 @@ export default function FlashcardBlock({ block, onUpdate }) {
         onUpdate(block.id, { imageUrl: null });
     };
 
-    // Compute front face background styles separately (avoid shorthand conflicts with CSS class)
     const frontBgStyle = block.imageUrl
         ? {
-            backgroundImage: `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url("${block.imageUrl}")`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat',
+            background: `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url('${block.imageUrl}') center / cover no-repeat`,
         }
         : {
-            background: theme.frontBackground,
+            background: theme.frontBackground
         };
 
     return (
