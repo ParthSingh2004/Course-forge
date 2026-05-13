@@ -27,6 +27,7 @@ import QuoteBlock from './components/blocks/QuoteBlock';
 import MultiSelectBlock from './components/blocks/MultiSelectBlock';
 import MatchingBlock from './components/blocks/MatchingBlock';
 import TabsBlock from './components/blocks/TabsBlock';
+import ScenarioBlock from './components/blocks/ScenarioBlock';
 
 // --- API Utilities ---
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://course-forge-tpxk.onrender.com').replace(/\/+$/, '');
@@ -437,6 +438,9 @@ function App() {
     if (type === 'image-stack') {
       newBlock.slides = [{ id: Date.now().toString(), type: 'image', imageUrl: '', caption: '' }];
     }
+    if (type === 'scenario') {
+      newBlock.slides = [];
+    }
     setSlides(prev => prev.map(s => {
       if (s.id !== activeSlideId) return s;
       return { ...s, elements: [...s.elements, newBlock] };
@@ -815,6 +819,7 @@ function App() {
       case 'columns': return <ColumnsGridBlock block={block} onUpdate={updateBlock} readOnly={isPreviewOpen} />;
       case 'audio': return <AudioBlock block={block} onUpdate={updateBlock} />;
       case 'tabs': return <TabsBlock block={block} onUpdate={updateBlock} />;
+      case 'scenario': return <ScenarioBlock block={block} onUpdate={updateBlock} />;
       default:
         return (
           <div style={{ color: '#B08080', fontSize: '0.8125rem', padding: '1rem', background: '#FFF5F5', borderRadius: 8, border: '1px dashed #E8C8C8' }}>
@@ -1083,7 +1088,7 @@ function App() {
                     { type: 'flashcard', icon: <CreditCard style={{ width: 14, height: 14 }} />, label: 'Flashcard' },
                     { type: 'video', icon: <Video style={{ width: 14, height: 14 }} />, label: 'Video' },
                     { type: 'interactive-video', icon: <Play style={{ width: 14, height: 14 }} />, label: 'Int. Video' },
-                    { type: 'image-hotspot', icon: <MousePointerClick style={{ width: 14, height: 14 }} />, label: 'Hotspot' },
+                    { type: 'image-hotspot', icon: <MousePointerClick style={{ width: 14, height: 14 }} />, label: 'Image Hotspot' },
                     { type: 'image-stack', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Img Stack' },
                     { type: 'list', icon: <List style={{ width: 14, height: 14 }} />, label: 'List' },
                     { type: 'quote', icon: <Quote style={{ width: 14, height: 14 }} />, label: 'Quote' },
@@ -1092,6 +1097,7 @@ function App() {
                     { type: 'table', icon: <Table style={{ width: 14, height: 14 }} />, label: 'Table' },
                     { type: 'columns', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Columns' },
                     { type: 'tabs', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Tabs' },
+                    { type: 'scenario', icon: <BookOpen style={{ width: 14, height: 14 }} />, label: 'Scenario' },
                   ].map(({ type, icon, label }) => (
                     <button
                       key={type}

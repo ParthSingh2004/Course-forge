@@ -238,6 +238,75 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
         if block.get("mandatory"):
             comp["mandatory"] = True
         return comp
+
+    if btype == "scenario":
+        raw_slides = block.get("slides")
+        if not isinstance(raw_slides, list):
+            raw_slides = []
+
+        scenario_slides = []
+        for raw_slide in raw_slides:
+            if not isinstance(raw_slide, dict):
+                continue
+
+            is_error_slide = bool(raw_slide.get("isErrorSlide"))
+            dialogues = []
+            for raw_dialogue in raw_slide.get("dialogues", []):
+                if not isinstance(raw_dialogue, dict):
+                    continue
+                action = str(raw_dialogue.get("action") or ("restart" if is_error_slide else "next")).strip().lower()
+                if action not in {"next", "error", "restart"}:
+                    action = "restart" if is_error_slide else "next"
+                try:
+                    x = float(raw_dialogue.get("x", 50))
+                except (TypeError, ValueError):
+                    x = 50.0
+                try:
+                    y = float(raw_dialogue.get("y", 50))
+                except (TypeError, ValueError):
+                    y = 50.0
+                dialogues.append({
+                    "id": str(raw_dialogue.get("id", _make_id("dialogue"))),
+                    "text": str(raw_dialogue.get("text", "") or ""),
+                    "x": _clamp(x, 0, 97),
+                    "y": _clamp(y, 0, 94),
+                    "action": action,
+                })
+
+            scenario_slides.append({
+                "id": str(raw_slide.get("id", _make_id("scenario_slide"))),
+                "isErrorSlide": is_error_slide,
+                "imageSrc": raw_slide.get("imageSrc") or _resolve_image_src(raw_slide) or "",
+                "dialogues": dialogues,
+            })
+
+        if not any(not slide.get("isErrorSlide") for slide in scenario_slides):
+            scenario_slides.insert(0, {
+                "id": _make_id("scenario_slide"),
+                "isErrorSlide": False,
+                "imageSrc": "",
+                "dialogues": [],
+            })
+
+        if not any(slide.get("isErrorSlide") for slide in scenario_slides):
+            scenario_slides.append({
+                "id": _make_id("scenario_slide"),
+                "isErrorSlide": True,
+                "imageSrc": "",
+                "dialogues": [{
+                    "id": _make_id("dialogue"),
+                    "text": "Try again",
+                    "x": 50,
+                    "y": 75,
+                    "action": "restart",
+                }],
+            })
+
+        return {
+            "type": "scenario",
+            "id": bid,
+            "slides": scenario_slides,
+        }
  
     if btype == "button":
         return {
@@ -1034,6 +1103,205 @@ def _get_fallback_runtime_js() -> str:
               el.appendChild(dot);
             })(hotspotItems[hi]);
           }
+        } else if (comp.type === 'scenario') {
+          (function(scenarioComp, scenarioEl) {
+            var rawSlides = Array.isArray(scenarioComp.slides) ? scenarioComp.slides.slice() : [];
+            var learnerScenes = rawSlides.filter(function(scene) { return !scene.isErrorSlide; });
+            if (!learnerScenes.length) {
+              learnerScenes = [{
+                id: scenarioComp.id + '-scene-1',
+                isErrorSlide: false,
+                imageSrc: '',
+                dialogues: []
+              }];
+            }
+
+            var errorScene = null;
+            for (var esi = 0; esi < rawSlides.length; esi++) {
+              if (rawSlides[esi] && rawSlides[esi].isErrorSlide) {
+                errorScene = rawSlides[esi];
+                break;
+              }
+            }
+            if (!errorScene) {
+              errorScene = {
+                id: scenarioComp.id + '-error',
+                isErrorSlide: true,
+                imageSrc: '',
+                dialogues: [{
+                  id: scenarioComp.id + '-restart',
+                  text: 'Try again',
+                  x: 50,
+                  y: 75,
+                  action: 'restart'
+                }]
+              };
+            }
+
+            var scenarioSlides = learnerScenes.concat([errorScene]);
+            var currentScenarioIndex = 0;
+            var actionMeta = {
+              next: { badge: 'NEXT', border: '#22c55e', bg: '#14532d', text: '#4ade80' },
+              error: { badge: 'ERROR', border: '#ef4444', bg: '#450a0a', text: '#fca5a5' },
+              restart: { badge: 'RESTART', border: '#f59e0b', bg: '#451a03', text: '#fbbf24' }
+            };
+
+            function renderScenarioScene() {
+              scenarioEl.innerHTML = '';
+              var activeScene = scenarioSlides[currentScenarioIndex] || learnerScenes[0];
+              var isErrorScene = !!(activeScene && activeScene.isErrorSlide);
+
+              var shell = document.createElement('div');
+              shell.style.background = '#0f0f0f';
+              shell.style.border = '1px solid ' + (isErrorScene ? '#7f1d1d' : '#991b1b');
+              shell.style.borderRadius = '12px';
+              shell.style.overflow = 'hidden';
+              shell.style.boxShadow = '0 24px 50px rgba(0,0,0,0.22)';
+
+              var header = document.createElement('div');
+              header.style.display = 'flex';
+              header.style.alignItems = 'center';
+              header.style.justifyContent = 'space-between';
+              header.style.gap = '12px';
+              header.style.padding = '12px 16px';
+              header.style.background = '#171717';
+              header.style.borderBottom = '1px solid #262626';
+
+              var titleText = document.createElement('div');
+              titleText.style.color = '#ffffff';
+              titleText.style.fontSize = '0.78rem';
+              titleText.style.fontWeight = '700';
+              titleText.style.letterSpacing = '0.08em';
+              titleText.style.textTransform = 'uppercase';
+              titleText.textContent = isErrorScene
+                ? 'Scenario Error Slide'
+                : 'Scenario Scene ' + (Math.min(currentScenarioIndex + 1, learnerScenes.length)) + ' / ' + learnerScenes.length;
+              header.appendChild(titleText);
+
+              var helperText = document.createElement('div');
+              helperText.style.color = isErrorScene ? '#fca5a5' : '#9ca3af';
+              helperText.style.fontSize = '0.72rem';
+              helperText.textContent = isErrorScene
+                ? 'Use restart to return to the opening scene.'
+                : 'Select a dialogue box to progress through the scenario.';
+              header.appendChild(helperText);
+              shell.appendChild(header);
+
+              var stage = document.createElement('div');
+              stage.style.position = 'relative';
+              stage.style.width = '100%';
+              stage.style.minHeight = '360px';
+              stage.style.aspectRatio = '16 / 9';
+              stage.style.overflow = 'hidden';
+              stage.style.background = activeScene && activeScene.imageSrc
+                ? "linear-gradient(rgba(0,0,0,0.22), rgba(0,0,0,0.38)), url('" + activeScene.imageSrc + "') center / cover no-repeat"
+                : (isErrorScene
+                    ? 'linear-gradient(140deg, #200909 0%, #451010 55%, #120404 100%)'
+                    : 'linear-gradient(140deg, #111827 0%, #1f2937 45%, #111111 100%)');
+
+              if (!(activeScene && activeScene.imageSrc)) {
+                var placeholder = document.createElement('div');
+                placeholder.style.position = 'absolute';
+                placeholder.style.inset = '0';
+                placeholder.style.display = 'flex';
+                placeholder.style.flexDirection = 'column';
+                placeholder.style.alignItems = 'center';
+                placeholder.style.justifyContent = 'center';
+                placeholder.style.gap = '10px';
+                placeholder.style.color = isErrorScene ? '#fca5a5' : '#d1d5db';
+                placeholder.style.textAlign = 'center';
+                placeholder.style.padding = '24px';
+
+                var placeholderTitle = document.createElement('div');
+                placeholderTitle.style.fontSize = '1rem';
+                placeholderTitle.style.fontWeight = '700';
+                placeholderTitle.textContent = isErrorScene ? 'Error scene background missing' : 'Scenario background missing';
+                placeholder.appendChild(placeholderTitle);
+
+                var placeholderCopy = document.createElement('div');
+                placeholderCopy.style.fontSize = '0.82rem';
+                placeholderCopy.style.maxWidth = '360px';
+                placeholderCopy.style.lineHeight = '1.55';
+                placeholderCopy.textContent = 'This scenario still works in preview and SCORM export, but adding a background image will make the interaction feel complete.';
+                placeholder.appendChild(placeholderCopy);
+                stage.appendChild(placeholder);
+              }
+
+              if (isErrorScene) {
+                var tint = document.createElement('div');
+                tint.style.position = 'absolute';
+                tint.style.inset = '0';
+                tint.style.background = 'rgba(127,29,29,0.18)';
+                tint.style.pointerEvents = 'none';
+                stage.appendChild(tint);
+              }
+
+              var dialogues = Array.isArray(activeScene && activeScene.dialogues) ? activeScene.dialogues : [];
+              for (var di = 0; di < dialogues.length; di++) {
+                (function(dialogue) {
+                  var meta = actionMeta[dialogue.action] || actionMeta.next;
+                  var hotspot = document.createElement('button');
+                  hotspot.type = 'button';
+                  hotspot.style.position = 'absolute';
+                  hotspot.style.left = dialogue.x + '%';
+                  hotspot.style.top = dialogue.y + '%';
+                  hotspot.style.transform = 'translate(-50%, -50%)';
+                  hotspot.style.minWidth = '140px';
+                  hotspot.style.maxWidth = '220px';
+                  hotspot.style.padding = '10px 12px 11px';
+                  hotspot.style.borderRadius = '12px';
+                  hotspot.style.border = '2px solid ' + meta.border;
+                  hotspot.style.background = 'rgba(9,9,11,0.86)';
+                  hotspot.style.boxShadow = '0 14px 32px rgba(0,0,0,0.34)';
+                  hotspot.style.cursor = 'pointer';
+                  hotspot.style.textAlign = 'left';
+                  hotspot.style.backdropFilter = 'blur(4px)';
+
+                  var badge = document.createElement('div');
+                  badge.style.display = 'inline-flex';
+                  badge.style.alignItems = 'center';
+                  badge.style.justifyContent = 'center';
+                  badge.style.padding = '2px 6px';
+                  badge.style.marginBottom = '7px';
+                  badge.style.borderRadius = '999px';
+                  badge.style.background = meta.bg;
+                  badge.style.color = meta.text;
+                  badge.style.fontSize = '0.58rem';
+                  badge.style.fontWeight = '700';
+                  badge.style.letterSpacing = '0.08em';
+                  badge.textContent = meta.badge;
+                  hotspot.appendChild(badge);
+
+                  var body = document.createElement('div');
+                  body.style.color = '#f3f4f6';
+                  body.style.fontSize = '0.82rem';
+                  body.style.fontWeight = '600';
+                  body.style.lineHeight = '1.45';
+                  body.style.whiteSpace = 'pre-wrap';
+                  body.textContent = dialogue.text || 'Continue';
+                  hotspot.appendChild(body);
+
+                  hotspot.onclick = function() {
+                    if (dialogue.action === 'error') {
+                      currentScenarioIndex = scenarioSlides.length - 1;
+                    } else if (dialogue.action === 'restart') {
+                      currentScenarioIndex = 0;
+                    } else {
+                      currentScenarioIndex = Math.min(currentScenarioIndex + 1, learnerScenes.length - 1);
+                    }
+                    renderScenarioScene();
+                  };
+
+                  stage.appendChild(hotspot);
+                })(dialogues[di]);
+              }
+
+              shell.appendChild(stage);
+              scenarioEl.appendChild(shell);
+            }
+
+            renderScenarioScene();
+          })(comp, el);
         } else if (comp.type === 'quiz') {
           var opts = '';
           for (var oi = 0; oi < (comp.options||[]).length; oi++) {

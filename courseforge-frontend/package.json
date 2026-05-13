@@ -14,6 +14,8 @@
     "lucide-react": "^1.8.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "react-easy-crop": "^5.5.7",
+    "react-image-crop": "^11.0.10",
     "simple-scorm-packager": "^0.2.7",
     "uuid": "^14.0.0"
   },

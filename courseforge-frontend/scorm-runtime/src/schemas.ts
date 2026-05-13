@@ -101,6 +101,23 @@ export const ComponentSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...BaseComponentProps,
+    type: z.literal("scenario"),
+    id: z.string(),
+    slides: z.array(z.object({
+      id: z.string(),
+      isErrorSlide: z.boolean().default(false),
+      imageSrc: z.string().default(""),
+      dialogues: z.array(z.object({
+        id: z.string(),
+        text: z.string().default(""),
+        x: z.number(),
+        y: z.number(),
+        action: z.enum(["next", "error", "restart"]).default("next"),
+      })).default([]),
+    })).default([]),
+  }),
+  z.object({
+    ...BaseComponentProps,
     type: z.literal("button"),
     id: z.string(),
     label: z.string(),

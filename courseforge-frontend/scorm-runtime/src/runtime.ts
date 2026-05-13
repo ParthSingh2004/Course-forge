@@ -1287,6 +1287,199 @@ class CourseForgeRuntime {
         break;
       }
 
+      case "scenario": {
+        type ScenarioScene = Extract<Component, { type: "scenario" }>["slides"][number];
+        type ScenarioDialogue = ScenarioScene["dialogues"][number];
+
+        const rawSlides = Array.isArray(comp.slides) ? comp.slides : [];
+        const learnerScenes = rawSlides.filter(scene => !scene.isErrorSlide);
+        const fallbackScenes: ScenarioScene[] = learnerScenes.length > 0
+          ? learnerScenes
+          : [{
+              id: `${comp.id}-scene-1`,
+              isErrorSlide: false,
+              imageSrc: "",
+              dialogues: [],
+            }];
+        const errorScene = rawSlides.find(scene => scene.isErrorSlide) ?? {
+          id: `${comp.id}-error`,
+          isErrorSlide: true,
+          imageSrc: "",
+          dialogues: [{
+            id: `${comp.id}-restart`,
+            text: "Try again",
+            x: 50,
+            y: 75,
+            action: "restart" as const,
+          }],
+        };
+        const scenarioSlides: ScenarioScene[] = [...fallbackScenes, errorScene];
+        let currentScenarioIndex = 0;
+
+        const actionMeta: Record<ScenarioDialogue["action"], { badge: string; border: string; bg: string; text: string }> = {
+          next: { badge: "NEXT", border: "#22c55e", bg: "#14532d", text: "#4ade80" },
+          error: { badge: "ERROR", border: "#ef4444", bg: "#450a0a", text: "#fca5a5" },
+          restart: { badge: "RESTART", border: "#f59e0b", bg: "#451a03", text: "#fbbf24" },
+        };
+
+        const renderScenarioScene = () => {
+          wrapper.innerHTML = "";
+
+          const activeScene = scenarioSlides[currentScenarioIndex];
+          const isErrorScene = !!activeScene?.isErrorSlide;
+
+          const shell = document.createElement("div");
+          shell.style.background = "#0f0f0f";
+          shell.style.border = `1px solid ${isErrorScene ? "#7f1d1d" : "#991b1b"}`;
+          shell.style.borderRadius = "12px";
+          shell.style.overflow = "hidden";
+          shell.style.boxShadow = "0 24px 50px rgba(0,0,0,0.22)";
+
+          const header = document.createElement("div");
+          header.style.display = "flex";
+          header.style.alignItems = "center";
+          header.style.justifyContent = "space-between";
+          header.style.gap = "12px";
+          header.style.padding = "12px 16px";
+          header.style.background = "#171717";
+          header.style.borderBottom = "1px solid #262626";
+
+          const title = document.createElement("div");
+          title.style.color = "#ffffff";
+          title.style.fontSize = "0.78rem";
+          title.style.fontWeight = "700";
+          title.style.letterSpacing = "0.08em";
+          title.style.textTransform = "uppercase";
+          title.textContent = isErrorScene
+            ? "Scenario Error Slide"
+            : `Scenario Scene ${Math.min(currentScenarioIndex + 1, fallbackScenes.length)} / ${fallbackScenes.length}`;
+          header.appendChild(title);
+
+          const helper = document.createElement("div");
+          helper.style.color = isErrorScene ? "#fca5a5" : "#9ca3af";
+          helper.style.fontSize = "0.72rem";
+          helper.textContent = isErrorScene
+            ? "Use restart to return to the opening scene."
+            : "Select a dialogue box to progress through the scenario.";
+          header.appendChild(helper);
+          shell.appendChild(header);
+
+          const stage = document.createElement("div");
+          stage.style.position = "relative";
+          stage.style.width = "100%";
+          stage.style.minHeight = "360px";
+          stage.style.aspectRatio = "16 / 9";
+          stage.style.background = activeScene?.imageSrc
+            ? `linear-gradient(rgba(0,0,0,0.22), rgba(0,0,0,0.38)), url('${activeScene.imageSrc}') center / cover no-repeat`
+            : (isErrorScene
+                ? "linear-gradient(140deg, #200909 0%, #451010 55%, #120404 100%)"
+                : "linear-gradient(140deg, #111827 0%, #1f2937 45%, #111111 100%)");
+          stage.style.overflow = "hidden";
+
+          if (!activeScene?.imageSrc) {
+            const placeholder = document.createElement("div");
+            placeholder.style.position = "absolute";
+            placeholder.style.inset = "0";
+            placeholder.style.display = "flex";
+            placeholder.style.flexDirection = "column";
+            placeholder.style.alignItems = "center";
+            placeholder.style.justifyContent = "center";
+            placeholder.style.gap = "10px";
+            placeholder.style.color = isErrorScene ? "#fca5a5" : "#d1d5db";
+            placeholder.style.textAlign = "center";
+            placeholder.style.padding = "24px";
+
+            const placeholderTitle = document.createElement("div");
+            placeholderTitle.style.fontSize = "1rem";
+            placeholderTitle.style.fontWeight = "700";
+            placeholderTitle.textContent = isErrorScene ? "Error scene background missing" : "Scenario background missing";
+            placeholder.appendChild(placeholderTitle);
+
+            const placeholderText = document.createElement("div");
+            placeholderText.style.fontSize = "0.82rem";
+            placeholderText.style.maxWidth = "360px";
+            placeholderText.style.lineHeight = "1.55";
+            placeholderText.textContent = "This scenario still works in preview and SCORM export, but adding a background image will make the interaction feel complete.";
+            placeholder.appendChild(placeholderText);
+            stage.appendChild(placeholder);
+          }
+
+          if (isErrorScene) {
+            const tint = document.createElement("div");
+            tint.style.position = "absolute";
+            tint.style.inset = "0";
+            tint.style.background = "rgba(127,29,29,0.18)";
+            tint.style.pointerEvents = "none";
+            stage.appendChild(tint);
+          }
+
+          const dialogues = Array.isArray(activeScene?.dialogues) ? activeScene.dialogues : [];
+          dialogues.forEach((dialogue) => {
+            const meta = actionMeta[dialogue.action] ?? actionMeta.next;
+
+            const hotspot = document.createElement("button");
+            hotspot.type = "button";
+            hotspot.style.position = "absolute";
+            hotspot.style.left = `${dialogue.x}%`;
+            hotspot.style.top = `${dialogue.y}%`;
+            hotspot.style.transform = "translate(-50%, -50%)";
+            hotspot.style.minWidth = "140px";
+            hotspot.style.maxWidth = "220px";
+            hotspot.style.padding = "10px 12px 11px";
+            hotspot.style.borderRadius = "12px";
+            hotspot.style.border = `2px solid ${meta.border}`;
+            hotspot.style.background = "rgba(9,9,11,0.86)";
+            hotspot.style.boxShadow = "0 14px 32px rgba(0,0,0,0.34)";
+            hotspot.style.cursor = "pointer";
+            hotspot.style.textAlign = "left";
+            hotspot.style.backdropFilter = "blur(4px)";
+
+            const badge = document.createElement("div");
+            badge.style.display = "inline-flex";
+            badge.style.alignItems = "center";
+            badge.style.justifyContent = "center";
+            badge.style.padding = "2px 6px";
+            badge.style.marginBottom = "7px";
+            badge.style.borderRadius = "999px";
+            badge.style.background = meta.bg;
+            badge.style.color = meta.text;
+            badge.style.fontSize = "0.58rem";
+            badge.style.fontWeight = "700";
+            badge.style.letterSpacing = "0.08em";
+            badge.textContent = meta.badge;
+            hotspot.appendChild(badge);
+
+            const body = document.createElement("div");
+            body.style.color = "#f3f4f6";
+            body.style.fontSize = "0.82rem";
+            body.style.fontWeight = "600";
+            body.style.lineHeight = "1.45";
+            body.style.whiteSpace = "pre-wrap";
+            body.textContent = dialogue.text || "Continue";
+            hotspot.appendChild(body);
+
+            hotspot.addEventListener("click", () => {
+              if (dialogue.action === "error") {
+                currentScenarioIndex = scenarioSlides.length - 1;
+              } else if (dialogue.action === "restart") {
+                currentScenarioIndex = 0;
+              } else {
+                currentScenarioIndex = Math.min(currentScenarioIndex + 1, fallbackScenes.length - 1);
+              }
+              renderScenarioScene();
+            });
+
+            stage.appendChild(hotspot);
+          });
+
+          shell.appendChild(stage);
+          wrapper.appendChild(shell);
+        };
+
+        renderScenarioScene();
+        break;
+      }
+
       case "tabs": {
         const tabs: any[] = (comp as any).tabs || [];
         if (tabs.length === 0) break;
