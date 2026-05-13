@@ -701,6 +701,69 @@
   transform: scale(1.05);
 }
 
+.cf-block-duplicate {
+  width: 28px;
+  height: 28px;
+  background: #1A4A6B;
+  color: white;
+  border: none;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  box-shadow: 0 2px 8px rgba(26, 74, 107, 0.4);
+}
+
+.cf-block-duplicate:hover {
+  background: #1F5A84;
+  transform: scale(1.05);
+}
+
+/* H1 / H2 / H3 level picker in block toolbar */
+.cf-heading-level-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: #f7eded;
+  border: 1px solid #e8d0d0;
+  border-radius: 7px;
+  padding: 3px;
+}
+
+.cf-heading-level-btn {
+  height: 22px;
+  min-width: 26px;
+  padding: 0 5px;
+  background: transparent;
+  color: #8b5050;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  font-family: 'Roboto', sans-serif;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.cf-heading-level-btn:hover {
+  background: #f0d8d8;
+  color: #5a1a1a;
+}
+
+.cf-heading-level-btn.active {
+  background: #8B1A1A;
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(139, 26, 26, 0.35);
+}
+
+/* Heading size classes applied to the RichTextEditor */
+.cf-heading-h1 { font-size: 2rem !important; font-weight: 800 !important; }
+.cf-heading-h2 { font-size: 1.5rem !important; font-weight: 700 !important; }
+.cf-heading-h3 { font-size: 1.15rem !important; font-weight: 600 !important; }
+
 .cf-slide-container {
   border: 1px solid #E8D8D8;
   background: #FFF;
