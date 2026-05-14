@@ -292,6 +292,22 @@ export const ComponentSchema = z.discriminatedUnion("type", [
     id: z.string(),
     content: z.string(),
     author: z.string().optional(),
+    layout: z.string().optional(),
+    bgImage: z.string().optional().nullable(),
+    bgOverlay: z.number().min(0).max(1).optional(),
+  }),
+  z.object({
+    ...BaseComponentProps,
+    type: z.literal("statement"),
+    id: z.string(),
+    image: z.string().optional().nullable(),
+    imageHeight: z.string().optional(),
+    textLayers: z.array(z.object({
+      id: z.string(),
+      content: z.string().optional(),
+      x: z.number().optional(),
+      y: z.number().optional(),
+    })).default([]),
   }),
 ]);
 

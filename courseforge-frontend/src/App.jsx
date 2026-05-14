@@ -30,6 +30,7 @@ import TabsBlock from './components/blocks/TabsBlock';
 import ScenarioBlock from './components/blocks/ScenarioBlock';
 import CanvasBlock from './components/blocks/CanvasBlock';
 import AccordionBlock from './components/blocks/AccordianBlock';
+import StatementBlock from './components/blocks/StatementBlock';
 
 // --- API Utilities ---
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://course-forge-tpxk.onrender.com').replace(/\/+$/, '');
@@ -107,6 +108,13 @@ const cloneBlockWithFreshIds = (block) => {
     clonedBlock.items = (block.items || []).map(item => ({
       ...item,
       id: makeEditorId('canvasitem'),
+    }));
+  }
+
+  if (block.type === 'statement') {
+    clonedBlock.textLayers = (block.textLayers || []).map(layer => ({
+      ...layer,
+      id: makeEditorId('statementlayer'),
     }));
   }
 
@@ -380,6 +388,11 @@ function App() {
       newBlock.front = '';
       newBlock.back = '';
     }
+    if (type === 'statement') {
+      newBlock.image = null;
+      newBlock.textLayers = [];
+      newBlock.imageHeight = '380px';
+    }
     if (type === 'video') {
       newBlock.videoUrl = '';
       newBlock.isLocal = false;
@@ -390,6 +403,9 @@ function App() {
     if (type === 'quote') {
       newBlock.content = "";
       newBlock.author = "";
+      newBlock.layout = 'below-left';
+      newBlock.bgImage = null;
+      newBlock.bgOverlay = 0.45;
     }
     if (type === 'process') {
       newBlock.steps = [{ title: '', content: '' }, { title: '', content: '' }];
@@ -742,6 +758,67 @@ function App() {
     }
   };
 
+  const handleExportScorm2004 = async () => {
+    if (!validateCourseForExport()) return;
+    setIsExporting(true);
+    setExportProgress(0);
+    setExportLabel('Preparing SCORM 2004 data…');
+    try {
+      setExportProgress(10);
+      await new Promise(r => setTimeout(r, 200));
+
+      setExportLabel('Uploading to server…');
+      setExportProgress(25);
+      const body = JSON.stringify({ title: courseTitle, blocks: slides, policy: { passingScore }, theme: null });
+
+      let pct = 25;
+      const ticker = setInterval(() => {
+        pct = Math.min(pct + 3, 85);
+        setExportProgress(pct);
+      }, 400);
+
+      setExportLabel('Generating SCORM 2004 package…');
+      exportAbortController.current = new AbortController();
+      const response = await fetch(buildApiUrl('/api/export/scorm-2004'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: exportAbortController.current.signal
+      });
+      clearInterval(ticker);
+
+      if (!response.ok) throw new Error("Export failed");
+
+      setExportLabel('Downloading ZIP…');
+      setExportProgress(90);
+      const blob = await response.blob();
+
+      setExportProgress(95);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${courseTitle.replace(/\s+/g, '_')}_SCORM_2004.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      setExportLabel('Done!');
+      setExportProgress(100);
+      await new Promise(r => setTimeout(r, 1200));
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.log('SCORM 2004 export cancelled by user.');
+      } else {
+        alert("Failed to export SCORM 2004 package.");
+      }
+    } finally {
+      setIsExporting(false);
+      setExportProgress(0);
+      setExportLabel('');
+    }
+  };
+
   const handleExportXapi = async () => {
     if (!validateCourseForExport()) return;
     setIsExporting(true);
@@ -913,6 +990,7 @@ function App() {
       case 'accordian': return <AccordionBlock block={block} onUpdate={updateBlock} />;
       case 'scenario': return <ScenarioBlock block={block} onUpdate={updateBlock} />;
       case 'canvas': return <CanvasBlock block={block} onUpdate={updateBlock} />;
+      case 'statement': return <StatementBlock block={block} onUpdate={updateBlock} />;
       default:
         return (
           <div style={{ color: '#B08080', fontSize: '0.8125rem', padding: '1rem', background: '#FFF5F5', borderRadius: 8, border: '1px dashed #E8C8C8' }}>
@@ -1069,6 +1147,15 @@ function App() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => { setIsExportMenuOpen(false); handleExportScorm2004(); }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', background: 'transparent', color: '#8b1a1a', border: 'none', borderRadius: 4, padding: '8px 10px', cursor: 'pointer', fontFamily: 'Roboto', fontWeight: 600, fontSize: '0.8rem', transition: 'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#fff5f5'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <Download style={{ width: 13, height: 13 }} /> Export as SCORM 2004
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => { setIsExportMenuOpen(false); handleExportXapi(); }}
                     style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', background: 'transparent', color: '#8b1a1a', border: 'none', borderRadius: 4, padding: '8px 10px', cursor: 'pointer', fontFamily: 'Roboto', fontWeight: 600, fontSize: '0.8rem', transition: 'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = '#fff5f5'}
@@ -1193,6 +1280,7 @@ function App() {
                     { type: 'accordion', icon: <ChevronDown style={{ width: 14, height: 14 }} />, label: 'Accordion' },
                     { type: 'scenario', icon: <BookOpen style={{ width: 14, height: 14 }} />, label: 'Scenario' },
                     { type: 'canvas', icon: <Square style={{ width: 14, height: 14 }} />, label: 'Canvas' },
+                    { type: 'statement', icon: <FileText style={{ width: 14, height: 14 }} />, label: 'Statement' },
                   ].map(({ type, icon, label }) => (
                     <button
                       key={type}

@@ -533,6 +533,31 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "id": bid,
             "content": block.get("content", ""),
             "author": block.get("author", ""),
+            "layout": block.get("layout", "below-left"),
+            "bgImage": block.get("bgImage") or None,
+            "bgOverlay": _clamp(_safe_float(block.get("bgOverlay"), 0.45), 0, 1),
+        }
+
+    if btype == "statement":
+        raw_layers = block.get("textLayers")
+        if not isinstance(raw_layers, list):
+            raw_layers = []
+        text_layers = []
+        for layer in raw_layers:
+            if not isinstance(layer, dict):
+                continue
+            text_layers.append({
+                "id": str(layer.get("id") or _make_id("statement_layer")),
+                "content": layer.get("content", ""),
+                "x": _clamp(_safe_float(layer.get("x"), 8), 0, 100),
+                "y": _clamp(_safe_float(layer.get("y"), 8), 0, 100),
+            })
+        return {
+            "type": "statement",
+            "id": bid,
+            "image": _resolve_image_src(block),
+            "imageHeight": str(block.get("imageHeight") or "380px"),
+            "textLayers": text_layers,
         }
  
     if btype == "audio":
@@ -792,6 +817,53 @@ def generate_manifest(
     <resource identifier="res_1"
               type="webcontent"
               adlcp:scormtype="sco"
+              href="index.html">
+{file_refs}    </resource>
+  </resources>
+</manifest>"""
+
+
+def generate_manifest_scorm2004(
+    title: str,
+    identifier: str = "CourseForge_Course_2004",
+    media_files: list = None,
+) -> str:
+    safe_title = html_module.escape(title)
+    safe_id = html_module.escape(identifier.replace(" ", "_"))
+
+    file_refs = '      <file href="index.html"/>\n'
+    if media_files:
+        for fname in media_files:
+            file_refs += f'      <file href="{html_module.escape(fname)}"/>\n'
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<manifest identifier="{safe_id}"
+          version="1.0"
+          xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
+          xmlns:adlcp="http://www.adlnet.org/xsd/adlcp_v1p3"
+          xmlns:adlseq="http://www.adlnet.org/xsd/adlseq_v1p3"
+          xmlns:adlnav="http://www.adlnet.org/xsd/adlnav_v1p3"
+          xmlns:imsss="http://www.imsglobal.org/xsd/imsss"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <metadata>
+    <schema>ADL SCORM</schema>
+    <schemaversion>2004 4th Edition</schemaversion>
+  </metadata>
+
+  <organizations default="org_1">
+    <organization identifier="org_1">
+      <title>{safe_title}</title>
+      <item identifier="item_1" identifierref="res_1" isvisible="true">
+        <title>{safe_title}</title>
+      </item>
+    </organization>
+  </organizations>
+
+  <resources>
+    <resource identifier="res_1"
+              type="webcontent"
+              adlcp:scormType="sco"
               href="index.html">
 {file_refs}    </resource>
   </resources>
@@ -1901,11 +1973,57 @@ def _get_fallback_runtime_js() -> str:
           listHtml += '</ul>';
           el.innerHTML = listHtml;
         } else if (comp.type === 'quote') {
-          var quoteHtml = '<div class="cf-rt-quote" style="border-left:4px solid #8b1a1a;padding:16px;background:#1a1a1e;border-radius:0 8px 8px 0;">';
-          quoteHtml += '<div style="font-size:18px;font-style:italic;color:#fafafa;">"' + (comp.content||'') + '"</div>';
-          if (comp.author) quoteHtml += '<div style="margin-top:8px;font-size:14px;color:#a1a1aa;font-weight:600;">— ' + comp.author + '</div>';
-          quoteHtml += '</div>';
+          var quoteLayout = String(comp.layout || 'below-left');
+          var quoteHasBg = !!comp.bgImage;
+          var quoteOverlay = Math.max(0, Math.min(1, Number(comp.bgOverlay == null ? 0.45 : comp.bgOverlay)));
+          var quoteIsAbove = quoteLayout.indexOf('above') === 0;
+          var quoteIsInline = quoteLayout.indexOf('inline') === 0;
+          var quoteIsRight = /right$/.test(quoteLayout);
+          var quoteMarkColor = quoteHasBg ? 'rgba(255,255,255,.6)' : '#c0807080';
+          var quoteAuthorColor = quoteHasBg ? 'rgba(255,255,255,.85)' : '#8b6060';
+          var quoteTextColor = quoteHasBg ? '#ffffff' : '#1a0a0a';
+          var quoteHtml = '<div class="cf-rt-quote" style="position:relative;overflow:hidden;padding:0;background:' + (quoteHasBg ? '#111827' : '#fff5f5') + ';border-radius:' + (quoteHasBg ? '8px' : '0 8px 8px 0') + ';' + (quoteHasBg ? 'border-left:none;' : 'border-left:4px solid #8b1a1a;') + (quoteHasBg ? 'min-height:140px;background-image:url(\'' + comp.bgImage + '\');background-size:cover;background-position:center;' : '') + '">';
+          if (quoteHasBg) {
+            quoteHtml += '<div style="position:absolute;inset:0;pointer-events:none;background-color:rgba(0,0,0,' + quoteOverlay + ');"></div>';
+          }
+          quoteHtml += '<div style="position:relative;z-index:1;display:flex;flex-direction:' + (quoteIsAbove ? 'column-reverse' : 'column') + ';gap:.35rem;padding:1rem 1rem .6rem;">';
+          if (quoteIsInline) {
+            quoteHtml += '<div style="display:flex;align-items:center;gap:.75rem;flex-direction:' + (quoteIsRight ? 'row-reverse' : 'row') + ';">';
+            quoteHtml += '<span style="display:block;font-size:3.5rem;line-height:.6;color:' + quoteMarkColor + ';font-family:Georgia,serif;">"</span>';
+            if (comp.author) quoteHtml += '<div style="font-size:.875rem;color:' + quoteAuthorColor + ';font-weight:600;font-family:Georgia,serif;font-style:italic;">' + comp.author + '</div>';
+            quoteHtml += '</div>';
+          } else {
+            quoteHtml += '<span style="display:block;font-size:3.5rem;line-height:.6;color:' + quoteMarkColor + ';font-family:Georgia,serif;margin-bottom:.15rem;">"</span>';
+          }
+          quoteHtml += '<div style="font-size:18px;font-style:italic;color:' + quoteTextColor + ';line-height:1.7;">' + (comp.content||'') + '</div>';
+          if (!quoteIsInline && comp.author) {
+            quoteHtml += '<div style="display:flex;justify-content:' + (quoteIsRight ? 'flex-end' : 'flex-start') + ';">';
+            quoteHtml += '<div style="font-size:.875rem;color:' + quoteAuthorColor + ';font-weight:600;font-family:Georgia,serif;font-style:italic;">' + comp.author + '</div>';
+            quoteHtml += '</div>';
+          }
+          quoteHtml += '</div></div>';
           el.innerHTML = quoteHtml;
+        } else if (comp.type === 'statement') {
+          var statementHtml = '<div style="margin:1rem 0;border-radius:12px;border:1px solid #e4e4e0;overflow:hidden;background:#ffffff;box-shadow:0 1px 4px rgba(0,0,0,.05),0 2px 12px rgba(0,0,0,.04);">';
+          statementHtml += '<div style="position:relative;width:100%;height:' + (comp.imageHeight || '380px') + ';overflow:hidden;background-size:cover;background-position:center;background-repeat:no-repeat;' + (comp.image ? 'background-image:url(\'' + comp.image + '\');' : 'background:#fafaf8;') + '">';
+          if (!comp.image) {
+            statementHtml += '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#909090;font-size:.88rem;font-weight:600;">No image uploaded</div>';
+          }
+          var statementLayers = comp.textLayers || [];
+          for (var sli = 0; sli < statementLayers.length; sli++) {
+            var sl = statementLayers[sli] || {};
+            var lx = Math.max(0, Math.min(88, Number(sl.x == null ? 8 : sl.x)));
+            var ly = Math.max(0, Math.min(88, Number(sl.y == null ? 8 : sl.y)));
+            statementHtml += '<div style="position:absolute;left:' + lx + '%;top:' + ly + '%;display:inline-flex;flex-direction:column;min-width:100px;z-index:10;">';
+            statementHtml += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 6px;gap:.4rem;background:#ffffff;border:1px solid #e4e4e0;border-bottom:none;border-radius:6px 6px 0 0;box-shadow:0 -1px 4px rgba(0,0,0,.04);pointer-events:none;">';
+            statementHtml += '<div style="display:flex;align-items:center;gap:.35rem;"><span style="color:#b0b0ac;font-size:.7rem;">•••</span><span style="font-size:.65rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#b0b0ac;">Text ' + (sli + 1) + '</span></div>';
+            statementHtml += '</div>';
+            statementHtml += '<div style="padding:4px 7px;min-width:90px;background:rgba(255,255,255,0.88);border:1px solid rgba(228,228,224,0.9);border-top:none;border-radius:0 6px 6px 6px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);">';
+            statementHtml += '<div class="cf-rt-text" style="color:#1a1a1a;min-width:140px;min-height:1.6em;">' + (sl.content || '') + '</div>';
+            statementHtml += '</div></div>';
+          }
+          statementHtml += '</div></div>';
+          el.innerHTML = statementHtml;
         } else if (comp.type === 'process') {
           var steps = comp.steps || [];
           var procHtml = '<div style="font-size:10px;font-weight:700;letter-spacing:0.15em;color:#c0392b;margin-bottom:12px;">PROCESS</div>';

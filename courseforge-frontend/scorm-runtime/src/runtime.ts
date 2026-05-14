@@ -2660,28 +2660,219 @@ class CourseForgeRuntime {
       case "quote": {
         const qdiv = document.createElement("div");
         qdiv.className = "cf-rt-quote";
-        qdiv.style.borderLeft = "4px solid #8b1a1a";
-        qdiv.style.padding = "16px";
-        qdiv.style.background = "#1a1a1e";
-        qdiv.style.borderRadius = "0 8px 8px 0";
+        const layout = String((comp as any).layout || "below-left");
+        const hasBg = Boolean((comp as any).bgImage);
+        const overlay = Math.max(0, Math.min(1, Number((comp as any).bgOverlay ?? 0.45)));
+        const isAbove = layout.startsWith("above");
+        const isInline = layout.startsWith("inline");
+        const isRight = layout.endsWith("right");
+
+        qdiv.style.position = "relative";
+        qdiv.style.overflow = "hidden";
+        qdiv.style.padding = "0";
+        qdiv.style.background = hasBg ? "#111827" : "#fff5f5";
+        qdiv.style.borderRadius = hasBg ? "8px" : "0 8px 8px 0";
+        qdiv.style.borderLeft = hasBg ? "none" : "4px solid #8b1a1a";
+        qdiv.style.minHeight = hasBg ? "140px" : "";
+        if (hasBg) {
+          qdiv.style.backgroundImage = `url(${(comp as any).bgImage})`;
+          qdiv.style.backgroundSize = "cover";
+          qdiv.style.backgroundPosition = "center";
+        }
+
+        if (hasBg) {
+          const scrim = document.createElement("div");
+          scrim.style.position = "absolute";
+          scrim.style.inset = "0";
+          scrim.style.pointerEvents = "none";
+          scrim.style.backgroundColor = `rgba(0,0,0,${overlay})`;
+          qdiv.appendChild(scrim);
+        }
+
+        const inner = document.createElement("div");
+        inner.style.position = "relative";
+        inner.style.zIndex = "1";
+        inner.style.display = "flex";
+        inner.style.flexDirection = isAbove ? "column-reverse" : "column";
+        inner.style.gap = "0.35rem";
+        inner.style.padding = "1rem 1rem 0.6rem";
+
+        const quoteColor = hasBg ? "rgba(255,255,255,0.6)" : "#c0807080";
+        const authorColor = hasBg ? "rgba(255,255,255,0.85)" : "#8b6060";
+        const textColor = hasBg ? "#ffffff" : "#1a0a0a";
+
+        if (isInline) {
+          const inline = document.createElement("div");
+          inline.style.display = "flex";
+          inline.style.alignItems = "center";
+          inline.style.gap = "0.75rem";
+          inline.style.flexDirection = isRight ? "row-reverse" : "row";
+
+          const mark = document.createElement("span");
+          mark.style.display = "block";
+          mark.style.fontSize = "3.5rem";
+          mark.style.lineHeight = "0.6";
+          mark.style.color = quoteColor;
+          mark.style.fontFamily = "Georgia, serif";
+          mark.textContent = '"';
+          inline.appendChild(mark);
+
+          if (comp.author) {
+            const auth = document.createElement("div");
+            auth.style.fontSize = "0.875rem";
+            auth.style.color = authorColor;
+            auth.style.fontWeight = "600";
+            auth.style.fontFamily = "Georgia, serif";
+            auth.style.fontStyle = "italic";
+            auth.textContent = comp.author;
+            inline.appendChild(auth);
+          }
+          inner.appendChild(inline);
+        } else {
+          const mark = document.createElement("span");
+          mark.style.display = "block";
+          mark.style.fontSize = "3.5rem";
+          mark.style.lineHeight = "0.6";
+          mark.style.color = quoteColor;
+          mark.style.fontFamily = "Georgia, serif";
+          mark.style.marginBottom = "0.15rem";
+          mark.textContent = '"';
+          inner.appendChild(mark);
+        }
 
         const text = document.createElement("div");
         text.style.fontSize = "18px";
         text.style.fontStyle = "italic";
-        text.style.color = "#fafafa";
-        text.innerHTML = `"${comp.content}"`;
-        qdiv.appendChild(text);
+        text.style.color = textColor;
+        text.style.lineHeight = "1.7";
+        text.innerHTML = comp.content;
+        inner.appendChild(text);
 
-        if (comp.author) {
+        if (!isInline && comp.author) {
+          const authWrap = document.createElement("div");
+          authWrap.style.display = "flex";
+          authWrap.style.justifyContent = isRight ? "flex-end" : "flex-start";
+
           const auth = document.createElement("div");
-          auth.style.marginTop = "8px";
-          auth.style.fontSize = "14px";
-          auth.style.color = "#a1a1aa";
+          auth.style.fontSize = "0.875rem";
+          auth.style.color = authorColor;
           auth.style.fontWeight = "600";
-          auth.textContent = `— ${comp.author}`;
-          qdiv.appendChild(auth);
+          auth.style.fontFamily = "Georgia, serif";
+          auth.style.fontStyle = "italic";
+          auth.textContent = comp.author;
+          authWrap.appendChild(auth);
+          inner.appendChild(authWrap);
         }
+
+        qdiv.appendChild(inner);
         wrapper.appendChild(qdiv);
+        break;
+      }
+
+      case "statement": {
+        const shell = document.createElement("div");
+        shell.style.margin = "1rem 0";
+        shell.style.borderRadius = "12px";
+        shell.style.border = "1px solid #e4e4e0";
+        shell.style.overflow = "hidden";
+        shell.style.background = "#ffffff";
+        shell.style.boxShadow = "0 1px 4px rgba(0,0,0,.05), 0 2px 12px rgba(0,0,0,.04)";
+
+        const canvas = document.createElement("div");
+        canvas.style.position = "relative";
+        canvas.style.width = "100%";
+        canvas.style.height = String((comp as any).imageHeight || "380px");
+        canvas.style.overflow = "hidden";
+        canvas.style.backgroundSize = "cover";
+        canvas.style.backgroundPosition = "center";
+        canvas.style.backgroundRepeat = "no-repeat";
+
+        const imageSrc = (comp as any).image;
+        if (imageSrc) {
+          canvas.style.backgroundImage = `url(${imageSrc})`;
+        } else {
+          canvas.style.background = "#fafaf8";
+          const empty = document.createElement("div");
+          empty.style.position = "absolute";
+          empty.style.inset = "0";
+          empty.style.display = "flex";
+          empty.style.alignItems = "center";
+          empty.style.justifyContent = "center";
+          empty.style.color = "#909090";
+          empty.style.fontSize = "0.88rem";
+          empty.style.fontWeight = "600";
+          empty.textContent = "No image uploaded";
+          canvas.appendChild(empty);
+        }
+
+        const layers: any[] = (comp as any).textLayers || [];
+        layers.forEach((layer, index) => {
+          const layerWrap = document.createElement("div");
+          layerWrap.style.position = "absolute";
+          layerWrap.style.left = `${Math.max(0, Math.min(88, Number(layer.x ?? 8)))}%`;
+          layerWrap.style.top = `${Math.max(0, Math.min(88, Number(layer.y ?? 8)))}%`;
+          layerWrap.style.display = "inline-flex";
+          layerWrap.style.flexDirection = "column";
+          layerWrap.style.minWidth = "100px";
+          layerWrap.style.zIndex = "10";
+
+          const bar = document.createElement("div");
+          bar.style.display = "flex";
+          bar.style.alignItems = "center";
+          bar.style.justifyContent = "space-between";
+          bar.style.padding = "4px 6px";
+          bar.style.gap = ".4rem";
+          bar.style.background = "#ffffff";
+          bar.style.border = "1px solid #e4e4e0";
+          bar.style.borderBottom = "none";
+          bar.style.borderRadius = "6px 6px 0 0";
+          bar.style.boxShadow = "0 -1px 4px rgba(0,0,0,.04)";
+          bar.style.pointerEvents = "none";
+
+          const labelWrap = document.createElement("div");
+          labelWrap.style.display = "flex";
+          labelWrap.style.alignItems = "center";
+          labelWrap.style.gap = ".35rem";
+          const grip = document.createElement("span");
+          grip.style.color = "#b0b0ac";
+          grip.style.fontSize = ".7rem";
+          grip.textContent = "•••";
+          const label = document.createElement("span");
+          label.style.fontSize = ".65rem";
+          label.style.fontWeight = "600";
+          label.style.letterSpacing = ".05em";
+          label.style.textTransform = "uppercase";
+          label.style.color = "#b0b0ac";
+          label.textContent = `Text ${index + 1}`;
+          labelWrap.appendChild(grip);
+          labelWrap.appendChild(label);
+          bar.appendChild(labelWrap);
+
+          const editor = document.createElement("div");
+          editor.style.padding = "4px 7px";
+          editor.style.minWidth = "90px";
+          editor.style.background = "rgba(255,255,255,0.88)";
+          editor.style.border = "1px solid rgba(228,228,224,0.9)";
+          editor.style.borderTop = "none";
+          editor.style.borderRadius = "0 6px 6px 6px";
+          editor.style.backdropFilter = "blur(4px)";
+          editor.style.webkitBackdropFilter = "blur(4px)";
+
+          const text = document.createElement("div");
+          text.className = "cf-rt-text";
+          text.style.color = "#1a1a1a";
+          text.style.minWidth = "140px";
+          text.style.minHeight = "1.6em";
+          text.innerHTML = layer.content || "";
+          editor.appendChild(text);
+
+          layerWrap.appendChild(bar);
+          layerWrap.appendChild(editor);
+          canvas.appendChild(layerWrap);
+        });
+
+        shell.appendChild(canvas);
+        wrapper.appendChild(shell);
         break;
       }
 

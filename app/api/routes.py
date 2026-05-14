@@ -21,6 +21,7 @@ from app.processors.pdf_parser import extract_pdf_slides
 from app.processors.scorm_builder import (
     build_course_definition,
     generate_manifest,
+    generate_manifest_scorm2004,
     generate_runtime_html,
     _get_runtime_js,
 )
@@ -561,8 +562,67 @@ def render_block_html(block: Dict[str, Any], block_index: int = 0) -> str:
     if block_type == "quote":
         quote_content = block.get("content", "")
         author = block.get("author", "")
-        author_html = f'<div style="margin-top:8px;font-size:14px;color:#666;font-weight:bold;">— {author}</div>' if author else ""
-        return f'<div style="{wrapper} border-left:4px solid #8b1a1a; background:#fff5f5;"><em style="font-size:18px;">"{quote_content}"</em>{author_html}</div>'
+        layout = str(block.get("layout", "below-left"))
+        bg_image = block.get("bgImage")
+        bg_overlay = max(0.0, min(1.0, float(block.get("bgOverlay", 0.45) or 0.45)))
+        has_bg = bool(bg_image)
+        is_above = layout.startswith("above")
+        is_inline = layout.startswith("inline")
+        is_right = layout.endswith("right")
+        wrapper_bits = [
+            wrapper,
+            "position:relative",
+            "overflow:hidden",
+            "padding:0",
+            f"background:{'#111827' if has_bg else '#fff5f5'}",
+            f"border-radius:{'8px' if has_bg else '0 8px 8px 0'}",
+            f"{'border-left:none' if has_bg else 'border-left:4px solid #8b1a1a'}",
+        ]
+        if has_bg:
+            wrapper_bits.extend([
+                f"background-image:url('{bg_image}')",
+                "background-size:cover",
+                "background-position:center",
+                "min-height:140px",
+            ])
+        quote_mark = f'<span style="display:block;font-size:3.5rem;line-height:.6;color:{("rgba(255,255,255,.6)" if has_bg else "#c0807080")};font-family:Georgia,serif;{"margin-bottom:.15rem;" if not is_inline else ""}">"</span>'
+        author_html = ""
+        if author:
+            author_html = f'<div style="font-size:.875rem;color:{("rgba(255,255,255,.85)" if has_bg else "#8b6060")};font-weight:600;font-family:Georgia,serif;font-style:italic;">{author}</div>'
+        inline_html = f'<div style="display:flex;align-items:center;gap:.75rem;flex-direction:{("row-reverse" if is_right else "row")};">{quote_mark}{author_html}</div>' if is_inline else quote_mark
+        author_block_html = ""
+        if author and not is_inline:
+            author_block_html = f'<div style="display:flex;justify-content:{("flex-end" if is_right else "flex-start")};">{author_html}</div>'
+        scrim_html = f'<div style="position:absolute;inset:0;pointer-events:none;background-color:rgba(0,0,0,{bg_overlay});"></div>' if has_bg else ""
+        inner_html = (
+            f'<div style="position:relative;z-index:1;display:flex;flex-direction:{("column-reverse" if is_above else "column")};gap:.35rem;padding:1rem 1rem .6rem;">'
+            f'{inline_html}'
+            f'<div style="font-size:18px;font-style:italic;color:{("#ffffff" if has_bg else "#1a0a0a")};line-height:1.7;">{quote_content}</div>'
+            f'{author_block_html}'
+            f'</div>'
+        )
+        return f'<div style="{";".join(wrapper_bits)}">{scrim_html}{inner_html}</div>'
+
+    if block_type == "statement":
+        image = block.get("image") or block.get("imageUrl") or block.get("src")
+        image_height = str(block.get("imageHeight") or "380px")
+        layers = block.get("textLayers", [])
+        layer_html = ""
+        for idx, layer in enumerate(layers):
+            left = max(0, min(88, float(layer.get("x", 8) or 8)))
+            top = max(0, min(88, float(layer.get("y", 8) or 8)))
+            layer_html += (
+                f'<div style="position:absolute;left:{left}%;top:{top}%;display:inline-flex;flex-direction:column;min-width:100px;z-index:10;">'
+                f'<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 6px;gap:.4rem;background:#ffffff;border:1px solid #e4e4e0;border-bottom:none;border-radius:6px 6px 0 0;box-shadow:0 -1px 4px rgba(0,0,0,.04);pointer-events:none;">'
+                f'<div style="display:flex;align-items:center;gap:.35rem;"><span style="color:#b0b0ac;font-size:.7rem;">•••</span><span style="font-size:.65rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#b0b0ac;">Text {idx + 1}</span></div>'
+                f'</div>'
+                f'<div style="padding:4px 7px;min-width:90px;background:rgba(255,255,255,0.88);border:1px solid rgba(228,228,224,0.9);border-top:none;border-radius:0 6px 6px 6px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);">'
+                f'<div style="font-size:15px;line-height:1.7;color:#1a1a1a;min-width:140px;min-height:1.6em;">{layer.get("content","")}</div>'
+                f'</div></div>'
+            )
+        empty_html = '' if image else '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#909090;font-size:.88rem;font-weight:600;">No image uploaded</div>'
+        bg_style = f"background-image:url('{image}');background-size:cover;background-position:center;background-repeat:no-repeat;" if image else "background:#fafaf8;"
+        return f'<div style="{wrapper} padding:0;border-radius:12px;border:1px solid #e4e4e0;overflow:hidden;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.05),0 2px 12px rgba(0,0,0,.04);"><div style="position:relative;width:100%;height:{image_height};overflow:hidden;{bg_style}">{empty_html}{layer_html}</div></div>'
 
     if block_type == "process":
         steps = block.get("steps", [])
@@ -895,6 +955,52 @@ async def export_scorm(course: CourseData):
         buffer,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{course.title}_scorm.zip"'}
+    )
+
+
+@router.post("/export/scorm-2004")
+async def export_scorm_2004(course: CourseData):
+    buffer = io.BytesIO()
+    runtime_js_name = "runtime.js"
+    course_data_js_name = "course-data.js"
+
+    course_def = build_course_definition(course.title, course.blocks, theme=course.theme, policy={
+        "passingScore": course.policy.passingScore,
+        "maxAttempts":  course.policy.maxAttempts,
+        "lockOnPass":   course.policy.lockOnPass,
+        "lockOnExhaust": course.policy.lockOnExhaust,
+    })
+
+    media_files = {}
+    _extract_media_from_course(course_def, media_files)
+
+    manifest = generate_manifest_scorm2004(
+        course.title,
+        media_files=list(media_files.keys()) + [runtime_js_name, course_data_js_name],
+    )
+
+    html = generate_runtime_html(
+        course.title,
+        runtime_js_path=runtime_js_name,
+        course_data_js_path=course_data_js_name,
+    )
+    runtime_js = _get_runtime_js()
+    course_data_js = f"window.__CF_COURSE_DATA = {json.dumps(course_def, separators=(',', ':'))};"
+
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("index.html", html)
+        z.writestr("imsmanifest.xml", manifest)
+        z.writestr(runtime_js_name, runtime_js)
+        z.writestr(course_data_js_name, course_data_js)
+
+        for fname, fbytes in media_files.items():
+            z.writestr(fname, fbytes)
+
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{course.title}_scorm_2004.zip"'}
     )
 
 
