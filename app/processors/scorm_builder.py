@@ -444,6 +444,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "front": block.get("front", ""),
             "back": block.get("back", ""),
             "color": flashcard_color,
+            "isSolid": bool(block.get("isSolid", False)),
             "imageUrl": block.get("imageUrl") or None,
             "frontBackground": flashcard_theme["front_bg"],
             "frontBorder": flashcard_theme["front_border"],

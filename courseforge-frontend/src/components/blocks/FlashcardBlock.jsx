@@ -83,22 +83,12 @@ export default function FlashcardBlock({ block, onUpdate }) {
         ? {
             background: `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url('${block.imageUrl}') center / cover no-repeat`,
         }
-        : {
-            background: theme.frontBackground
-        };
+        : isSolid
+            ? { background: theme.base }
+            : { background: theme.frontBackground };
 
     return (
         <div id={`flashcard-wrapper-${block.id}`} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
-            
-            {/* Scoped style block to forcefully apply !important for solid fills */}
-            {isSolid && !block.imageUrl && (
-                <style>{`
-                    #flashcard-wrapper-${block.id} .cf-flashcard-front,
-                    #flashcard-wrapper-${block.id} .cf-flashcard-back {
-                        background: ${theme.base} !important;
-                    }
-                `}</style>
-            )}
 
             {/* Toolbar: Image Upload, Color Picker, and Solid Toggle */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -206,7 +196,7 @@ export default function FlashcardBlock({ block, onUpdate }) {
                         className="cf-flashcard-face cf-flashcard-back"
                         style={{
                             position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
-                            background: theme.backBackground, // Will be overridden by the <style> tag if isSolid is true
+                            background: isSolid ? theme.base : theme.backBackground, // solid or gradient
                             border: theme.backBorder,
                             boxShadow: theme.backShadow,
                             transform: 'rotateY(180deg)',

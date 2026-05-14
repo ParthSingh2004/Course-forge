@@ -2825,7 +2825,7 @@ class CourseForgeRuntime {
           editor.style.border = "none";
           editor.style.borderRadius = "0";
           editor.style.backdropFilter = "none";
-          editor.style.webkitBackdropFilter = "none";
+          editor.style.backdropFilter = "none";
 
           const text = document.createElement("div");
           text.className = "cf-rt-text";
@@ -2992,11 +2992,22 @@ class CourseForgeRuntime {
 
   private renderFlashcardHTML(fc: Extract<Component, { type: "flashcard" }>): string {
     const imageUrl = (fc as any).imageUrl as string | undefined;
+    const isSolid  = !!(fc as any).isSolid;
+    const baseColor = (fc as any).color || "#8b1a1a";
 
     // Use individual CSS longhand properties to avoid shorthand parsing issues
     const frontBgStyles = imageUrl
       ? `background: linear-gradient(rgba(0,0,0,0.4),rgba(0,0,0,0.4)), url('${imageUrl}') center / cover no-repeat;`
-      : `background:${fc.frontBackground || "linear-gradient(145deg, #1a0a0a 0%, #3d1010 60%, #6b1a1a 100%)"};`;
+      : isSolid
+        ? `background:${baseColor};`
+        : `background:${fc.frontBackground || "linear-gradient(145deg, #1a0a0a 0%, #3d1010 60%, #6b1a1a 100%)"};`;
+
+    const backBgStyles = isSolid
+      ? `background:${baseColor};`
+      : `background:${fc.backBackground || "linear-gradient(145deg, #fffaf9 0%, #fff0ee 100%)"}`;
+
+    const backTextColor = isSolid ? "#ffffff" : (fc.backTextColor || "#1a0a0a");
+    const backBadgeColor = isSolid ? "rgba(255,255,255,0.68)" : (fc.backBadgeColor || "#c4a0a0");
 
     return `
       <div class="cf-rt-flashcard-scene">
@@ -3006,10 +3017,10 @@ class CourseForgeRuntime {
             <div class="cf-rt-flashcard-text">${fc.front}</div>
             <div class="cf-rt-flashcard-hint" style="color:rgba(255,255,255,0.78);">↻ Click to flip</div>
           </div>
-          <div class="cf-rt-flashcard-face cf-rt-flashcard-back" style="background:${fc.backBackground || "linear-gradient(145deg, #fffaf9 0%, #fff0ee 100%)"};border:2px solid ${fc.backBorder || "#e8c8c8"};box-shadow:0 8px 32px ${fc.backShadow || "rgba(139,26,26,0.12)"};">
-            <div class="cf-rt-flashcard-label" style="color:${fc.backBadgeColor || "#c4a0a0"};">ANSWER</div>
-            <div class="cf-rt-flashcard-text" style="color:${fc.backTextColor || "#1a0a0a"};">${fc.back}</div>
-            <div class="cf-rt-flashcard-hint" style="color:${fc.backTextColor || "#8b1a1a"};">↻ Click to flip back</div>
+          <div class="cf-rt-flashcard-face cf-rt-flashcard-back" style="${backBgStyles};border:2px solid ${fc.backBorder || "#e8c8c8"};box-shadow:0 8px 32px ${fc.backShadow || "rgba(139,26,26,0.12)"};">
+            <div class="cf-rt-flashcard-label" style="color:${backBadgeColor};">ANSWER</div>
+            <div class="cf-rt-flashcard-text" style="color:${backTextColor};">${fc.back}</div>
+            <div class="cf-rt-flashcard-hint" style="color:${backTextColor};">↻ Click to flip back</div>
           </div>
         </div>
       </div>

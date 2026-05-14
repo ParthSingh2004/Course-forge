@@ -959,7 +959,7 @@
 .cf-rich-text-editor b,
 .cf-rich-text-editor strong {
   font-weight: 800;
-  color: #111827;
+  color: inherit;
 }
 
 .cf-quiz-block {
