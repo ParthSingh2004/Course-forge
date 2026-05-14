@@ -79,6 +79,7 @@ export default function RichTextEditor({ value, onChange, placeholder, style, cl
   };
 
   const exec = (command, val = null) => {
+    if (editorRef.current) editorRef.current.focus();
     restoreSelection();
     document.execCommand(command, false, val);
     handleInput();
@@ -145,6 +146,7 @@ export default function RichTextEditor({ value, onChange, placeholder, style, cl
         <div style={{ width: '1px', height: '16px', background: '#EAD0D0', margin: '0 4px' }} />
         <input
           type="color"
+          onMouseDown={saveSelection}
           onInput={(e) => exec('foreColor', e.target.value)}
           style={{ width: '20px', height: '20px', padding: 0, border: 'none', cursor: 'pointer', background: 'transparent' }}
           title="Text Color"

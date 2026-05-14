@@ -382,9 +382,9 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "label": block.get("content") or block.get("label") or "Button",
             "targetSlideId": str(block.get("targetSlideId") or ""),
             "alignment": str(block.get("alignment") or "center"),
-            "color": _sanitize_hex_color(block.get("color")),
+            "color": _sanitize_hex_color(block.get("color")) if block.get("color") else None,
         }
- 
+
     if btype in ("quiz", "mcq"):
         comp = {
             "type": "quiz",
