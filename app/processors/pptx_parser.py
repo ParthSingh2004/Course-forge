@@ -47,67 +47,129 @@ def _rgb_to_hex(rgb) -> str:
         return ""
 
 
-_SCHEME_COLOR_MAP = {
-    "bg1": "#ffffff",
-    "lt1": "#ffffff",
-    "bg2": "#000000",
-    "lt2": "#f3f4f6",
-    "tx1": "#000000",
-    "dk1": "#000000",
-    "tx2": "#1f2937",
-    "dk2": "#1f2937",
-    "accent1": "#4f46e5",
-    "accent2": "#059669",
-    "accent3": "#dc2626",
-    "accent4": "#d97706",
-    "accent5": "#7c3aed",
-    "accent6": "#0891b2",
-}
-
 def _build_theme_color_map(prs) -> dict:
-    """Extract actual hex colors from the presentation's theme XML."""
+    """
+    Extract actual hex colors from the presentation's theme XML.
+    Tries every slide master so multi-master presentations are covered.
+    Returns a map of scheme name → CSS hex, e.g. {"accent1": "#c0392b", ...}
+    """
     theme_colors = {}
     try:
-        if not prs.slides:
+        masters = list(prs.slide_masters)
+        if not masters:
             return theme_colors
-        # Navigate to the theme part via the slide master
-        theme_part = prs.slides[0].slide_layout.slide_master.part.theme_part
-        clrScheme = theme_part.element.find(f".//{qn('a:themeElements')}//{qn('a:clrScheme')}")
-        
-        # Fallback if xpath is finicky
-        if clrScheme is None:
-            themeElements = theme_part.element.find(qn('a:themeElements'))
-            if themeElements is not None:
-                clrScheme = themeElements.find(qn('a:clrScheme'))
 
-        if clrScheme is not None:
+        for master in masters:
+            try:
+                theme_part = master.part.theme_part
+            except Exception:
+                continue
+
+            clrScheme = None
+            try:
+                themeElements = theme_part.element.find(qn('a:themeElements'))
+                if themeElements is not None:
+                    clrScheme = themeElements.find(qn('a:clrScheme'))
+            except Exception:
+                pass
+
+            # Secondary xpath attempt
+            if clrScheme is None:
+                try:
+                    clrScheme = theme_part.element.find(
+                        f".//{qn('a:themeElements')}/{qn('a:clrScheme')}"
+                    )
+                except Exception:
+                    pass
+
+            if clrScheme is None:
+                continue
+
             for child in clrScheme:
                 tag_name = child.tag.split('}')[-1]
-                
-                # Check for sRGB explicit colors
+                if tag_name in theme_colors:
+                    # First master wins — don't overwrite
+                    continue
+
+                # Explicit sRGB color
                 srgbClr = child.find(qn('a:srgbClr'))
                 if srgbClr is not None:
-                    val = srgbClr.get("val")
-                    if val:
+                    val = (srgbClr.get("val") or "").strip()
+                    if re.fullmatch(r"[0-9A-Fa-f]{6}", val):
                         theme_colors[tag_name] = f"#{val.lower()}"
                     continue
-                
-                # Check for system colors
+
+                # System color (e.g. windowText) — use lastClr as the resolved value
                 sysClr = child.find(qn('a:sysClr'))
                 if sysClr is not None:
-                    val = sysClr.get("lastClr")
-                    if val:
+                    val = (sysClr.get("lastClr") or "").strip()
+                    if re.fullmatch(r"[0-9A-Fa-f]{6}", val):
                         theme_colors[tag_name] = f"#{val.lower()}"
+
     except Exception as e:
         print(f"[pptx_parser] Could not extract theme colors: {e}")
+
     return theme_colors
 
 
+def _apply_color_transforms(hex_color: str, scheme_el) -> str:
+    """
+    Apply lum/shade/tint modifiers from a <a:schemeClr> element to the
+    resolved hex color.  Returns the transformed hex string.
+    """
+    if not hex_color or len(hex_color) != 7:
+        return hex_color
+    try:
+        r = int(hex_color[1:3], 16) / 255.0
+        g = int(hex_color[3:5], 16) / 255.0
+        b = int(hex_color[5:7], 16) / 255.0
+
+        for child in scheme_el:
+            local = child.tag.split('}')[-1]
+            val_str = child.get("val", "0")
+            try:
+                val = int(val_str) / 100000.0  # OOXML uses 1/1000ths of a percent
+            except ValueError:
+                continue
+
+            if local == "lumMod":
+                r, g, b = r * val, g * val, b * val
+            elif local == "lumOff":
+                r, g, b = r + val, g + val, b + val
+            elif local == "shade":
+                r, g, b = r * val, g * val, b * val
+            elif local == "tint":
+                r = r + (1.0 - r) * val
+                g = g + (1.0 - g) * val
+                b = b + (1.0 - b) * val
+
+        r = max(0, min(1, r))
+        g = max(0, min(1, g))
+        b = max(0, min(1, b))
+        return f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+    except Exception:
+        return hex_color
+
+
 def _extract_hex_from_color_choice(color_parent, theme_map=None) -> str:
-    """Extract a CSS hex color from pptx color XML when python-pptx fill helpers miss."""
+    """
+    Extract a CSS hex color from a pptx color XML element.
+
+    Resolution order:
+      1. <a:srgbClr> — explicit RGB, used directly.
+      2. <a:schemeClr> — look up in the *dynamic* theme_map extracted from
+         the actual presentation theme.  The hardcoded fallback map has been
+         removed because it caused brown→green and red→green color corruption
+         when a presentation's accent colors differed from the old defaults.
+         If the scheme key is not found in theme_map we return "" so the
+         caller can fall through gracefully (background → "none").
+      3. <a:sysClr> — system color, use lastClr attribute.
+      4. <a:prstClr> — preset color name, converted to hex.
+    """
     if color_parent is None:
         return ""
 
+    # 1. Explicit sRGB
     try:
         srgb = color_parent.find(qn("a:srgbClr"))
         if srgb is not None:
@@ -117,17 +179,47 @@ def _extract_hex_from_color_choice(color_parent, theme_map=None) -> str:
     except Exception:
         pass
 
+    # 2. Scheme color — dynamic theme map ONLY (no hardcoded fallback)
     try:
         scheme = color_parent.find(qn("a:schemeClr"))
         if scheme is not None:
             val = (scheme.get("val") or "").strip()
-            
-            # 1. Prioritize dynamic theme map
-            if theme_map and val in theme_map:
-                return theme_map[val]
-                
-            # 2. Fallback to hardcoded tailwind map
-            return _SCHEME_COLOR_MAP.get(val, "")
+            resolved = ""
+            if theme_map:
+                resolved = theme_map.get(val, "")
+            if resolved:
+                # Apply any luminance/shade/tint modifiers
+                resolved = _apply_color_transforms(resolved, scheme)
+            return resolved  # May be "" — caller handles gracefully
+    except Exception:
+        pass
+
+    # 3. System color
+    try:
+        sys_clr = color_parent.find(qn("a:sysClr"))
+        if sys_clr is not None:
+            val = (sys_clr.get("lastClr") or "").strip()
+            if re.fullmatch(r"[0-9A-Fa-f]{6}", val):
+                return f"#{val.lower()}"
+    except Exception:
+        pass
+
+    # 4. Preset color name
+    _PRESET_COLORS = {
+        "black": "#000000", "white": "#ffffff", "red": "#ff0000",
+        "green": "#008000", "blue": "#0000ff", "yellow": "#ffff00",
+        "cyan": "#00ffff", "magenta": "#ff00ff", "orange": "#ffa500",
+        "purple": "#800080", "brown": "#a52a2a", "gray": "#808080",
+        "grey": "#808080", "pink": "#ffc0cb", "navy": "#000080",
+        "teal": "#008080", "lime": "#00ff00", "maroon": "#800000",
+        "olive": "#808000", "silver": "#c0c0c0", "aqua": "#00ffff",
+        "fuchsia": "#ff00ff",
+    }
+    try:
+        prst = color_parent.find(qn("a:prstClr"))
+        if prst is not None:
+            val = (prst.get("val") or "").strip().lower()
+            return _PRESET_COLORS.get(val, "")
     except Exception:
         pass
 
@@ -350,7 +442,7 @@ def _try_extract_audio_from_shape(shape, slide, slide_w, slide_h,
         seen_rids.add(rid)
 
         rel = slide.part.rels.get(rid)
-        
+
         if rel is None or getattr(rel, "is_external", False):
             print(
                 f"[pptx_parser] audio '{getattr(shape, 'name', '?')}' on slide "
@@ -520,7 +612,7 @@ def _extract_notes(slide) -> str | None:
 
 async def extract_slides(file_bytes: bytes):
     prs = Presentation(io.BytesIO(file_bytes))
-    
+
     # 1. Build the dynamic theme color map for this specific presentation
     theme_map = _build_theme_color_map(prs)
 

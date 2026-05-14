@@ -1,17 +1,18 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Trash2, Plus, ChevronDown, GripVertical, Image, Type, X } from 'lucide-react';
+import RichTextEditor from '../ui/RichTextEditor';
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 const uid = () => `_${Math.random().toString(36).slice(2, 9)}`;
 
 const makeTopic = (index) => ({
-    id:    uid(),
+    id: uid(),
     title: `Topic ${index}`,
     // Each topic holds an ordered list of content items (text or image)
     items: [],
 });
 
-const makeTextItem  = () => ({ id: uid(), type: 'text',  value: '' });
+const makeTextItem = () => ({ id: uid(), type: 'text', value: '' });
 const makeImageItem = () => ({ id: uid(), type: 'image', src: '', alt: '', caption: '' });
 
 // ─── Shared tiny components ────────────────────────────────────────────────────
@@ -39,26 +40,53 @@ function IconBtn({ onClick, title, danger = false, children, style = {} }) {
     );
 }
 
+// ─── Shared Button Component (Fixes the hover re-render issue) ─────────────────
+function ActionBtn({ onClick, icon: Icon, label, isLarge = false, style = {} }) {
+    const [hover, setHover] = useState(false);
+    return (
+        <button
+            onClick={onClick}
+            onMouseEnter={() => setHover(true)}
+            onMouseLeave={() => setHover(false)}
+            style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: isLarge ? 'center' : 'flex-start',
+                gap: isLarge ? 7 : 5,
+                border: hover
+                    ? (isLarge ? '1.5px dashed #111827' : '1px dashed #9ca3af')
+                    : (isLarge ? '1.5px dashed #d1d5db' : '1px dashed #d1d5db'),
+                borderRadius: isLarge ? 8 : 6,
+                padding: isLarge ? '11px 0' : '5px 12px',
+                cursor: 'pointer',
+                background: hover ? '#f3f4f6' : '#fafafa',
+                color: hover && isLarge ? '#111827' : '#374151',
+                fontSize: isLarge ? '0.78rem' : '0.72rem',
+                fontWeight: 600,
+                transition: 'all 0.14s',
+                ...style
+            }}
+        >
+            <Icon style={{ width: isLarge ? 15 : 12, height: isLarge ? 15 : 12 }} />
+            {label}
+        </button>
+    );
+}
+
 // ─── Content item renderers ────────────────────────────────────────────────────
 function TextContentItem({ item, onChange, onDelete }) {
     return (
-        <div style={{ position: 'relative' }}>
-            <textarea
-                value={item.value}
-                onChange={e => onChange({ value: e.target.value })}
+        <div style={{ position: 'relative', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', overflow: 'hidden' }}>
+            <RichTextEditor
+                value={item.value || ''}
+                onChange={val => onChange({ value: val })}
                 placeholder="Enter content text…"
-                rows={4}
                 style={{
-                    width: '100%', boxSizing: 'border-box',
-                    border: '1px solid #e5e7eb', borderRadius: 6,
-                    padding: '8px 36px 8px 10px',
-                    fontFamily: 'inherit', fontSize: '0.82rem',
-                    color: '#111827', lineHeight: 1.6,
-                    resize: 'vertical', outline: 'none',
-                    background: '#ffffff',
+                    minHeight: '80px',
+                    border: 'none',
+                    padding: '8px 10px',
+                    fontSize: '0.85rem',
                 }}
-                onFocus={e  => { e.target.style.borderColor = '#d1d5db'; }}
-                onBlur={e   => { e.target.style.borderColor = '#e5e7eb'; }}
             />
             <IconBtn
                 onClick={onDelete}
@@ -311,26 +339,15 @@ function TopicEditor({ topic, isOpen, onToggle, onUpdateTitle, onAddItem, onUpda
                     {/* Add content buttons */}
                     <div style={{ display: 'flex', gap: 8 }}>
                         {[
-                            { label: '+ Text',  type: 'text',  Icon: Type  },
+                            { label: '+ Text', type: 'text', Icon: Type },
                             { label: '+ Image', type: 'image', Icon: Image },
                         ].map(({ label, type, Icon }) => (
-                            <button
+                            <ActionBtn
                                 key={type}
                                 onClick={() => onAddItem(type)}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: 5,
-                                    border: '1px dashed #d1d5db', borderRadius: 6,
-                                    padding: '5px 12px', cursor: 'pointer',
-                                    background: '#fafafa', color: '#374151',
-                                    fontSize: '0.72rem', fontWeight: 600,
-                                    transition: 'all 0.12s',
-                                }}
-                                onMouseEnter={e => { e.currentTarget.style.borderColor = '#9ca3af'; e.currentTarget.style.background = '#f3f4f6'; }}
-                                onMouseLeave={e => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.background = '#fafafa'; }}
-                            >
-                                <Icon style={{ width: 12, height: 12 }} />
-                                {label}
-                            </button>
+                                icon={Icon}
+                                label={label}
+                            />
                         ))}
                     </div>
                 </div>
@@ -342,8 +359,8 @@ function TopicEditor({ topic, isOpen, onToggle, onUpdateTitle, onAddItem, onUpda
 // ─── AccordionBlock (main) ────────────────────────────────────────────────────
 export default function AccordionBlock({ block, onUpdate }) {
 
-    const [topics, setTopics]       = useState(() => block?.topics || []);
-    const [openIds, setOpenIds]     = useState(() => new Set());
+    const [topics, setTopics] = useState(() => block?.topics || []);
+    const [openIds, setOpenIds] = useState(() => new Set());
     const [dragTopicIdx, setDragTopicIdx] = useState(null);
     const [dropTopicIdx, setDropTopicIdx] = useState(null);
     const onUpdateRef = useRef(onUpdate);
@@ -505,24 +522,14 @@ export default function AccordionBlock({ block, onUpdate }) {
                     ))}
 
                     {/* Add Topic button */}
-                    <button
+                    <ActionBtn
                         onClick={addTopic}
-                        style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                            border: '1.5px dashed #d1d5db', borderRadius: 8,
-                            padding: '11px 0', cursor: 'pointer',
-                            background: '#fafafa', color: '#374151',
-                            fontSize: '0.78rem', fontWeight: 600,
-                            transition: 'all 0.14s', marginTop: 2,
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#111827'; e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.color = '#111827'; }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.background = '#fafafa'; e.currentTarget.style.color = '#374151'; }}
-                    >
-                        <Plus style={{ width: 15, height: 15 }} />
-                        Add Topic
-                    </button>
+                        icon={Plus}
+                        label="Add Topic"
+                        isLarge={true}
+                        style={{ marginTop: 2 }}
+                    />
                 </div>
-
 
             </div>
         </div>
