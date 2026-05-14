@@ -13,6 +13,13 @@ def _clamp(value: float, min_value: float, max_value: float) -> float:
     return max(min_value, min(max_value, value))
 
 
+def _safe_float(value: Any, fallback: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
 def _sanitize_hex_color(value: Any, fallback: str = DEFAULT_FLASHCARD_COLOR) -> str:
     raw = str(value or "").strip()
     return raw if re.fullmatch(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})", raw) else fallback
@@ -333,12 +340,6 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             item_type = str(raw_item.get("type") or "").strip().lower()
             if item_type not in {"rect", "circle", "triangle", "text"}:
                 continue
-
-            def _safe_float(value: Any, fallback: float) -> float:
-                try:
-                    return float(value)
-                except (TypeError, ValueError):
-                    return fallback
 
             item = {
                 "id": str(raw_item.get("id", _make_id("canvas_item"))),
