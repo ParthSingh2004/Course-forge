@@ -97,6 +97,7 @@ function TableCellEditor({ value, onChange, bgColor, isHeader }) {
                     <RichTextEditor
                         value={value}
                         onChange={onChange}
+                        placeholder="type your text here"
                         compactToolbar
                         style={{ border: 'none', borderRadius: 0 }}
                     />

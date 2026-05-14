@@ -1309,6 +1309,8 @@ class CourseForgeRuntime {
           itemEl.style.zIndex = String(item.zIndex || 0);
           itemEl.style.boxSizing = "border-box";
           itemEl.style.pointerEvents = "none";
+          itemEl.style.transform = `rotate(${item.rotation || 0}deg)`;
+          itemEl.style.transformOrigin = "50% 50%";
 
           if (item.type === "rect" || item.type === "circle") {
             const shape = document.createElement("div");
@@ -1660,7 +1662,7 @@ class CourseForgeRuntime {
 
           const headerBtn = document.createElement("button");
           headerBtn.type = "button";
-          headerBtn.setAttribute("aria-expanded", index === 0 ? "true" : "false");
+          headerBtn.setAttribute("aria-expanded", "false");
           headerBtn.style.cssText = "width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border:none;background:#FDF8F8;color:#1A0A0A;cursor:pointer;font:inherit;font-weight:700;font-size:0.95rem;text-align:left;";
 
           const title = document.createElement("span");
@@ -1669,11 +1671,11 @@ class CourseForgeRuntime {
 
           const caret = document.createElement("span");
           caret.textContent = "▾";
-          caret.style.cssText = `font-size:1rem;color:#8B1A1A;transition:transform 0.18s ease;transform:${index === 0 ? "rotate(180deg)" : "rotate(0deg)"};`;
+          caret.style.cssText = "font-size:1rem;color:#8B1A1A;transition:transform 0.18s ease;transform:rotate(0deg);";
           headerBtn.appendChild(caret);
 
           const body = document.createElement("div");
-          body.style.cssText = `display:${index === 0 ? "block" : "none"};padding:16px;background:#ffffff;border-top:1px solid #F3E4E4;`;
+          body.style.cssText = "display:none;padding:16px;background:#ffffff;border-top:1px solid #F3E4E4;";
 
           const bodyInner = document.createElement("div");
           bodyInner.style.cssText = "display:flex;flex-direction:column;gap:12px;";
@@ -2870,7 +2872,7 @@ class CourseForgeRuntime {
         adiv.innerHTML = `
           <div style="margin-bottom:6px;font-size:10px;font-weight:700;letter-spacing:0.15em;color:#c0392b;">AUDIO</div>
           <div style="font-size:14px;font-weight:600;color:#fafafa;margin-bottom:10px;">${comp.label || "Audio Track"}</div>
-          <audio id="audio-el-${comp.id}" controls style="width:100%;border-radius:8px;background:#000;">
+          <audio id="audio-el-${comp.id}" controls style="display:block;width:100%;border-radius:8px;background:transparent;">
             <source src="${comp.src}">
             Your browser does not support audio.
           </audio>

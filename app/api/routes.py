@@ -646,7 +646,7 @@ def render_block_html(block: Dict[str, Any], block_index: int = 0) -> str:
                         caption = item.get("caption", "")
                         caption_html = f'<div style="margin-top:8px;font-size:13px;color:#666;">{caption}</div>' if caption else ""
                         items_html += f'<div style="text-align:center;margin-bottom:12px;"><img src="{src}" alt="{item.get("alt","")}" style="width:100%;max-height:320px;object-fit:contain;border-radius:8px;background:#fafafa;" />{caption_html}</div>'
-            open_attr = " open" if i == 0 else ""
+            open_attr = ""
             topic_html += f'<details{open_attr} style="border:1px solid #ead0d0;border-radius:10px;background:#fff;margin-bottom:12px;overflow:hidden;"><summary style="cursor:pointer;list-style:none;padding:14px 16px;background:#fdf8f8;font-weight:700;color:#1a0a0a;">{title}</summary><div style="padding:16px;border-top:1px solid #f3e4e4;">{items_html}</div></details>'
         return f'<div style="{wrapper}">{topic_html}</div>'
 

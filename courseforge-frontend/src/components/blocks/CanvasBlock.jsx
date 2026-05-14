@@ -46,21 +46,21 @@ const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 
 const hexToRgb = (hex) => {
     const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return r ? `${parseInt(r[1],16)},${parseInt(r[2],16)},${parseInt(r[3],16)}` : '255,255,255';
+    return r ? `${parseInt(r[1], 16)},${parseInt(r[2], 16)},${parseInt(r[3], 16)}` : '255,255,255';
 };
 
 // ─── Font families ────────────────────────────────────────────────────────────
 const FONT_FAMILIES = [
-    { label: 'DM Sans (default)',  value: 'inherit' },
-    { label: 'Arial',              value: 'Arial, sans-serif' },
-    { label: 'Georgia',            value: 'Georgia, serif' },
-    { label: 'Times New Roman',    value: '"Times New Roman", Times, serif' },
-    { label: 'Courier New',        value: '"Courier New", Courier, monospace' },
-    { label: 'Verdana',            value: 'Verdana, Geneva, sans-serif' },
-    { label: 'Trebuchet MS',       value: '"Trebuchet MS", Helvetica, sans-serif' },
-    { label: 'Impact',             value: 'Impact, Haettenschweiler, sans-serif' },
-    { label: 'Palatino',           value: '"Palatino Linotype", Palatino, serif' },
-    { label: 'Tahoma',             value: 'Tahoma, Geneva, sans-serif' },
+    { label: 'DM Sans (default)', value: 'inherit' },
+    { label: 'Arial', value: 'Arial, sans-serif' },
+    { label: 'Georgia', value: 'Georgia, serif' },
+    { label: 'Times New Roman', value: '"Times New Roman", Times, serif' },
+    { label: 'Courier New', value: '"Courier New", Courier, monospace' },
+    { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+    { label: 'Trebuchet MS', value: '"Trebuchet MS", Helvetica, sans-serif' },
+    { label: 'Impact', value: 'Impact, Haettenschweiler, sans-serif' },
+    { label: 'Palatino', value: '"Palatino Linotype", Palatino, serif' },
+    { label: 'Tahoma', value: 'Tahoma, Geneva, sans-serif' },
 ];
 
 // ─── Palette & factories ──────────────────────────────────────────────────────
@@ -82,29 +82,30 @@ const makeItem = (type, zIndex) => {
         x: 8 + Math.random() * 30,
         y: 8 + Math.random() * 30,
         w, h,
-        color:          isText ? '#111827' : nextColor(),
-        text:           isText ? 'Text box' : '',
+        rotation: 0,
+        color: isText ? '#111827' : nextColor(),
+        text: isText ? 'Text box' : '',
         // ── Typography (text items only) ──────────────────────────────────
-        fontSize:       isText ? 16          : undefined,
-        fontFamily:     isText ? 'inherit'   : undefined,
-        fontWeight:     isText ? 'normal'    : undefined,
-        fontStyle:      isText ? 'normal'    : undefined,
-        textDecoration: isText ? 'none'      : undefined,
-        textAlign:      isText ? 'left'      : undefined,
-        lineHeight:     isText ? 1.5         : undefined,
-        letterSpacing:  isText ? 0           : undefined,
+        fontSize: isText ? 16 : undefined,
+        fontFamily: isText ? 'inherit' : undefined,
+        fontWeight: isText ? 'normal' : undefined,
+        fontStyle: isText ? 'normal' : undefined,
+        textDecoration: isText ? 'none' : undefined,
+        textAlign: isText ? 'left' : undefined,
+        lineHeight: isText ? 1.5 : undefined,
+        letterSpacing: isText ? 0 : undefined,
         // ── Box background ────────────────────────────────────────────────
-        boxBg:          isText ? '#ffffff'   : undefined,
-        boxBgOpacity:   isText ? 0           : undefined, // 0–100
+        boxBg: isText ? '#ffffff' : undefined,
+        boxBgOpacity: isText ? 0 : undefined, // 0–100
     };
 };
 
 // ─── Resize handle descriptors (4 corners) ────────────────────────────────────
 const HANDLES = [
-    { id: 'nw', px: 0,   py: 0,   cursor: 'nwse-resize' },
-    { id: 'ne', px: 100, py: 0,   cursor: 'nesw-resize' },
+    { id: 'nw', px: 0, py: 0, cursor: 'nwse-resize' },
+    { id: 'ne', px: 100, py: 0, cursor: 'nesw-resize' },
     { id: 'se', px: 100, py: 100, cursor: 'nwse-resize' },
-    { id: 'sw', px: 0,   py: 100, cursor: 'nesw-resize' },
+    { id: 'sw', px: 0, py: 100, cursor: 'nesw-resize' },
 ];
 
 // ─── Shared handle renderer ───────────────────────────────────────────────────
@@ -140,6 +141,8 @@ function ItemElement({ item, isSelected, onMoveMouseDown, onResizeMouseDown, onT
         width: `${w}%`, height: `${h}%`,
         zIndex,
         boxSizing: 'border-box',
+        transform: `rotate(${item.rotation || 0}deg)`,
+        transformOrigin: '50% 50%',
     };
 
     // ── Triangle: Fix #2 — wrapper is pointer-dead; SVG is pointer-alive ───────
@@ -265,12 +268,12 @@ export default function InfographicBlock({ block, onUpdate }) {
     const [canvasBg, setCanvasBg] = useState(block?.canvasBg || '#ffffff');
 
     // ── Refs ───────────────────────────────────────────────────────────────────
-    const canvasRef     = useRef(null);
-    const draggingRef   = useRef(null);     // drag/resize state (lives outside React)
-    const rafRef        = useRef(null);     // RAF handle for throttling
-    const onUpdateRef   = useRef(onUpdate); // always-fresh onUpdate pointer
-    const itemsRef      = useRef(items);    // mirror for use inside mouseUp closure
-    const canvasBgRef   = useRef(canvasBg);
+    const canvasRef = useRef(null);
+    const draggingRef = useRef(null);     // drag/resize state (lives outside React)
+    const rafRef = useRef(null);     // RAF handle for throttling
+    const onUpdateRef = useRef(onUpdate); // always-fresh onUpdate pointer
+    const itemsRef = useRef(items);    // mirror for use inside mouseUp closure
+    const canvasBgRef = useRef(canvasBg);
 
     useEffect(() => { onUpdateRef.current = onUpdate; });
     // Keep refs in sync with state so mouseUp closures see current values
@@ -407,7 +410,7 @@ export default function InfographicBlock({ block, onUpdate }) {
             .sort((a, b) => a.zIndex - b.zIndex)[0];
         if (!above) return;
         commitItems(items.map(i => {
-            if (i.id === id)       return { ...i, zIndex: above.zIndex };
+            if (i.id === id) return { ...i, zIndex: above.zIndex };
             if (i.id === above.id) return { ...i, zIndex: item.zIndex };
             return i;
         }));
@@ -421,7 +424,7 @@ export default function InfographicBlock({ block, onUpdate }) {
             .sort((a, b) => b.zIndex - a.zIndex)[0];
         if (!below) return;
         commitItems(items.map(i => {
-            if (i.id === id)       return { ...i, zIndex: below.zIndex };
+            if (i.id === id) return { ...i, zIndex: below.zIndex };
             if (i.id === below.id) return { ...i, zIndex: item.zIndex };
             return i;
         }));
@@ -470,7 +473,7 @@ export default function InfographicBlock({ block, onUpdate }) {
 
     // ── Derived ────────────────────────────────────────────────────────────────
     const selectedItem = items.find(i => i.id === selectedId);
-    const sortedItems  = [...items].sort((a, b) => a.zIndex - b.zIndex);
+    const sortedItems = [...items].sort((a, b) => a.zIndex - b.zIndex);
 
     // ── Render ─────────────────────────────────────────────────────────────────
     return (
@@ -565,10 +568,10 @@ export default function InfographicBlock({ block, onUpdate }) {
                         flexShrink: 0,
                     }}>
                         {[
-                            { type: 'rect',     label: 'Rectangle', Icon: Square    },
-                            { type: 'circle',   label: 'Circle',    Icon: Circle    },
-                            { type: 'triangle', label: 'Triangle',  Icon: Triangle  },
-                            { type: 'text',     label: 'Text Box',  Icon: Type      },
+                            { type: 'rect', label: 'Rectangle', Icon: Square },
+                            { type: 'circle', label: 'Circle', Icon: Circle },
+                            { type: 'triangle', label: 'Triangle', Icon: Triangle },
+                            { type: 'text', label: 'Text Box', Icon: Type },
                         ].map(({ type, label, Icon }) => (
                             <ToolbarButton key={type} onClick={() => addItem(type)} Icon={Icon} label={label} />
                         ))}
@@ -679,11 +682,12 @@ function SelectedPanel({ item, onPatch, onDelete, onBringForward, onSendBackward
                 </div>
             )}
 
-            {/* Position & size readout */}
+            {/* Position & size — X/Y read-only, W/H typable */}
             <div>
                 <Label>Position &amp; Size</Label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                    {[['X', item.x], ['Y', item.y], ['W', item.w], ['H', item.h]].map(([lbl, val]) => (
+                    {/* X — read-only */}
+                    {[['X', item.x], ['Y', item.y]].map(([lbl, val]) => (
                         <div key={lbl}>
                             <span style={{ color: '#9ca3af', fontSize: '0.6rem', display: 'block', marginBottom: 2 }}>
                                 {lbl}
@@ -697,6 +701,91 @@ function SelectedPanel({ item, onPatch, onDelete, onBringForward, onSendBackward
                             </div>
                         </div>
                     ))}
+                    {/* W — typable */}
+                    <div>
+                        <span style={{ color: '#9ca3af', fontSize: '0.6rem', display: 'block', marginBottom: 2 }}>W</span>
+                        <input
+                            type="number" min="5" max="100" step="0.5"
+                            value={parseFloat(item.w.toFixed(1))}
+                            onChange={e => {
+                                const v = parseFloat(e.target.value);
+                                if (!isNaN(v)) onPatch({ w: clamp(v, 5, 100 - item.x) });
+                            }}
+                            onMouseDown={e => e.stopPropagation()}
+                            style={{
+                                width: '100%', boxSizing: 'border-box',
+                                background: '#ffffff', border: '1px solid #bfdbfe',
+                                borderRadius: 5, padding: '4px 6px',
+                                color: '#1d4ed8', fontSize: '0.7rem',
+                                textAlign: 'center', fontVariantNumeric: 'tabular-nums',
+                                outline: 'none',
+                            }}
+                            onFocus={e => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.boxShadow = '0 0 0 2px #bfdbfe'; }}
+                            onBlur={e => { e.currentTarget.style.borderColor = '#bfdbfe'; e.currentTarget.style.boxShadow = 'none'; }}
+                        />
+                    </div>
+                    {/* H — typable */}
+                    <div>
+                        <span style={{ color: '#9ca3af', fontSize: '0.6rem', display: 'block', marginBottom: 2 }}>H</span>
+                        <input
+                            type="number" min="5" max="100" step="0.5"
+                            value={parseFloat(item.h.toFixed(1))}
+                            onChange={e => {
+                                const v = parseFloat(e.target.value);
+                                if (!isNaN(v)) onPatch({ h: clamp(v, 5, 100 - item.y) });
+                            }}
+                            onMouseDown={e => e.stopPropagation()}
+                            style={{
+                                width: '100%', boxSizing: 'border-box',
+                                background: '#ffffff', border: '1px solid #bfdbfe',
+                                borderRadius: 5, padding: '4px 6px',
+                                color: '#1d4ed8', fontSize: '0.7rem',
+                                textAlign: 'center', fontVariantNumeric: 'tabular-nums',
+                                outline: 'none',
+                            }}
+                            onFocus={e => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.boxShadow = '0 0 0 2px #bfdbfe'; }}
+                            onBlur={e => { e.currentTarget.style.borderColor = '#bfdbfe'; e.currentTarget.style.boxShadow = 'none'; }}
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {/* Rotation */}
+            <div>
+                <Label>Rotation — {item.rotation || 0}°</Label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                        onClick={() => onPatch({ rotation: ((item.rotation || 0) + 90) % 360 })}
+                        title="Rotate 90° clockwise"
+                        style={{
+                            flex: 1, background: '#ffffff', border: '1px solid #e5e7eb',
+                            borderRadius: 5, padding: '6px 4px',
+                            cursor: 'pointer', color: '#374151',
+                            fontSize: '0.68rem', fontWeight: 600,
+                            transition: 'all 0.12s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.borderColor = '#bfdbfe'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                    >
+                        ↻ Rotate 90°
+                    </button>
+                    {(item.rotation || 0) !== 0 && (
+                        <button
+                            onClick={() => onPatch({ rotation: 0 })}
+                            title="Reset rotation"
+                            style={{
+                                background: '#ffffff', border: '1px solid #e5e7eb',
+                                borderRadius: 5, padding: '6px 8px',
+                                cursor: 'pointer', color: '#6b7280',
+                                fontSize: '0.68rem', fontWeight: 600,
+                                transition: 'all 0.12s',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.borderColor = '#d1d5db'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                        >
+                            ↺ Reset
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -705,10 +794,10 @@ function SelectedPanel({ item, onPatch, onDelete, onBringForward, onSendBackward
                 <Label>Layer Order</Label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                     {[
-                        { label: '↑ Forward',  action: onBringForward, title: 'Bring Forward one layer'  },
-                        { label: '↓ Backward', action: onSendBackward, title: 'Send Backward one layer'  },
-                        { label: '⤒ Front',    action: onBringToFront, title: 'Bring to very front'      },
-                        { label: '⤓ Back',     action: onSendToBack,   title: 'Send to very back'        },
+                        { label: '↑ Forward', action: onBringForward, title: 'Bring Forward one layer' },
+                        { label: '↓ Backward', action: onSendBackward, title: 'Send Backward one layer' },
+                        { label: '⤒ Front', action: onBringToFront, title: 'Bring to very front' },
+                        { label: '⤓ Back', action: onSendToBack, title: 'Send to very back' },
                     ].map(({ label, action, title }) => (
                         <button
                             key={title}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, X } from 'lucide-react';
+import { ShieldCheck, Trash2 } from 'lucide-react';
 
 // Isolated state logic for this component
 const FILL_BLANK_TOKEN = /____/g;
@@ -122,7 +122,7 @@ export default function FillBlankBlock({ block, onUpdate }) {
                             style={{ background: 'transparent', color: answers.length <= 1 ? '#d4b4b4' : '#ef4444', border: 'none', cursor: answers.length <= 1 ? 'not-allowed' : 'pointer' }}
                             title={answers.length <= 1 ? 'At least one blank is required' : 'Remove blank'}
                         >
-                            <X size={14} />
+                            <Trash2 size={14} />
                         </button>
                     </div>
                 ))}

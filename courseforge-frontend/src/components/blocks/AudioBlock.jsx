@@ -4,47 +4,88 @@ import { buildApiUrl, buildBackendAssetUrl } from '../../utils/api';
 
 export default function AudioBlock({ block, onUpdate }) {
     return (
-        <div className="cf-audio-block">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <div
+            className="cf-audio-block"
+            style={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #fee2e2',
+                borderRadius: '8px',
+                padding: '16px',
+                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.05)'
+            }}
+        >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <input
                     className="cf-audio-label-input"
                     value={block.label}
                     onChange={(e) => onUpdate(block.id, { label: e.target.value })}
                     placeholder="Track label..."
-                    style={{ flex: 1, marginRight: '0.5rem' }}
+                    style={{
+                        flex: 1,
+                        marginRight: '1rem',
+                        padding: '8px 12px',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '6px',
+                        fontSize: '0.875rem',
+                        color: '#1f2937',
+                        outline: 'none',
+                        transition: 'border-color 0.2s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#fca5a5'}
+                    onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
                 />
                 <button
                     onClick={() => onUpdate(block.id, { mandatory: !block.mandatory })}
                     style={{
                         display: 'flex', alignItems: 'center', gap: '0.35rem',
-                        padding: '0.25rem 0.625rem', borderRadius: 6, cursor: 'pointer',
-                        fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '0.06em',
-                        background: block.mandatory ? '#8b1a1a' : '#fff5f5',
-                        color: block.mandatory ? 'white' : '#8b6060',
-                        border: block.mandatory ? '1px solid #8b1a1a' : '1px solid #EAD0D0',
-                        transition: 'all 0.15s', whiteSpace: 'nowrap', flexShrink: 0,
+                        padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+                        fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.05em',
+                        background: block.mandatory ? '#ef4444' : '#ffffff',
+                        color: block.mandatory ? '#ffffff' : '#ef4444',
+                        border: block.mandatory ? '1px solid #ef4444' : '1px solid #fca5a5',
+                        transition: 'all 0.2s', whiteSpace: 'nowrap', flexShrink: 0,
                     }}
                 >
-                    <ShieldCheck style={{ width: 12, height: 12 }} />
-                    {block.mandatory ? 'MANDATORY' : 'Optional'}
+                    <ShieldCheck style={{ width: 14, height: 14 }} />
+                    {block.mandatory ? 'MANDATORY' : 'OPTIONAL'}
                 </button>
             </div>
             {block.audioUrl ? (
-                <div>
-                    <audio className="cf-audio-player" controls src={block.audioUrl} style={{ width: '100%' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <audio className="cf-audio-player" controls src={block.audioUrl} style={{ width: '100%', height: '40px' }} />
                     <button
                         type="button"
                         onClick={() => onUpdate(block.id, { audioUrl: '', mediaId: '', isUploading: false })}
-                        style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', border: '1px solid #EAD0D0', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', color: '#ffffff', fontSize: '0.75rem', fontWeight: 600 }}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px', alignSelf: 'flex-start',
+                            background: '#ffffff', border: '1px solid #fee2e2', borderRadius: '6px',
+                            padding: '6px 12px', cursor: 'pointer', color: '#ef4444',
+                            fontSize: '0.75rem', fontWeight: 500, transition: 'background 0.2s'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.background = '#fef2f2'}
+                        onMouseOut={(e) => e.currentTarget.style.background = '#ffffff'}
                     >
-                        <X style={{ width: 12, height: 12 }} /> Remove Audio
+                        <X style={{ width: 14, height: 14 }} /> Remove Audio
                     </button>
                 </div>
             ) : (
-                <label className="cf-audio-upload-zone">
-                    <Mic style={{ width: 24, height: 24, opacity: 0.5, marginBottom: 6 }} />
-                    <div style={{ fontSize: '0.8125rem', color: 'rgba(232,213,213,0.6)' }}>
-                        {block.isUploading ? 'Uploading…' : 'Click to upload MP3 / WAV / OGG'}
+                <label
+                    className="cf-audio-upload-zone"
+                    style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                        padding: '2rem 1rem', border: '2px dashed #fca5a5', borderRadius: '8px',
+                        cursor: 'pointer', backgroundColor: '#ffffff', transition: 'all 0.2s'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ffffff'}
+                >
+                    <Mic style={{ width: 28, height: 28, color: '#ef4444', marginBottom: '8px', opacity: 0.8 }} />
+                    <div style={{ fontSize: '0.875rem', color: '#4b5563', fontWeight: 500 }}>
+                        {block.isUploading ? (
+                            <span style={{ color: '#ef4444' }}>Uploading...</span>
+                        ) : (
+                            <span>Click to upload <span style={{ color: '#ef4444' }}>MP3 / WAV / OGG</span></span>
+                        )}
                     </div>
                     <input
                         type="file" accept="audio/*" style={{ display: 'none' }}

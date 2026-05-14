@@ -1310,6 +1310,8 @@ def _get_fallback_runtime_js() -> str:
             itemEl.style.zIndex = String(canvasItem.zIndex || 0);
             itemEl.style.boxSizing = 'border-box';
             itemEl.style.pointerEvents = 'none';
+            itemEl.style.transform = 'rotate(' + (canvasItem.rotation || 0) + 'deg)';
+            itemEl.style.transformOrigin = '50% 50%';
 
             if (canvasItem.type === 'rect' || canvasItem.type === 'circle') {
               var shape = document.createElement('div');
@@ -2051,7 +2053,7 @@ def _get_fallback_runtime_js() -> str:
                 bodyHtml += '</div>';
               }
             }
-            accordionHtml += '<details' + (ati === 0 ? ' open' : '') + ' style="border:1px solid #ead0d0;border-radius:10px;background:#ffffff;overflow:hidden;">';
+            accordionHtml += '<details style="border:1px solid #ead0d0;border-radius:10px;background:#ffffff;overflow:hidden;">';
             accordionHtml += '<summary style="cursor:pointer;list-style:none;padding:14px 16px;background:#fdf8f8;font-weight:700;color:#1a0a0a;">' + topicTitle + '</summary>';
             accordionHtml += '<div style="padding:16px;border-top:1px solid #f3e4e4;">' + bodyHtml + '</div>';
             accordionHtml += '</details>';
@@ -2095,7 +2097,7 @@ def _get_fallback_runtime_js() -> str:
             mandBadge +
             '<div style="margin-bottom:6px;font-size:10px;font-weight:700;letter-spacing:0.15em;color:#c0392b;">AUDIO</div>' +
             '<div style="font-size:14px;font-weight:600;color:#1a0a0a;margin-bottom:10px;">' + (comp.label||'Audio Track') + '</div>' +
-            '<audio id="audio-el-' + comp.id + '" controls style="width:100%;border-radius:8px;background:#000;">' +
+            '<audio id="audio-el-' + comp.id + '" controls style="display:block;width:100%;border-radius:8px;background:transparent;">' +
               '<source src="' + audioSrc + '">' +
               'Your browser does not support audio.' +
             '</audio>' +

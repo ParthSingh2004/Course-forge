@@ -4,7 +4,7 @@ import { deleteLocalCourse, getAllLocalCourses } from './utils/storage';
 
 // Google Fonts import via style tag
 const fontStyle = `
-  @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
 
   :root {
     --navy: #2d0b0b;
@@ -28,7 +28,7 @@ const fontStyle = `
   }
 
   .dash-root {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Roboto', sans-serif;
     background-color: var(--surface);
     min-height: 100vh;
     color: var(--text-primary);
@@ -59,7 +59,7 @@ const fontStyle = `
   }
 
   .dash-brand-name {
-    font-family: 'Libre Baskerville', Georgia, serif;
+    font-family: 'Roboto', sans-serif;
     font-size: 1rem;
     font-weight: 700;
     color: var(--white);
@@ -128,7 +128,7 @@ const fontStyle = `
   }
 
   .dash-page-title {
-    font-family: 'Libre Baskerville', Georgia, serif;
+    font-family: 'Roboto', sans-serif;
     font-size: 1.9rem;
     font-weight: 700;
     color: var(--navy);
@@ -155,7 +155,7 @@ const fontStyle = `
     background: var(--navy);
     color: var(--white);
     border: 1px solid var(--navy);
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Roboto', sans-serif;
     font-size: 0.8rem;
     font-weight: 600;
     letter-spacing: 0.04em;
@@ -203,7 +203,7 @@ const fontStyle = `
   }
 
   .dash-stat-value {
-    font-family: 'Libre Baskerville', serif;
+    font-family: 'Roboto', sans-serif;
     font-size: 1.4rem;
     font-weight: 700;
     color: var(--navy);
@@ -271,7 +271,7 @@ const fontStyle = `
   }
 
   .dash-empty-title {
-    font-family: 'Libre Baskerville', serif;
+    font-family: 'Roboto', sans-serif;
     font-size: 1.05rem;
     font-weight: 700;
     color: var(--navy);
@@ -333,7 +333,7 @@ const fontStyle = `
   }
 
   .dash-card-title {
-    font-family: 'Libre Baskerville', Georgia, serif;
+    font-family: 'Roboto', sans-serif;
     font-size: 0.95rem;
     font-weight: 700;
     color: var(--navy);
@@ -378,7 +378,7 @@ const fontStyle = `
     background: var(--navy);
     color: var(--white);
     border: 1px solid var(--navy);
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Roboto', sans-serif;
     font-size: 0.76rem;
     font-weight: 600;
     letter-spacing: 0.04em;
@@ -407,7 +407,7 @@ const fontStyle = `
     background: transparent;
     color: var(--text-muted);
     border: 1px solid var(--border);
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Roboto', sans-serif;
     font-size: 0.76rem;
     font-weight: 500;
     cursor: pointer;
@@ -527,7 +527,7 @@ function Dashboard({ onCreateNew, onOpenCourse }) {
             </div>
             <div className="dash-stat">
               <div className="dash-stat-label">Status</div>
-              <div className="dash-stat-value" style={{ fontSize: '0.95rem', color: '#2a6e3f', fontFamily: 'DM Sans, sans-serif', fontWeight: 600 }}>Active</div>
+              <div className="dash-stat-value" style={{ fontSize: '0.95rem', color: '#2a6e3f', fontFamily: 'Roboto, sans-serif', fontWeight: 600 }}>Active</div>
             </div>
           </div>
         )}

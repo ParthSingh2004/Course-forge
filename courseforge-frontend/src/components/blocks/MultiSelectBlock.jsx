@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, X } from 'lucide-react';
+import { ShieldCheck, Trash2 } from 'lucide-react';
 
 export default function MultiSelectBlock({ block, onUpdate }) {
     return (
@@ -73,7 +73,7 @@ export default function MultiSelectBlock({ block, onUpdate }) {
                         }}
                         style={{ background: 'transparent', border: 'none', color: '#c0392b', cursor: 'pointer' }}
                     >
-                        <X size={16} />
+                        <Trash2 size={16} />
                     </button>
                 </div>
             ))}
