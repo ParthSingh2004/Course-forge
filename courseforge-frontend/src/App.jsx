@@ -29,6 +29,7 @@ import MatchingBlock from './components/blocks/MatchingBlock';
 import TabsBlock from './components/blocks/TabsBlock';
 import ScenarioBlock from './components/blocks/ScenarioBlock';
 import CanvasBlock from './components/blocks/CanvasBlock';
+import AccordionBlock from './components/blocks/AccordianBlock';
 
 // --- API Utilities ---
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://course-forge-tpxk.onrender.com').replace(/\/+$/, '');
@@ -106,6 +107,17 @@ const cloneBlockWithFreshIds = (block) => {
     clonedBlock.items = (block.items || []).map(item => ({
       ...item,
       id: makeEditorId('canvasitem'),
+    }));
+  }
+
+  if (block.type === 'accordion' || block.type === 'accordian') {
+    clonedBlock.topics = (block.topics || []).map(topic => ({
+      ...topic,
+      id: makeEditorId('topic'),
+      items: (topic.items || []).map(item => ({
+        ...item,
+        id: makeEditorId('accordionitem'),
+      })),
     }));
   }
 
@@ -350,7 +362,7 @@ function App() {
   const addBlock = (type) => {
     if (!activeSlideId) return;
     const newBlock = { id: Date.now(), type };
-    if (type === 'heading') newBlock.content = "";
+    if (type === 'heading') { newBlock.content = ""; newBlock.headingLevel = 'h1'; }
     if (type === 'text') newBlock.content = "";
     if (type === 'image') newBlock.content = "";
     if (type === 'button') {
@@ -384,6 +396,9 @@ function App() {
     }
     if (type === 'tabs') {
       newBlock.tabs = [{ title: 'Tab 1', content: '', image: null }, { title: 'Tab 2', content: '', image: null }];
+    }
+    if (type === 'accordion' || type === 'accordian') {
+      newBlock.topics = [];
     }
     if (type === 'true_false') {
       newBlock.question = '';
@@ -827,8 +842,51 @@ function App() {
   const renderBlock = (block) => {
     switch (block.type) {
       case 'heading':
-      case 'heading-1':
-        return <RichTextEditor className={`cf-heading-input cf-heading-${block.headingLevel || 'h1'}`} value={block.content} onChange={(val) => updateBlock(block.id, { content: val })} placeholder="Heading..." />;
+      case 'heading-1': {
+        const hLevel = block.headingLevel || 'h1';
+        const hSizeMap = { h1: '3rem', h2: '1.875rem', h3: '1.125rem' };
+        const hWeightMap = { h1: 800, h2: 700, h3: 600 };
+        const hLineMap = { h1: 1.1, h2: 1.2, h3: 1.3 };
+        return (
+          <div>
+            <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.62rem', color: '#b08080', fontFamily: 'Roboto, sans-serif', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginRight: 4 }}>Heading</span>
+              {['h1', 'h2', 'h3'].map(l => (
+                <button
+                  key={l}
+                  onClick={() => updateBlock(block.id, { headingLevel: l })}
+                  style={{
+                    padding: '3px 9px',
+                    borderRadius: '5px',
+                    border: '1px solid',
+                    borderColor: hLevel === l ? '#8b1a1a' : '#e0c8c8',
+                    background: hLevel === l ? '#8b1a1a' : '#fff',
+                    color: hLevel === l ? '#fff' : '#8b6060',
+                    fontFamily: 'Roboto, sans-serif',
+                    fontWeight: 700,
+                    fontSize: '0.65rem',
+                    cursor: 'pointer',
+                    letterSpacing: '0.05em',
+                    transition: 'all 0.13s',
+                    boxShadow: hLevel === l ? '0 1px 4px rgba(139,26,26,0.18)' : 'none',
+                  }}
+                >{l.toUpperCase()}</button>
+              ))}
+              <div style={{ marginLeft: 6, fontSize: '0.6rem', color: '#cba8a8', fontFamily: 'Roboto, sans-serif', fontStyle: 'italic' }}>
+                {hLevel === 'h1' ? '— Large title' : hLevel === 'h2' ? '— Section heading' : '— Sub-heading'}
+              </div>
+            </div>
+            <div style={{ fontSize: hSizeMap[hLevel], fontWeight: hWeightMap[hLevel], lineHeight: hLineMap[hLevel], transition: 'font-size 0.18s ease' }}>
+              <RichTextEditor
+                className={`cf-heading-input cf-heading-${hLevel}`}
+                value={block.content}
+                onChange={(val) => updateBlock(block.id, { content: val })}
+                placeholder={hLevel === 'h1' ? 'Main heading…' : hLevel === 'h2' ? 'Section heading…' : 'Sub-heading…'}
+              />
+            </div>
+          </div>
+        );
+      }
       case 'text':
       case 'ai-generated':
         return <RichTextEditor className="cf-text-area" value={block.content} onChange={(val) => updateBlock(block.id, { content: val })} placeholder="Enter your text here..." />;
@@ -851,6 +909,8 @@ function App() {
       case 'columns': return <ColumnsGridBlock block={block} onUpdate={updateBlock} readOnly={isPreviewOpen} />;
       case 'audio': return <AudioBlock block={block} onUpdate={updateBlock} />;
       case 'tabs': return <TabsBlock block={block} onUpdate={updateBlock} />;
+      case 'accordion':
+      case 'accordian': return <AccordionBlock block={block} onUpdate={updateBlock} />;
       case 'scenario': return <ScenarioBlock block={block} onUpdate={updateBlock} />;
       case 'canvas': return <CanvasBlock block={block} onUpdate={updateBlock} />;
       default:
@@ -1130,6 +1190,7 @@ function App() {
                     { type: 'table', icon: <Table style={{ width: 14, height: 14 }} />, label: 'Table' },
                     { type: 'columns', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Columns' },
                     { type: 'tabs', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Tabs' },
+                    { type: 'accordion', icon: <ChevronDown style={{ width: 14, height: 14 }} />, label: 'Accordion' },
                     { type: 'scenario', icon: <BookOpen style={{ width: 14, height: 14 }} />, label: 'Scenario' },
                     { type: 'canvas', icon: <Square style={{ width: 14, height: 14 }} />, label: 'Canvas' },
                   ].map(({ type, icon, label }) => (
@@ -1564,21 +1625,7 @@ function App() {
                             value={block.animationDelay || 0}
                             onChange={(e) => updateBlock(block.id, { animationDelay: parseFloat(e.target.value) || 0 })}
                           />
-                          {/* H1 / H2 / H3 level picker — only for heading blocks */}
-                          {(block.type === 'heading' || block.type === 'heading-1') && (
-                            <div className="cf-heading-level-group">
-                              {['h1', 'h2', 'h3'].map(level => (
-                                <button
-                                  key={level}
-                                  className={`cf-heading-level-btn${(block.headingLevel || 'h1') === level ? ' active' : ''}`}
-                                  onClick={() => updateBlock(block.id, { headingLevel: level })}
-                                  title={`Set as ${level.toUpperCase()}`}
-                                >
-                                  {level.toUpperCase()}
-                                </button>
-                              ))}
-                            </div>
-                          )}
+
                           {/* Format button */}
                           <div style={{ position: 'relative' }}>
                             <button

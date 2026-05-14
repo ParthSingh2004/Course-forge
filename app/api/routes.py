@@ -573,6 +573,26 @@ def render_block_html(block: Dict[str, Any], block_index: int = 0) -> str:
             steps_html += f'<div style="margin-bottom:16px;padding:12px;background:#fff;border-radius:6px;border:1px solid #e8e8e8;"><strong>Step {i+1}: {title}</strong><p style="margin-top:8px;">{step_content}</p></div>'
         return f'<div style="{wrapper}"><div style="font-weight:bold;margin-bottom:12px;color:#8b1a1a;">Process ({len(steps)} steps)</div>{steps_html}</div>'
 
+    if block_type in ("accordion", "accordian"):
+        topics = block.get("topics", [])
+        topic_html = ""
+        for i, topic in enumerate(topics):
+            title = topic.get("title", "") or f"Topic {i + 1}"
+            items_html = ""
+            for item in topic.get("items", []):
+                item_type = (item.get("type") or "").lower()
+                if item_type == "text" and item.get("value"):
+                    items_html += f'<div style="line-height:1.7;color:#333;margin-bottom:12px;">{item.get("value","")}</div>'
+                elif item_type == "image":
+                    src = item.get("src") or item.get("image") or item.get("imageUrl") or ""
+                    if src:
+                        caption = item.get("caption", "")
+                        caption_html = f'<div style="margin-top:8px;font-size:13px;color:#666;">{caption}</div>' if caption else ""
+                        items_html += f'<div style="text-align:center;margin-bottom:12px;"><img src="{src}" alt="{item.get("alt","")}" style="width:100%;max-height:320px;object-fit:contain;border-radius:8px;background:#fafafa;" />{caption_html}</div>'
+            open_attr = " open" if i == 0 else ""
+            topic_html += f'<details{open_attr} style="border:1px solid #ead0d0;border-radius:10px;background:#fff;margin-bottom:12px;overflow:hidden;"><summary style="cursor:pointer;list-style:none;padding:14px 16px;background:#fdf8f8;font-weight:700;color:#1a0a0a;">{title}</summary><div style="padding:16px;border-top:1px solid #f3e4e4;">{items_html}</div></details>'
+        return f'<div style="{wrapper}">{topic_html}</div>'
+
     if block_type == "audio":
         media_id = block.get("mediaId", "")
         label    = block.get("label", "Audio Track")
@@ -647,7 +667,9 @@ def render_block_html(block: Dict[str, Any], block_index: int = 0) -> str:
     content = block.get("content", data.get("content", ""))
 
     if block_type in ("heading", "heading-1"):
-        return f'<h2 style="font-family:sans-serif;margin-bottom:12px;">{content}</h2>'
+        raw_level = str(block.get("headingLevel") or block.get("level") or "h1").strip().lower()
+        heading_tag = raw_level if raw_level in {"h1", "h2", "h3", "h4", "h5", "h6"} else "h1"
+        return f'<{heading_tag} style="font-family:sans-serif;margin-bottom:12px;">{content}</{heading_tag}>'
 
     if block_type == "button":
         return f'''

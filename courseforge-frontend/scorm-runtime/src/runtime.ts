@@ -1647,6 +1647,81 @@ class CourseForgeRuntime {
         renderTabContent();
         break;
       }
+      case "accordion": {
+        const topics: any[] = (comp as any).topics || [];
+        if (topics.length === 0) break;
+
+        const shell = document.createElement("div");
+        shell.style.cssText = "display:flex;flex-direction:column;gap:0.75rem;";
+
+        topics.forEach((topic, index) => {
+          const itemWrap = document.createElement("div");
+          itemWrap.style.cssText = "border:1px solid #EAD0D0;border-radius:10px;overflow:hidden;background:#ffffff;";
+
+          const headerBtn = document.createElement("button");
+          headerBtn.type = "button";
+          headerBtn.setAttribute("aria-expanded", index === 0 ? "true" : "false");
+          headerBtn.style.cssText = "width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border:none;background:#FDF8F8;color:#1A0A0A;cursor:pointer;font:inherit;font-weight:700;font-size:0.95rem;text-align:left;";
+
+          const title = document.createElement("span");
+          title.textContent = topic.title || `Topic ${index + 1}`;
+          headerBtn.appendChild(title);
+
+          const caret = document.createElement("span");
+          caret.textContent = "▾";
+          caret.style.cssText = `font-size:1rem;color:#8B1A1A;transition:transform 0.18s ease;transform:${index === 0 ? "rotate(180deg)" : "rotate(0deg)"};`;
+          headerBtn.appendChild(caret);
+
+          const body = document.createElement("div");
+          body.style.cssText = `display:${index === 0 ? "block" : "none"};padding:16px;background:#ffffff;border-top:1px solid #F3E4E4;`;
+
+          const bodyInner = document.createElement("div");
+          bodyInner.style.cssText = "display:flex;flex-direction:column;gap:12px;";
+
+          (topic.items || []).forEach((item: any) => {
+            if (item.type === "image" && item.src) {
+              const imgWrap = document.createElement("div");
+              imgWrap.style.cssText = "text-align:center;";
+              const img = document.createElement("img");
+              img.src = item.src;
+              img.alt = item.alt || "";
+              img.style.cssText = "max-width:100%;width:100%;height:auto;max-height:320px;object-fit:contain;border-radius:8px;background:#fafafa;";
+              imgWrap.appendChild(img);
+              if (item.caption) {
+                const caption = document.createElement("div");
+                caption.style.cssText = "margin-top:8px;font-size:0.82rem;color:#6b7280;";
+                caption.textContent = item.caption;
+                imgWrap.appendChild(caption);
+              }
+              bodyInner.appendChild(imgWrap);
+              return;
+            }
+
+            if (item.type === "text" && item.value) {
+              const textEl = document.createElement("div");
+              textEl.className = "cf-rt-text";
+              textEl.style.color = "#333333";
+              textEl.innerHTML = item.value;
+              bodyInner.appendChild(textEl);
+            }
+          });
+
+          body.appendChild(bodyInner);
+          headerBtn.onclick = () => {
+            const expanded = headerBtn.getAttribute("aria-expanded") === "true";
+            headerBtn.setAttribute("aria-expanded", expanded ? "false" : "true");
+            body.style.display = expanded ? "none" : "block";
+            caret.style.transform = expanded ? "rotate(0deg)" : "rotate(180deg)";
+          };
+
+          itemWrap.appendChild(headerBtn);
+          itemWrap.appendChild(body);
+          shell.appendChild(itemWrap);
+        });
+
+        wrapper.appendChild(shell);
+        break;
+      }
       case "image-stack": {
         const stackSlides: any[] = (comp as any).slides || [];
         let stackIdx = 0;

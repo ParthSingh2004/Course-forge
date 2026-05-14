@@ -142,8 +142,21 @@ def _resolve_image_src(block: Dict[str, Any]) -> str:
         or (block.get("data") or {}).get("image")
         or ""
     )
- 
- 
+
+
+def _heading_level_to_number(raw_level: Any) -> int:
+    """Normalize heading levels from authoring data into runtime h1-h6 numbers."""
+    if isinstance(raw_level, str):
+        value = raw_level.strip().lower()
+        if value.startswith("h") and value[1:].isdigit():
+            return max(1, min(6, int(value[1:])))
+        if value.isdigit():
+            return max(1, min(6, int(value)))
+    if isinstance(raw_level, (int, float)) and not isinstance(raw_level, bool):
+        return max(1, min(6, int(raw_level)))
+    return 1
+
+
 def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
     """Convert an authoring block into a runtime Component (raw)."""
     btype = (block.get("type") or "").lower().strip()
@@ -155,7 +168,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "type": "heading",
             "id": bid,
             "content": block.get("content", ""),
-            "level": 2,
+            "level": _heading_level_to_number(block.get("headingLevel") or block.get("level")),
         }
  
     if btype in ("text", "ai-generated"):
@@ -463,6 +476,48 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "type": "tabs",
             "id": bid,
             "tabs": tabs_data,
+        }
+
+    if btype in ("accordion", "accordian"):
+        raw_topics = block.get("topics")
+        if not isinstance(raw_topics, list):
+            raw_topics = []
+        topics_data = []
+        for topic in raw_topics:
+            if not isinstance(topic, dict):
+                continue
+            raw_items = topic.get("items")
+            if not isinstance(raw_items, list):
+                raw_items = []
+            serialized_items = []
+            for item in raw_items:
+                if not isinstance(item, dict):
+                    continue
+                item_type = str(item.get("type") or "").strip().lower()
+                item_id = str(item.get("id") or _make_id("accordion_item"))
+                if item_type == "text":
+                    serialized_items.append({
+                        "id": item_id,
+                        "type": "text",
+                        "value": item.get("value", item.get("content", "")),
+                    })
+                elif item_type == "image":
+                    serialized_items.append({
+                        "id": item_id,
+                        "type": "image",
+                        "src": _resolve_image_src(item),
+                        "alt": item.get("alt", ""),
+                        "caption": item.get("caption", ""),
+                    })
+            topics_data.append({
+                "id": str(topic.get("id") or _make_id("accordion_topic")),
+                "title": topic.get("title", ""),
+                "items": serialized_items,
+            })
+        return {
+            "type": "accordion",
+            "id": bid,
+            "topics": topics_data,
         }
  
     if btype == "list":
@@ -1861,6 +1916,32 @@ def _get_fallback_runtime_js() -> str:
             procHtml += '</div>';
           }
           el.innerHTML = procHtml;
+        } else if (comp.type === 'accordion') {
+          var topics = comp.topics || [];
+          var accordionHtml = '<div style="display:flex;flex-direction:column;gap:12px;">';
+          for (var ati = 0; ati < topics.length; ati++) {
+            var topic = topics[ati] || {};
+            var topicTitle = topic.title || ('Topic ' + (ati + 1));
+            var bodyHtml = '';
+            var topicItems = topic.items || [];
+            for (var aii = 0; aii < topicItems.length; aii++) {
+              var topicItem = topicItems[aii] || {};
+              if (topicItem.type === 'text' && topicItem.value) {
+                bodyHtml += '<div class="cf-rt-text" style="margin-bottom:12px;color:#333333;">' + topicItem.value + '</div>';
+              } else if (topicItem.type === 'image' && topicItem.src) {
+                bodyHtml += '<div style="text-align:center;margin-bottom:12px;">';
+                bodyHtml += '<img src="' + topicItem.src + '" alt="' + (topicItem.alt || '') + '" style="width:100%;max-height:320px;object-fit:contain;border-radius:8px;background:#fafafa;display:block;" />';
+                if (topicItem.caption) bodyHtml += '<div style="margin-top:8px;font-size:13px;color:#666666;">' + topicItem.caption + '</div>';
+                bodyHtml += '</div>';
+              }
+            }
+            accordionHtml += '<details' + (ati === 0 ? ' open' : '') + ' style="border:1px solid #ead0d0;border-radius:10px;background:#ffffff;overflow:hidden;">';
+            accordionHtml += '<summary style="cursor:pointer;list-style:none;padding:14px 16px;background:#fdf8f8;font-weight:700;color:#1a0a0a;">' + topicTitle + '</summary>';
+            accordionHtml += '<div style="padding:16px;border-top:1px solid #f3e4e4;">' + bodyHtml + '</div>';
+            accordionHtml += '</details>';
+          }
+          accordionHtml += '</div>';
+          el.innerHTML = accordionHtml;
         } else if (comp.type === 'button') {
           var alignment = String(comp.alignment || 'center').toLowerCase();
           el.style.display = 'flex';
@@ -2305,7 +2386,11 @@ body {
  
 /* Components */
 .cf-rt-component { margin-bottom: 20px; }
-.cf-rt-heading { font-size: 22px; font-weight: 600; color: #111827; margin-bottom: 12px; }
+.cf-rt-heading { color: #111827; margin: 0 0 12px; }
+h1.cf-rt-heading { font-size: 3rem; font-weight: 800; line-height: 1.1; }
+h2.cf-rt-heading { font-size: 1.875rem; font-weight: 700; line-height: 1.2; }
+h3.cf-rt-heading { font-size: 1.125rem; font-weight: 600; line-height: 1.3; }
+h4.cf-rt-heading, h5.cf-rt-heading, h6.cf-rt-heading { font-size: 1rem; font-weight: 600; line-height: 1.35; }
 .cf-rt-text { font-size: 15px; line-height: 1.75; color: #374151; }
 .cf-rt-text ul, .cf-rt-text ol { padding-left: 24px; margin-top: 8px; margin-bottom: 8px; }
 .cf-rt-text ul { list-style-type: disc; }

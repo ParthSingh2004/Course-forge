@@ -247,6 +247,23 @@ export const ComponentSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...BaseComponentProps,
+    type: z.literal("accordion"),
+    id: z.string(),
+    topics: z.array(z.object({
+      id: z.string(),
+      title: z.string().optional(),
+      items: z.array(z.object({
+        id: z.string(),
+        type: z.enum(["text", "image"]),
+        value: z.string().optional(),
+        src: z.string().optional(),
+        alt: z.string().optional(),
+        caption: z.string().optional(),
+      })).default([]),
+    })).default([]),
+  }),
+  z.object({
+    ...BaseComponentProps,
     type: z.literal("columns"),
     id: z.string(),
     columns: z.array(z.array(z.any())),

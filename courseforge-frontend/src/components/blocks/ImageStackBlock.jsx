@@ -100,16 +100,16 @@ export default function ImageStackBlock({ block, onUpdate, readOnly }) {
     return (
         <div style={{ width: '100%', fontFamily: 'Roboto, sans-serif' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.8rem', color: '#a3a3a3' }}>
+                <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
                     {currentSlide.type === 'quiz' ? '🧩 Quiz' : `Slide ${currentIdx + 1} of ${slides.length}`}
                 </span>
-                <div style={{ flex: 1, margin: '0 0.75rem', height: 4, borderRadius: 2, background: '#2a2a2a', overflow: 'hidden' }}>
+                <div style={{ flex: 1, margin: '0 0.75rem', height: 4, borderRadius: 2, background: '#f3f4f6', overflow: 'hidden' }}>
                     <div style={{ width: `${pct}%`, height: '100%', background: '#8B1A1A', transition: 'width 0.3s' }} />
                 </div>
-                <span style={{ fontSize: '0.8rem', color: '#a3a3a3' }}>{pct}%</span>
+                <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{pct}%</span>
             </div>
 
-            <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid #2a2a2a', minHeight: 200, background: '#111' }}>
+            <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid #e5e7eb', minHeight: 200, background: '#ffffff' }}>
                 {currentSlide.type === 'image' && (
                     <div>
                         {currentSlide.imageUrl ? (
@@ -118,25 +118,25 @@ export default function ImageStackBlock({ block, onUpdate, readOnly }) {
                         ) : !readOnly ? (
                             <label style={{
                                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                                height: 200, cursor: 'pointer', color: '#a3a3a3', gap: '0.5rem'
+                                height: 200, cursor: 'pointer', color: '#6b7280', gap: '0.5rem'
                             }}>
                                 <ImageIcon style={{ width: 32, height: 32, opacity: 0.5 }} />
                                 <span style={{ fontSize: '0.85rem' }}>Click to upload image</span>
                                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleImageUpload(e, currentIdx)} />
                             </label>
                         ) : (
-                            <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555' }}>
+                            <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>
                                 No image
                             </div>
                         )}
 
                         {!readOnly ? (
-                            <div style={{ padding: '0.75rem', background: '#171717', borderTop: '1px solid #2a2a2a' }}>
+                            <div style={{ padding: '0.75rem', background: '#f9fafb', borderTop: '1px solid #e5e7eb' }}>
                                 <input
                                     value={currentSlide.caption || ''}
                                     onChange={e => updateSlide(currentIdx, { caption: e.target.value })}
                                     placeholder="Caption (optional)..."
-                                    style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#d4d4d4', fontSize: '0.9rem' }}
+                                    style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#374151', fontSize: '0.9rem' }}
                                 />
                                 {currentSlide.imageUrl && (
                                     <label style={{
@@ -149,7 +149,7 @@ export default function ImageStackBlock({ block, onUpdate, readOnly }) {
                                 )}
                             </div>
                         ) : currentSlide.caption ? (
-                            <div style={{ padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.6)', color: '#d4d4d4', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                            <div style={{ padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.9)', color: '#374151', fontSize: '0.9rem', lineHeight: 1.5, borderTop: '1px solid #e5e7eb' }}>
                                 {currentSlide.caption}
                             </div>
                         ) : null}
@@ -164,12 +164,12 @@ export default function ImageStackBlock({ block, onUpdate, readOnly }) {
                                 onChange={e => updateSlide(currentIdx, { question: e.target.value })}
                                 placeholder="Quiz question..."
                                 style={{
-                                    width: '100%', background: 'transparent', border: 'none', borderBottom: '1px solid #404040',
-                                    outline: 'none', color: '#fff', fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', paddingBottom: '0.5rem'
+                                    width: '100%', background: 'transparent', border: 'none', borderBottom: '1px solid #e5e7eb',
+                                    outline: 'none', color: '#111827', fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', paddingBottom: '0.5rem'
                                 }}
                             />
                         ) : (
-                            <p style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', marginBottom: '1rem', marginTop: 0 }}>
+                            <p style={{ color: '#111827', fontWeight: 600, fontSize: '1rem', marginBottom: '1rem', marginTop: 0 }}>
                                 {currentSlide.question || 'Quiz question...'}
                             </p>
                         )}
@@ -179,10 +179,10 @@ export default function ImageStackBlock({ block, onUpdate, readOnly }) {
                                 const isSelected = qState.selected === oi;
                                 const isCorrectOpt = oi === currentSlide.correctIndex;
 
-                                let optBg = '#1c1c1c', optBorder = '#404040', optColor = '#d4d4d4';
+                                let optBg = '#ffffff', optBorder = '#e5e7eb', optColor = '#374151';
                                 if (readOnly && qState.result) {
-                                    if (isSelected && qState.result === 'correct') { optBg = '#052e16'; optBorder = '#166534'; optColor = '#4ade80'; }
-                                    if (isSelected && qState.result === 'wrong') { optBg = '#2a0a0a'; optBorder = '#7f1d1d'; optColor = '#f87171'; }
+                                    if (isSelected && qState.result === 'correct') { optBg = '#f0fdf4'; optBorder = '#86efac'; optColor = '#166534'; }
+                                    if (isSelected && qState.result === 'wrong') { optBg = '#fef2f2'; optBorder = '#fecaca'; optColor = '#991b1b'; }
                                 }
 
                                 return (
@@ -204,8 +204,8 @@ export default function ImageStackBlock({ block, onUpdate, readOnly }) {
                                                     title="Mark as correct answer"
                                                     onClick={() => updateSlide(currentIdx, { correctIndex: oi })}
                                                     style={{
-                                                        flexShrink: 0, width: 20, height: 20, borderRadius: '50%', border: `2px solid ${isCorrectOpt ? '#4ade80' : '#404040'}`,
-                                                        background: isCorrectOpt ? '#052e16' : 'transparent', cursor: 'pointer', padding: 0
+                                                        flexShrink: 0, width: 20, height: 20, borderRadius: '50%', border: `2px solid ${isCorrectOpt ? '#22c55e' : '#e5e7eb'}`,
+                                                        background: isCorrectOpt ? '#22c55e' : 'transparent', cursor: 'pointer', padding: 0
                                                     }}>
                                                 </button>
                                                 <input
@@ -213,7 +213,7 @@ export default function ImageStackBlock({ block, onUpdate, readOnly }) {
                                                     onChange={e => updateOption(currentIdx, oi, e.target.value)}
                                                     placeholder={`Option ${oi + 1}`}
                                                     style={{
-                                                        flex: 1, background: '#1c1c1c', border: '1px solid #404040', color: '#d4d4d4',
+                                                        flex: 1, background: '#ffffff', border: '1px solid #e5e7eb', color: '#374151',
                                                         borderRadius: 6, padding: '0.5rem 0.75rem', outline: 'none', fontSize: '0.9rem'
                                                     }}
                                                 />
@@ -233,7 +233,7 @@ export default function ImageStackBlock({ block, onUpdate, readOnly }) {
                         {!readOnly && (
                             <button onClick={() => addOption(currentIdx)}
                                 style={{
-                                    marginTop: '0.75rem', background: 'transparent', border: '1px dashed #404040',
+                                    marginTop: '0.75rem', background: 'transparent', border: '1px dashed #d1d5db',
                                     color: '#6b7280', padding: '0.4rem 0.75rem', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem'
                                 }}>
                                 + Add Option
@@ -271,8 +271,8 @@ export default function ImageStackBlock({ block, onUpdate, readOnly }) {
                 <button onClick={goPrev} disabled={currentIdx === 0}
                     style={{
                         display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.9rem', borderRadius: 6,
-                        border: '1px solid #2a2a2a', background: currentIdx === 0 ? '#111' : '#1c1c1c',
-                        color: currentIdx === 0 ? '#555' : '#d4d4d4', cursor: currentIdx === 0 ? 'not-allowed' : 'pointer', fontSize: '0.85rem'
+                        border: '1px solid #e5e7eb', background: currentIdx === 0 ? '#f9fafb' : '#ffffff',
+                        color: currentIdx === 0 ? '#9ca3af' : '#374151', cursor: currentIdx === 0 ? 'not-allowed' : 'pointer', fontSize: '0.85rem'
                     }}>
                     ← Prev
                 </button>
@@ -283,7 +283,7 @@ export default function ImageStackBlock({ block, onUpdate, readOnly }) {
                             onClick={() => { if (!readOnly) setCurrentIdx(i); }}
                             style={{
                                 width: i === currentIdx ? 20 : 8, height: 8, borderRadius: 4,
-                                background: i === currentIdx ? '#8B1A1A' : s.type === 'quiz' ? '#4b5563' : '#3a3a3a',
+                                background: i === currentIdx ? '#8B1A1A' : s.type === 'quiz' ? '#d1d5db' : '#e5e7eb',
                                 transition: 'all 0.2s', cursor: readOnly ? 'default' : 'pointer'
                             }}
                             title={s.type === 'quiz' ? 'Quiz' : `Image ${i + 1}`}
@@ -296,9 +296,9 @@ export default function ImageStackBlock({ block, onUpdate, readOnly }) {
                     disabled={readOnly ? !canGoNext() : currentIdx >= slides.length - 1}
                     style={{
                         display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.9rem', borderRadius: 6,
-                        border: '1px solid #2a2a2a', cursor: (readOnly ? !canGoNext() : currentIdx >= slides.length - 1) ? 'not-allowed' : 'pointer',
-                        background: (readOnly && isQuizBlocked()) ? '#2a0a0a' : '#1c1c1c',
-                        color: (readOnly ? !canGoNext() : currentIdx >= slides.length - 1) ? '#555' : '#d4d4d4', fontSize: '0.85rem'
+                        border: '1px solid #e5e7eb', cursor: (readOnly ? !canGoNext() : currentIdx >= slides.length - 1) ? 'not-allowed' : 'pointer',
+                        background: (readOnly && isQuizBlocked()) ? '#fef2f2' : '#ffffff',
+                        color: (readOnly ? !canGoNext() : currentIdx >= slides.length - 1) ? '#9ca3af' : '#374151', fontSize: '0.85rem'
                     }}>
                     {readOnly && isQuizBlocked() ? '🔒 Answer to continue' : 'Next →'}
                 </button>
@@ -308,14 +308,14 @@ export default function ImageStackBlock({ block, onUpdate, readOnly }) {
                 <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <button onClick={addImageSlide}
                         style={{
-                            background: '#1c1c1c', border: '1px solid #404040', color: '#d4d4d4',
+                            background: '#ffffff', border: '1px solid #e5e7eb', color: '#374151',
                             padding: '0.35rem 0.75rem', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 4
                         }}>
                         <ImageIcon style={{ width: 13, height: 13 }} /> Add Image
                     </button>
                     <button onClick={addQuizSlide}
                         style={{
-                            background: '#1c1c1c', border: '1px solid #404040', color: '#d4d4d4',
+                            background: '#ffffff', border: '1px solid #e5e7eb', color: '#374151',
                             padding: '0.35rem 0.75rem', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem'
                         }}>
                         ＋ Add Quiz
