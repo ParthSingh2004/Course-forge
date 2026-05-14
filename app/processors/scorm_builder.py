@@ -349,6 +349,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
                 "w": _clamp(_safe_float(raw_item.get("w"), 20), 1, 100),
                 "h": _clamp(_safe_float(raw_item.get("h"), 20), 1, 100),
                 "zIndex": int(_safe_float(raw_item.get("zIndex"), 0)),
+                "rotation": _safe_float(raw_item.get("rotation"), 0),
                 "color": str(raw_item.get("color") or ("#111827" if item_type == "text" else DEFAULT_FLASHCARD_COLOR)),
             }
 
@@ -381,6 +382,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "label": block.get("content") or block.get("label") or "Button",
             "targetSlideId": str(block.get("targetSlideId") or ""),
             "alignment": str(block.get("alignment") or "center"),
+            "color": _sanitize_hex_color(block.get("color")),
         }
  
     if btype in ("quiz", "mcq"):
@@ -2067,6 +2069,7 @@ def _get_fallback_runtime_js() -> str:
           el.style.justifyContent = alignment === 'left' ? 'flex-start' : (alignment === 'right' ? 'flex-end' : 'center');
           el.innerHTML = '<button class="cf-rt-button" data-target-slide-id="' + (comp.targetSlideId||'') + '">' + (comp.label||'Button') + '</button>';
           var buttonEl = el.querySelector('button');
+          if (buttonEl && comp.color) { buttonEl.style.background = comp.color; }
           if (buttonEl && comp.targetSlideId) {
             buttonEl.onclick = function(targetId) {
               return function() {

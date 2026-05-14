@@ -52,9 +52,11 @@ const getFlashcardTheme = (hex) => {
 export default function FlashcardBlock({ block, onUpdate }) {
     const [flipped, setFlipped] = useState(false);
     const theme = getFlashcardTheme(block.color);
+    
+    // Default to false if not set
+    const isSolid = block.isSolid || false;
 
     const stopPropAndFlip = (e) => {
-        // Prevent flipping when interacting with inputs, textareas, or buttons
         if (['TEXTAREA', 'INPUT', 'BUTTON', 'LABEL'].includes(e.target.tagName) || e.target.closest('label') || e.target.closest('button')) {
             return;
         }
@@ -66,7 +68,6 @@ export default function FlashcardBlock({ block, onUpdate }) {
         if (file) {
             const reader = new FileReader();
             reader.onloadend = () => {
-                // Save the base64 string as the imageUrl
                 onUpdate(block.id, { imageUrl: reader.result });
             };
             reader.readAsDataURL(file);
@@ -87,8 +88,19 @@ export default function FlashcardBlock({ block, onUpdate }) {
         };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
-            {/* Toolbar: Image Upload and Color Picker */}
+        <div id={`flashcard-wrapper-${block.id}`} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
+            
+            {/* Scoped style block to forcefully apply !important for solid fills */}
+            {isSolid && !block.imageUrl && (
+                <style>{`
+                    #flashcard-wrapper-${block.id} .cf-flashcard-front,
+                    #flashcard-wrapper-${block.id} .cf-flashcard-back {
+                        background: ${theme.base} !important;
+                    }
+                `}</style>
+            )}
+
+            {/* Toolbar: Image Upload, Color Picker, and Solid Toggle */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <label
@@ -124,18 +136,32 @@ export default function FlashcardBlock({ block, onUpdate }) {
                     )}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#8b6060', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                        Card Color
-                    </span>
-                    <input
-                        type="color"
-                        value={sanitizeHexColor(block.color)}
-                        onChange={(e) => onUpdate(block.id, { color: e.target.value })}
-                        onClick={(e) => e.stopPropagation()}
-                        title="Choose flashcard color"
-                        style={{ width: 42, height: 32, border: '1px solid #EAD0D0', borderRadius: 6, background: '#fff', cursor: 'pointer' }}
-                    />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    {/* Solid Fill Toggle */}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, color: '#8b6060', textTransform: 'uppercase' }} onClick={(e) => e.stopPropagation()}>
+                        <input 
+                            type="checkbox" 
+                            checked={isSolid}
+                            onChange={(e) => onUpdate(block.id, { isSolid: e.target.checked })}
+                            style={{ cursor: 'pointer' }}
+                        />
+                        Solid Fill
+                    </label>
+
+                    {/* Color Picker */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#8b6060', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                            Color
+                        </span>
+                        <input
+                            type="color"
+                            value={sanitizeHexColor(block.color)}
+                            onChange={(e) => onUpdate(block.id, { color: e.target.value })}
+                            onClick={(e) => e.stopPropagation()}
+                            title="Choose flashcard color"
+                            style={{ width: 42, height: 32, border: '1px solid #EAD0D0', borderRadius: 6, background: '#fff', cursor: 'pointer' }}
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -153,7 +179,7 @@ export default function FlashcardBlock({ block, onUpdate }) {
                             display: 'flex', flexDirection: 'column', padding: '1.5rem', borderRadius: '12px'
                         }}
                     >
-                        <div className="cf-flashcard-badge" style={{ color: theme.frontBadge, display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', fontWeight: 600, marginBottom: '1rem' }}>
+                        <div className="cf-flashcard-badge" style={{ color: isSolid ? '#ffffff' : theme.frontBadge, display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', fontWeight: 600, marginBottom: '1rem' }}>
                             <CreditCard style={{ width: 14, height: 14 }} />
                             Front · Question
                         </div>
@@ -169,7 +195,7 @@ export default function FlashcardBlock({ block, onUpdate }) {
                                 resize: 'none', outline: 'none', fontSize: '1.125rem', fontFamily: 'inherit'
                             }}
                         />
-                        <div className="cf-flashcard-flip-hint" style={{ color: theme.frontHint, display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', marginTop: 'auto', alignSelf: 'flex-end' }}>
+                        <div className="cf-flashcard-flip-hint" style={{ color: isSolid ? '#ffffff' : theme.frontHint, display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', marginTop: 'auto', alignSelf: 'flex-end' }}>
                             <RotateCcw style={{ width: 12, height: 12 }} />
                             Click to reveal answer
                         </div>
@@ -180,14 +206,14 @@ export default function FlashcardBlock({ block, onUpdate }) {
                         className="cf-flashcard-face cf-flashcard-back"
                         style={{
                             position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
-                            background: theme.backBackground,
+                            background: theme.backBackground, // Will be overridden by the <style> tag if isSolid is true
                             border: theme.backBorder,
                             boxShadow: theme.backShadow,
                             transform: 'rotateY(180deg)',
                             display: 'flex', flexDirection: 'column', padding: '1.5rem', borderRadius: '12px'
                         }}
                     >
-                        <div className="cf-flashcard-badge" style={{ color: theme.backBadge, display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', fontWeight: 600, marginBottom: '1rem' }}>
+                        <div className="cf-flashcard-badge" style={{ color: isSolid ? '#ffffff' : theme.backBadge, display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', fontWeight: 600, marginBottom: '1rem' }}>
                             <CreditCard style={{ width: 14, height: 14 }} />
                             Back · Answer
                         </div>
@@ -199,11 +225,11 @@ export default function FlashcardBlock({ block, onUpdate }) {
                             onClick={(e) => e.stopPropagation()}
                             rows={3}
                             style={{
-                                color: theme.backText, flex: 1, background: 'transparent', border: 'none',
+                                color: isSolid ? '#ffffff' : theme.backText, flex: 1, background: 'transparent', border: 'none',
                                 resize: 'none', outline: 'none', fontSize: '1.125rem', fontFamily: 'inherit'
                             }}
                         />
-                        <div className="cf-flashcard-flip-hint" style={{ color: theme.backHint, display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', marginTop: 'auto', alignSelf: 'flex-end' }}>
+                        <div className="cf-flashcard-flip-hint" style={{ color: isSolid ? '#ffffff' : theme.backHint, display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', marginTop: 'auto', alignSelf: 'flex-end' }}>
                             <RotateCcw style={{ width: 12, height: 12 }} />
                             Click to flip back
                         </div>

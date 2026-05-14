@@ -2,11 +2,25 @@ import React from 'react';
 import { AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 
 export default function ButtonBlock({ block, onUpdate, slides = [] }) {
+    // Generate a safe, unique class name for this specific block to avoid style bleeding
+    const uniqueButtonClass = `cf-btn-${block.id || Math.random().toString(36).substr(2, 9)}`;
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '0.75rem', width: '100%' }}>
+
+            {/* Dynamic Style Injection to force !important and beat app.css */}
+            <style>{`
+                .${uniqueButtonClass} {
+                    background: ${block.color || '#ffffff'} !important;
+                    background-color: ${block.color || '#ffffff'} !important;
+                }
+            `}</style>
+
+            {/* Button Preview/Input */}
             <div
                 className="cf-button-block"
                 style={{
+                    display: 'flex',
                     justifyContent:
                         block.alignment === 'left'
                             ? 'flex-start'
@@ -16,13 +30,15 @@ export default function ButtonBlock({ block, onUpdate, slides = [] }) {
                 }}
             >
                 <input
-                    className="cf-button-input"
+                    className={`cf-button-input ${uniqueButtonClass}`}
                     value={block.content || ''}
                     onChange={(e) => onUpdate(block.id, { content: e.target.value })}
                     style={{ textAlign: 'center' }}
                     placeholder="Button label..."
                 />
             </div>
+
+            {/* Alignment Controls */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', maxWidth: 360 }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#8b6060', whiteSpace: 'nowrap' }}>
                     Align
@@ -59,6 +75,30 @@ export default function ButtonBlock({ block, onUpdate, slides = [] }) {
                     })}
                 </div>
             </div>
+
+            {/* Color Picker Control */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', maxWidth: 360 }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#8b6060', whiteSpace: 'nowrap' }}>
+                    Color
+                </span>
+                <input
+                    type="color"
+                    value={block.color || '#ffffff'}
+                    onChange={(e) => onUpdate(block.id, { color: e.target.value })}
+                    style={{
+                        width: 34,
+                        height: 34,
+                        padding: 0,
+                        border: '1px solid #EAD0D0',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        background: '#fff',
+                    }}
+                    title="Choose button color"
+                />
+            </div>
+
+            {/* Jump To Control */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', maxWidth: 360 }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#8b6060', whiteSpace: 'nowrap' }}>
                     Jump to

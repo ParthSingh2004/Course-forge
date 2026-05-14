@@ -1,7 +1,3 @@
-
-
-
-
 import { ScormAPI } from "./scorm-api";
 import { compressState, decompressState, createInitialState } from "./state-compressor";
 import { TriggerDispatcher } from "./trigger-worker";
@@ -2152,6 +2148,7 @@ class CourseForgeRuntime {
           alignment === "left" ? "flex-start" : alignment === "right" ? "flex-end" : "center";
         const btn = document.createElement("button");
         btn.className = "cf-rt-button";
+        if ((comp as any).color) btn.style.background = (comp as any).color;
         btn.textContent = comp.label;
         btn.addEventListener("click", () => {
           if (comp.targetSlideId) {
