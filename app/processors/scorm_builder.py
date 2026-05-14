@@ -2015,12 +2015,9 @@ def _get_fallback_runtime_js() -> str:
             var sl = statementLayers[sli] || {};
             var lx = Math.max(0, Math.min(88, Number(sl.x == null ? 8 : sl.x)));
             var ly = Math.max(0, Math.min(88, Number(sl.y == null ? 8 : sl.y)));
-            statementHtml += '<div style="position:absolute;left:' + lx + '%;top:' + ly + '%;display:inline-flex;flex-direction:column;min-width:100px;z-index:10;">';
-            statementHtml += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 6px;gap:.4rem;background:#ffffff;border:1px solid #e4e4e0;border-bottom:none;border-radius:6px 6px 0 0;box-shadow:0 -1px 4px rgba(0,0,0,.04);pointer-events:none;">';
-            statementHtml += '<div style="display:flex;align-items:center;gap:.35rem;"><span style="color:#b0b0ac;font-size:.7rem;">•••</span><span style="font-size:.65rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#b0b0ac;">Text ' + (sli + 1) + '</span></div>';
-            statementHtml += '</div>';
-            statementHtml += '<div style="padding:4px 7px;min-width:90px;background:rgba(255,255,255,0.88);border:1px solid rgba(228,228,224,0.9);border-top:none;border-radius:0 6px 6px 6px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);">';
-            statementHtml += '<div class="cf-rt-text" style="color:#1a1a1a;min-width:140px;min-height:1.6em;">' + (sl.content || '') + '</div>';
+            statementHtml += '<div style="position:absolute;left:' + lx + '%;top:' + ly + '%;display:block;min-width:100px;z-index:10;">';
+            statementHtml += '<div style="min-width:90px;background:transparent;border:none;border-radius:0;backdrop-filter:none;-webkit-backdrop-filter:none;">';
+            statementHtml += '<div class="cf-rt-text" style="color:#1a1a1a;min-width:140px;min-height:1.6em;text-shadow:0 1px 2px rgba(255,255,255,0.7);">' + (sl.content || '') + '</div>';
             statementHtml += '</div></div>';
           }
           statementHtml += '</div></div>';

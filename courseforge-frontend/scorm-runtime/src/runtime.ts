@@ -1791,6 +1791,8 @@ class CourseForgeRuntime {
                   nextBtn.disabled = false;
                   nextBtn.style.opacity = "1";
                   nextBtn.style.cursor = "pointer";
+                  nextBtn.style.color = "#d4d4d4";
+                  nextBtn.style.background = "#1c1c1c";
                   nextBtn.textContent = "Next →";
                 } else {
                   feedbackEl.innerHTML = `<div style="margin-top:10px;padding:9px 14px;background:#2a0a0a;border:1px solid #7f1d1d;border-radius:6px;color:#f87171;font-weight:600;font-size:0.88rem;display:flex;align-items:center;justify-content:space-between;">
@@ -1841,7 +1843,10 @@ class CourseForgeRuntime {
           nextBtn.textContent = isQuizBlocked ? "🔒 Answer to continue" : "Next →";
           nextBtn.disabled = stackIdx >= stackSlides.length - 1 || isQuizBlocked;
           nextBtn.style.cssText = `padding:6px 14px;border-radius:6px;border:1px solid #2a2a2a;background:${isQuizBlocked ? "#2a0a0a" : "#1c1c1c"};color:${(stackIdx >= stackSlides.length - 1 || isQuizBlocked) ? "#555" : "#d4d4d4"};cursor:${(stackIdx >= stackSlides.length - 1 || isQuizBlocked) ? "not-allowed" : "pointer"};font-size:0.85rem;`;
-          nextBtn.onclick = () => { if (stackIdx < stackSlides.length - 1 && !isQuizBlocked) { stackIdx++; renderStack(); } };
+          nextBtn.onclick = () => {
+            const blocked = slide.type === "quiz" && !quizDone[slide.id];
+            if (stackIdx < stackSlides.length - 1 && !blocked) { stackIdx++; renderStack(); }
+          };
 
           nav.appendChild(prevBtn); nav.appendChild(dots); nav.appendChild(nextBtn);
           wrapper.appendChild(nav);
@@ -2811,62 +2816,27 @@ class CourseForgeRuntime {
           layerWrap.style.position = "absolute";
           layerWrap.style.left = `${Math.max(0, Math.min(88, Number(layer.x ?? 8)))}%`;
           layerWrap.style.top = `${Math.max(0, Math.min(88, Number(layer.y ?? 8)))}%`;
-          layerWrap.style.display = "inline-flex";
-          layerWrap.style.flexDirection = "column";
+          layerWrap.style.display = "block";
           layerWrap.style.minWidth = "100px";
           layerWrap.style.zIndex = "10";
 
-          const bar = document.createElement("div");
-          bar.style.display = "flex";
-          bar.style.alignItems = "center";
-          bar.style.justifyContent = "space-between";
-          bar.style.padding = "4px 6px";
-          bar.style.gap = ".4rem";
-          bar.style.background = "#ffffff";
-          bar.style.border = "1px solid #e4e4e0";
-          bar.style.borderBottom = "none";
-          bar.style.borderRadius = "6px 6px 0 0";
-          bar.style.boxShadow = "0 -1px 4px rgba(0,0,0,.04)";
-          bar.style.pointerEvents = "none";
-
-          const labelWrap = document.createElement("div");
-          labelWrap.style.display = "flex";
-          labelWrap.style.alignItems = "center";
-          labelWrap.style.gap = ".35rem";
-          const grip = document.createElement("span");
-          grip.style.color = "#b0b0ac";
-          grip.style.fontSize = ".7rem";
-          grip.textContent = "•••";
-          const label = document.createElement("span");
-          label.style.fontSize = ".65rem";
-          label.style.fontWeight = "600";
-          label.style.letterSpacing = ".05em";
-          label.style.textTransform = "uppercase";
-          label.style.color = "#b0b0ac";
-          label.textContent = `Text ${index + 1}`;
-          labelWrap.appendChild(grip);
-          labelWrap.appendChild(label);
-          bar.appendChild(labelWrap);
-
           const editor = document.createElement("div");
-          editor.style.padding = "4px 7px";
           editor.style.minWidth = "90px";
-          editor.style.background = "rgba(255,255,255,0.88)";
-          editor.style.border = "1px solid rgba(228,228,224,0.9)";
-          editor.style.borderTop = "none";
-          editor.style.borderRadius = "0 6px 6px 6px";
-          editor.style.backdropFilter = "blur(4px)";
-          editor.style.webkitBackdropFilter = "blur(4px)";
+          editor.style.background = "transparent";
+          editor.style.border = "none";
+          editor.style.borderRadius = "0";
+          editor.style.backdropFilter = "none";
+          editor.style.webkitBackdropFilter = "none";
 
           const text = document.createElement("div");
           text.className = "cf-rt-text";
           text.style.color = "#1a1a1a";
           text.style.minWidth = "140px";
           text.style.minHeight = "1.6em";
+          text.style.textShadow = "0 1px 2px rgba(255,255,255,0.7)";
           text.innerHTML = layer.content || "";
           editor.appendChild(text);
 
-          layerWrap.appendChild(bar);
           layerWrap.appendChild(editor);
           canvas.appendChild(layerWrap);
         });

@@ -612,12 +612,9 @@ def render_block_html(block: Dict[str, Any], block_index: int = 0) -> str:
             left = max(0, min(88, float(layer.get("x", 8) or 8)))
             top = max(0, min(88, float(layer.get("y", 8) or 8)))
             layer_html += (
-                f'<div style="position:absolute;left:{left}%;top:{top}%;display:inline-flex;flex-direction:column;min-width:100px;z-index:10;">'
-                f'<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 6px;gap:.4rem;background:#ffffff;border:1px solid #e4e4e0;border-bottom:none;border-radius:6px 6px 0 0;box-shadow:0 -1px 4px rgba(0,0,0,.04);pointer-events:none;">'
-                f'<div style="display:flex;align-items:center;gap:.35rem;"><span style="color:#b0b0ac;font-size:.7rem;">•••</span><span style="font-size:.65rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#b0b0ac;">Text {idx + 1}</span></div>'
-                f'</div>'
-                f'<div style="padding:4px 7px;min-width:90px;background:rgba(255,255,255,0.88);border:1px solid rgba(228,228,224,0.9);border-top:none;border-radius:0 6px 6px 6px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);">'
-                f'<div style="font-size:15px;line-height:1.7;color:#1a1a1a;min-width:140px;min-height:1.6em;">{layer.get("content","")}</div>'
+                f'<div style="position:absolute;left:{left}%;top:{top}%;display:block;min-width:100px;z-index:10;">'
+                f'<div style="min-width:90px;background:transparent;border:none;border-radius:0;backdrop-filter:none;-webkit-backdrop-filter:none;">'
+                f'<div style="font-size:15px;line-height:1.7;color:#1a1a1a;min-width:140px;min-height:1.6em;text-shadow:0 1px 2px rgba(255,255,255,0.7);">{layer.get("content","")}</div>'
                 f'</div></div>'
             )
         empty_html = '' if image else '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#909090;font-size:.88rem;font-weight:600;">No image uploaded</div>'
@@ -981,6 +978,7 @@ async def export_scorm_2004(course: CourseData):
 
     html = generate_runtime_html(
         course.title,
+        course_def,
         runtime_js_path=runtime_js_name,
         course_data_js_path=course_data_js_name,
     )
