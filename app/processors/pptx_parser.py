@@ -113,6 +113,74 @@ def _build_theme_color_map(prs) -> dict:
     return theme_colors
 
 
+def _extract_color_map_attrs(color_map_el) -> dict:
+    """Return a PresentationML clrMap/overrideClrMapping element as a dict."""
+    if color_map_el is None:
+        return {}
+    keys = (
+        "bg1", "tx1", "bg2", "tx2",
+        "accent1", "accent2", "accent3", "accent4", "accent5", "accent6",
+        "hlink", "folHlink",
+    )
+    return {
+        key: value
+        for key in keys
+        if (value := (color_map_el.get(key) or "").strip())
+    }
+
+
+def _get_effective_color_map(slide) -> dict:
+    """
+    Resolve the effective scheme-color mapping for a slide.
+
+    OOXML scheme colors like `tx1` and `bg1` are indirections; the actual
+    theme slot comes from the slide/master clrMap chain.
+    """
+    try:
+        color_map = {}
+
+        master_el = _xml_element(slide.slide_layout.slide_master)
+        if master_el is not None:
+            color_map.update(_extract_color_map_attrs(master_el.find(qn("p:clrMap"))))
+
+        for owner in (getattr(slide, "slide_layout", None), slide):
+            if owner is None:
+                continue
+            owner_el = _xml_element(owner)
+            if owner_el is None:
+                continue
+            clr_map_ovr = owner_el.find(qn("p:clrMapOvr"))
+            if clr_map_ovr is None:
+                continue
+            override = clr_map_ovr.find(qn("p:overrideClrMapping")) or clr_map_ovr.find(qn("a:overrideClrMapping"))
+            if override is not None:
+                color_map.update(_extract_color_map_attrs(override))
+            elif (
+                clr_map_ovr.find(qn("p:masterClrMapping")) is not None
+                or clr_map_ovr.find(qn("a:masterClrMapping")) is not None
+            ):
+                # Explicitly keep the master mapping as-is.
+                pass
+
+        return color_map
+    except Exception:
+        return {}
+
+
+def _resolve_scheme_key(scheme_key: str, color_map=None) -> str:
+    """Map a scheme key like `tx1` through the effective clrMap if needed."""
+    if not scheme_key:
+        return ""
+    if color_map:
+        return color_map.get(scheme_key, scheme_key)
+    return scheme_key
+
+
+def _xml_element(obj):
+    """Return the underlying lxml element for a python-pptx proxy object."""
+    return getattr(obj, "element", None) or getattr(obj, "_element", None)
+
+
 def _apply_color_transforms(hex_color: str, scheme_el) -> str:
     """
     Apply lum/shade/tint modifiers from a <a:schemeClr> element to the
@@ -152,7 +220,7 @@ def _apply_color_transforms(hex_color: str, scheme_el) -> str:
         return hex_color
 
 
-def _extract_hex_from_color_choice(color_parent, theme_map=None) -> str:
+def _extract_hex_from_color_choice(color_parent, theme_map=None, color_map=None) -> str:
     """
     Extract a CSS hex color from a pptx color XML element.
 
@@ -185,6 +253,7 @@ def _extract_hex_from_color_choice(color_parent, theme_map=None) -> str:
         scheme = color_parent.find(qn("a:schemeClr"))
         if scheme is not None:
             val = (scheme.get("val") or "").strip()
+            val = _resolve_scheme_key(val, color_map)
             resolved = ""
             if theme_map:
                 resolved = theme_map.get(val, "")
@@ -237,19 +306,145 @@ def _emu_to_pct(val, total) -> float:
 
 # ── Rich text extraction ─────────────────────────────────────────────────────
 
-def _extract_run_hex_color(run, theme_map=None) -> str:
+def _extract_color_from_rpr(r_pr, theme_map=None, color_map=None) -> str:
+    """Resolve a color from a run-properties-like element when present."""
+    if r_pr is None:
+        return ""
+    try:
+        solid_fill = r_pr.find(qn("a:solidFill"))
+        if solid_fill is not None:
+            return _extract_hex_from_color_choice(solid_fill, theme_map, color_map)
+    except Exception:
+        pass
+    return ""
+
+
+def _placeholder_style_tag(shape) -> str:
+    """Best-effort txStyles bucket for a shape."""
+    try:
+        if getattr(shape, "is_placeholder", False):
+            ph_type = getattr(shape.placeholder_format.type, "name", "")
+            if ph_type in {"TITLE", "CENTER_TITLE"}:
+                return "titleStyle"
+            if ph_type in {"BODY", "SUBTITLE", "OBJECT"}:
+                return "bodyStyle"
+    except Exception:
+        pass
+    return "bodyStyle"
+
+
+def _extract_inherited_text_hex_color(run, para, shape, slide, theme_map=None, color_map=None) -> str:
+    """
+    Resolve inherited text color from paragraph/list/master text styles.
+
+    PowerPoint often stores visible text color above the run itself, especially
+    for placeholders and master-driven themes.
+    """
+    try:
+        p_pr = para._p.find(qn("a:pPr"))
+        if p_pr is not None:
+            hex_color = _extract_color_from_rpr(p_pr.find(qn("a:defRPr")), theme_map, color_map)
+            if hex_color:
+                return hex_color
+    except Exception:
+        pass
+
+    try:
+        tx_body = shape.text_frame._txBody
+        lst_style = tx_body.find(qn("a:lstStyle"))
+        if lst_style is not None:
+            lvl = 0
+            try:
+                lvl = para.level
+            except Exception:
+                pass
+            lvl_tag = qn(f"a:lvl{max(1, min(9, lvl + 1))}pPr")
+            lvl_ppr = lst_style.find(lvl_tag)
+            if lvl_ppr is not None:
+                hex_color = _extract_color_from_rpr(lvl_ppr.find(qn("a:defRPr")), theme_map, color_map)
+                if hex_color:
+                    return hex_color
+            def_ppr = lst_style.find(qn("a:defPPr"))
+            if def_ppr is not None:
+                hex_color = _extract_color_from_rpr(def_ppr.find(qn("a:defRPr")), theme_map, color_map)
+                if hex_color:
+                    return hex_color
+    except Exception:
+        pass
+
+    try:
+        if getattr(shape, "is_placeholder", False):
+            placeholder_idx = getattr(shape.placeholder_format, "idx", None)
+            for layout_shape in slide.slide_layout.shapes:
+                if not getattr(layout_shape, "is_placeholder", False):
+                    continue
+                if getattr(layout_shape.placeholder_format, "idx", None) != placeholder_idx:
+                    continue
+                if not hasattr(layout_shape, "text_frame"):
+                    continue
+
+                tx_body = layout_shape.text_frame._txBody
+                lst_style = tx_body.find(qn("a:lstStyle"))
+                if lst_style is not None:
+                    lvl = 0
+                    try:
+                        lvl = para.level
+                    except Exception:
+                        pass
+                    lvl_tag = qn(f"a:lvl{max(1, min(9, lvl + 1))}pPr")
+                    lvl_ppr = lst_style.find(lvl_tag)
+                    if lvl_ppr is not None:
+                        hex_color = _extract_color_from_rpr(lvl_ppr.find(qn("a:defRPr")), theme_map, color_map)
+                        if hex_color:
+                            return hex_color
+                    def_ppr = lst_style.find(qn("a:defPPr"))
+                    if def_ppr is not None:
+                        hex_color = _extract_color_from_rpr(def_ppr.find(qn("a:defRPr")), theme_map, color_map)
+                        if hex_color:
+                            return hex_color
+                break
+    except Exception:
+        pass
+
+    try:
+        master_el = _xml_element(slide.slide_layout.slide_master)
+        tx_styles = master_el.find(qn("p:txStyles")) if master_el is not None else None
+        if tx_styles is not None:
+            style_tag = qn(f"p:{_placeholder_style_tag(shape)}")
+            style_el = tx_styles.find(style_tag)
+            if style_el is not None:
+                lvl = 0
+                try:
+                    lvl = para.level
+                except Exception:
+                    pass
+                lvl_tag = qn(f"a:lvl{max(1, min(9, lvl + 1))}pPr")
+                lvl_ppr = style_el.find(lvl_tag)
+                if lvl_ppr is not None:
+                    hex_color = _extract_color_from_rpr(lvl_ppr.find(qn("a:defRPr")), theme_map, color_map)
+                    if hex_color:
+                        return hex_color
+                def_ppr = style_el.find(qn("a:defPPr"))
+                if def_ppr is not None:
+                    hex_color = _extract_color_from_rpr(def_ppr.find(qn("a:defRPr")), theme_map, color_map)
+                    if hex_color:
+                        return hex_color
+    except Exception:
+        pass
+
+    return ""
+
+
+def _extract_run_hex_color(run, para, shape, slide, theme_map=None, color_map=None) -> str:
     """
     Resolve a run's font color from OOXML first so theme colors use the
     presentation's actual palette rather than python-pptx's lossy `.rgb` path.
     """
     try:
         r_pr = run._r.find(qn("a:rPr"))
-        if r_pr is not None:
-            solid_fill = r_pr.find(qn("a:solidFill"))
-            if solid_fill is not None:
-                hex_color = _extract_hex_from_color_choice(solid_fill, theme_map)
-                if hex_color:
-                    return hex_color
+        hex_color = _extract_color_from_rpr(r_pr, theme_map, color_map)
+        if hex_color:
+            return hex_color
     except Exception:
         pass
 
@@ -271,6 +466,7 @@ def _extract_run_hex_color(run, theme_map=None) -> str:
                     "FOLLOWED_HYPERLINK": "folHlink",
                     "HYPERLINK": "hlink",
                 }.get(theme_name, theme_name.lower().replace("_", ""))
+                theme_key = _resolve_scheme_key(theme_key, color_map)
                 hex_color = theme_map.get(theme_key, "")
                 if hex_color:
                     return hex_color
@@ -284,10 +480,14 @@ def _extract_run_hex_color(run, theme_map=None) -> str:
     except Exception:
         pass
 
+    hex_color = _extract_inherited_text_hex_color(run, para, shape, slide, theme_map, color_map)
+    if hex_color:
+        return hex_color
+
     return ""
 
 
-def _para_to_html(para, theme_map=None) -> str:
+def _para_to_html(para, shape, slide, theme_map=None, color_map=None) -> str:
     """Convert a pptx paragraph to inline HTML, preserving basic formatting."""
     parts = []
     for run in para.runs:
@@ -316,7 +516,7 @@ def _para_to_html(para, theme_map=None) -> str:
                 style_parts.append(f"font-size:{int(size / 12700)}px")
         except Exception:
             pass
-        hex_color = _extract_run_hex_color(run, theme_map)
+        hex_color = _extract_run_hex_color(run, para, shape, slide, theme_map, color_map)
         if hex_color:
             style_parts.append(f"color:{hex_color}")
 
@@ -373,7 +573,7 @@ def _get_indent_level(para) -> int:
 
 # ── Background extraction ────────────────────────────────────────────────────
 
-def _extract_slide_background(slide, theme_map=None) -> dict:
+def _extract_slide_background(slide, theme_map=None, color_map=None) -> dict:
     """
     Return background info:  { "type": "color"|"image"|"none", "value": ... }
     """
@@ -396,7 +596,7 @@ def _extract_slide_background(slide, theme_map=None) -> dict:
             if bgPr is not None:
                 solidFill = bgPr.find(qn("a:solidFill"))
                 if solidFill is not None:
-                    hex_color = _extract_hex_from_color_choice(solidFill, theme_map)
+                    hex_color = _extract_hex_from_color_choice(solidFill, theme_map, color_map)
                     if hex_color:
                         return {"type": "color", "value": hex_color}
 
@@ -413,7 +613,7 @@ def _extract_slide_background(slide, theme_map=None) -> dict:
 
             bgRef = bg._element.find(f".//{qn('p:bgRef')}")
             if bgRef is not None:
-                hex_color = _extract_hex_from_color_choice(bgRef, theme_map)
+                hex_color = _extract_hex_from_color_choice(bgRef, theme_map, color_map)
                 if hex_color:
                     return {"type": "color", "value": hex_color}
         except Exception:
@@ -591,7 +791,7 @@ def _extract_table(shape) -> dict | None:
 
 # ── Shape-level text parsing (rich text, lists) ──────────────────────────────
 
-def _extract_text_shapes(shape, theme_map=None) -> list:
+def _extract_text_shapes(shape, slide, theme_map=None, color_map=None) -> list:
     if not hasattr(shape, "text_frame"):
         return []
 
@@ -620,7 +820,7 @@ def _extract_text_shapes(shape, theme_map=None) -> list:
 
     html_parts = []
     for para in paragraphs:
-        para_html = _para_to_html(para, theme_map)
+        para_html = _para_to_html(para, shape, slide, theme_map, color_map)
         if not para_html.strip():
             continue
         try:
@@ -673,6 +873,7 @@ async def extract_slides(file_bytes: bytes):
     for i, slide in enumerate(prs.slides):
         slide_title = f"Slide {i + 1}"
         elements = []
+        color_map = _get_effective_color_map(slide)
 
         # ── Determine slide title from title placeholder ──────────────────────
         for shape in slide.shapes:
@@ -688,7 +889,7 @@ async def extract_slides(file_bytes: bytes):
 
         # ── Background ────────────────────────────────────────────────────────
         # 2. Pass the generated theme_map into the background extractor
-        bg = _extract_slide_background(slide, theme_map)
+        bg = _extract_slide_background(slide, theme_map, color_map)
 
         # ── Transition ────────────────────────────────────────────────────────
         transition = _extract_transition(slide)
@@ -744,7 +945,7 @@ async def extract_slides(file_bytes: bytes):
                 continue
 
             # --- Text / List ---
-            text_blocks = _extract_text_shapes(shape, theme_map)
+            text_blocks = _extract_text_shapes(shape, slide, theme_map, color_map)
             elements.extend(text_blocks)
 
         # ── Speaker notes → appended as a styled text block ──────────────────
