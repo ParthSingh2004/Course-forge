@@ -1,6 +1,7 @@
 from PIL import Image
 import pptx
 from pptx import Presentation
+from pptx.enum.dml import MSO_COLOR_TYPE
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.util import Pt
 from pptx.oxml.ns import qn
@@ -247,6 +248,30 @@ def _extract_run_hex_color(run, theme_map=None) -> str:
             solid_fill = r_pr.find(qn("a:solidFill"))
             if solid_fill is not None:
                 hex_color = _extract_hex_from_color_choice(solid_fill, theme_map)
+                if hex_color:
+                    return hex_color
+    except Exception:
+        pass
+
+    try:
+        color_format = run.font.color
+        if color_format is not None and getattr(color_format, "type", None) == MSO_COLOR_TYPE.SCHEME:
+            theme_color = getattr(color_format, "theme_color", None)
+            theme_name = getattr(theme_color, "name", "")
+            if theme_name and theme_map:
+                theme_key = {
+                    "TEXT_1": "tx1",
+                    "TEXT_2": "tx2",
+                    "BACKGROUND_1": "bg1",
+                    "BACKGROUND_2": "bg2",
+                    "DARK_1": "dk1",
+                    "DARK_2": "dk2",
+                    "LIGHT_1": "lt1",
+                    "LIGHT_2": "lt2",
+                    "FOLLOWED_HYPERLINK": "folHlink",
+                    "HYPERLINK": "hlink",
+                }.get(theme_name, theme_name.lower().replace("_", ""))
+                hex_color = theme_map.get(theme_key, "")
                 if hex_color:
                     return hex_color
     except Exception:
