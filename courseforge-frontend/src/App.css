@@ -785,38 +785,6 @@
   letter-spacing: -0.01em !important;
 }
 
-/* ── Fix: bold + font-color conflict in rich text editor ── */
-/* When execCommand wraps text in <font> or <span style="color">,
-   ensure that colour wins even when the selection is inside <b>/<strong>.
-   The colour attribute / inline style must not be suppressed by any
-   font-weight rule above, and nested colour spans must not inherit
-   an ancestor colour unintentionally. */
-[contenteditable] font[color] {
-  color: attr(color);
-  /* honour <font color="..."> attribute */
-}
-
-[contenteditable] [style*="color:"],
-[contenteditable] [style*="color :"] {
-  /* Inline style already carries specificity; this rule just
-     makes sure font[color] produced by execCommand('foreColor')
-     is not accidentally overridden by a higher-specificity
-     selector that sets colour without !important. */
-  color: revert-layer;
-}
-
-/* Prevent the heading weight overrides from accidentally
-   flattening the colour cascade on nested spans inside headings */
-.cf-heading-h1 [contenteditable] [style*="color:"],
-.cf-heading-h2 [contenteditable] [style*="color:"],
-.cf-heading-h3 [contenteditable] [style*="color:"],
-.cf-heading-h1 [contenteditable] font[color],
-.cf-heading-h2 [contenteditable] font[color],
-.cf-heading-h3 [contenteditable] font[color] {
-  /* Let the element keep its own inline colour;
-     only the font-size / weight are forced above. */
-  color: unset;
-}
 
 .cf-slide-container {
   border: 1px solid #E8D8D8;
