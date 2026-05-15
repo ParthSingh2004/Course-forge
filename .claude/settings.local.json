@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"c:\\\\Users\\\\parth\\\\Desktop\\\\CourseForge\\\\courseforge-frontend\" show --stat 39aee67)",
+      "Bash(git -C \"c:\\\\Users\\\\parth\\\\Desktop\\\\CourseForge\\\\courseforge-frontend\" show 39aee67 -- courseforge-frontend/scorm-runtime/src/runtime.ts)"
+    ]
+  }
+}

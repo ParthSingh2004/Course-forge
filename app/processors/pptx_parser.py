@@ -236,7 +236,33 @@ def _emu_to_pct(val, total) -> float:
 
 # ── Rich text extraction ─────────────────────────────────────────────────────
 
-def _para_to_html(para) -> str:
+def _extract_run_hex_color(run, theme_map=None) -> str:
+    """
+    Resolve a run's font color from OOXML first so theme colors use the
+    presentation's actual palette rather than python-pptx's lossy `.rgb` path.
+    """
+    try:
+        r_pr = run._r.find(qn("a:rPr"))
+        if r_pr is not None:
+            solid_fill = r_pr.find(qn("a:solidFill"))
+            if solid_fill is not None:
+                hex_color = _extract_hex_from_color_choice(solid_fill, theme_map)
+                if hex_color:
+                    return hex_color
+    except Exception:
+        pass
+
+    try:
+        color = run.font.color.rgb
+        if color:
+            return _rgb_to_hex(color)
+    except Exception:
+        pass
+
+    return ""
+
+
+def _para_to_html(para, theme_map=None) -> str:
     """Convert a pptx paragraph to inline HTML, preserving basic formatting."""
     parts = []
     for run in para.runs:
@@ -265,12 +291,9 @@ def _para_to_html(para) -> str:
                 style_parts.append(f"font-size:{int(size / 12700)}px")
         except Exception:
             pass
-        try:
-            color = run.font.color.rgb
-            if color:
-                style_parts.append(f"color:{_rgb_to_hex(color)}")
-        except Exception:
-            pass
+        hex_color = _extract_run_hex_color(run, theme_map)
+        if hex_color:
+            style_parts.append(f"color:{hex_color}")
 
         escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         if style_parts:
@@ -543,7 +566,7 @@ def _extract_table(shape) -> dict | None:
 
 # ── Shape-level text parsing (rich text, lists) ──────────────────────────────
 
-def _extract_text_shapes(shape) -> list:
+def _extract_text_shapes(shape, theme_map=None) -> list:
     if not hasattr(shape, "text_frame"):
         return []
 
@@ -572,7 +595,7 @@ def _extract_text_shapes(shape) -> list:
 
     html_parts = []
     for para in paragraphs:
-        para_html = _para_to_html(para)
+        para_html = _para_to_html(para, theme_map)
         if not para_html.strip():
             continue
         try:
@@ -696,7 +719,7 @@ async def extract_slides(file_bytes: bytes):
                 continue
 
             # --- Text / List ---
-            text_blocks = _extract_text_shapes(shape)
+            text_blocks = _extract_text_shapes(shape, theme_map)
             elements.extend(text_blocks)
 
         # ── Speaker notes → appended as a styled text block ──────────────────
