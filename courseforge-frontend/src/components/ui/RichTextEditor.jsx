@@ -211,7 +211,7 @@ export default function RichTextEditor({ value, onChange, placeholder, style, cl
         onPaste={handlePaste}
         onFocus={() => { isEditing.current = true; updateToolbarState(); }}
         onBlur={() => { isEditing.current = false; handleInput(); }}
-        style={{ padding: '12px', minHeight: '80px', outline: 'none', fontSize: '1rem', color: 'inherit', fontFamily: 'Roboto' }}
+        style={{ padding: '12px', minHeight: '80px', outline: 'none', color: 'inherit', fontFamily: 'inherit' }}
         data-placeholder={placeholder}
       />
     </div>

@@ -1175,8 +1175,9 @@ def _get_fallback_runtime_js() -> str:
         el.className = 'cf-rt-component';
         if (comp.type === 'text') {
           el.innerHTML = '<div class="cf-rt-text">' + comp.content + '</div>';
-        } else if (comp.type === 'heading') {
-          el.innerHTML = '<h' + (comp.level||2) + ' class="cf-rt-heading">' + comp.content + '</h' + (comp.level||2) + '>';
+        } else if (comp.type === 'heading' || comp.type === 'heading-1') {
+          var hl = comp.headingLevel ? comp.headingLevel.replace('h', '') : (comp.level || 2);
+          el.innerHTML = '<h' + hl + ' class="cf-rt-heading">' + (comp.content || '') + '</h' + hl + '>';
         } else if (comp.type === 'image') {
           el.style.textAlign = 'center';
           var imgHtml = '<img class="cf-rt-image" src="' + comp.src + '" alt="' + (comp.alt||'') + '" style="width:' + (comp.width||'100%') + ';" />';
