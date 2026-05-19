@@ -85,6 +85,16 @@ export default function RichTextEditor({ value, onChange, placeholder, style, cl
     handleInput();
   };
 
+  const applyTextColor = (color) => {
+    if (!editorRef.current || !color) return;
+    editorRef.current.focus();
+    restoreSelection();
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand('foreColor', false, color);
+    handleInput();
+    saveSelection();
+  };
+
   const execFontSize = (size) => {
     const numericSize = Number(size);
     if (!Number.isFinite(numericSize) || numericSize < 8 || numericSize > 96) return;
@@ -147,7 +157,7 @@ export default function RichTextEditor({ value, onChange, placeholder, style, cl
         <input
           type="color"
           onMouseDown={saveSelection}
-          onInput={(e) => exec('foreColor', e.target.value)}
+          onInput={(e) => applyTextColor(e.target.value)}
           style={{ width: '20px', height: '20px', padding: 0, border: 'none', cursor: 'pointer', background: 'transparent' }}
           title="Text Color"
         />

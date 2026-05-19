@@ -1,25 +1,16 @@
 import React from 'react';
-import { ShieldCheck, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
+import MandatorySelect from '../ui/MandatorySelect';
 
 export default function QuizBlock({ block, onUpdate }) {
     return (
         <div className="cf-quiz-block">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', gap: '0.5rem' }}>
-                <button
-                    onClick={() => onUpdate(block.id, { mandatory: !block.mandatory })}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: '0.35rem',
-                        padding: '0.25rem 0.625rem', borderRadius: 6, cursor: 'pointer',
-                        fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '0.06em',
-                        background: block.mandatory ? '#8b1a1a' : '#fff5f5',
-                        color: block.mandatory ? 'white' : '#8b6060',
-                        border: block.mandatory ? '1px solid #8b1a1a' : '1px solid #EAD0D0',
-                        transition: 'all 0.15s',
-                    }}
-                >
-                    <ShieldCheck style={{ width: 12, height: 12 }} />
-                    {block.mandatory ? 'MANDATORY' : 'Optional'}
-                </button>
+                <MandatorySelect
+                    value={!!block.mandatory}
+                    onChange={(mandatory) => onUpdate(block.id, { mandatory })}
+                    size="compact"
+                />
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginLeft: 'auto' }}>
                     <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#8b6060', whiteSpace: 'nowrap' }}>Marks:</span>
                     <input

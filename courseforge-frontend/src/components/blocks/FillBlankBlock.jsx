@@ -1,5 +1,6 @@
 import React from 'react';
-import { ShieldCheck, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
+import MandatorySelect from '../ui/MandatorySelect';
 
 // Isolated state logic for this component
 const FILL_BLANK_TOKEN = /____/g;
@@ -43,21 +44,11 @@ export default function FillBlankBlock({ block, onUpdate }) {
     return (
         <div className="cf-fitb-block">
             <div className="cf-assess-meta">
-                <button
-                    onClick={() => onUpdate(block.id, { isMandatory: !block.isMandatory })}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: '0.35rem',
-                        padding: '0.25rem 0.625rem', borderRadius: 6, cursor: 'pointer',
-                        fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '0.06em',
-                        background: block.isMandatory ? '#8b1a1a' : '#fff5f5',
-                        color: block.isMandatory ? 'white' : '#8b6060',
-                        border: block.isMandatory ? '1px solid #8b1a1a' : '1px solid #EAD0D0',
-                        transition: 'all 0.15s',
-                    }}
-                >
-                    <ShieldCheck style={{ width: 12, height: 12 }} />
-                    {block.isMandatory ? 'MANDATORY' : 'Optional'}
-                </button>
+                <MandatorySelect
+                    value={!!block.isMandatory}
+                    onChange={(isMandatory) => onUpdate(block.id, { isMandatory })}
+                    size="compact"
+                />
                 <button
                     onClick={() => onUpdate(block.id, { caseSensitive: !block.caseSensitive })}
                     style={{

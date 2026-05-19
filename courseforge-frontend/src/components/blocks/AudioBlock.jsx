@@ -1,6 +1,7 @@
 import React from 'react';
-import { ShieldCheck, Mic, X } from 'lucide-react';
+import { Mic, X } from 'lucide-react';
 import { buildApiUrl, buildBackendAssetUrl } from '../../utils/api';
+import MandatorySelect from '../ui/MandatorySelect';
 
 export default function AudioBlock({ block, onUpdate }) {
     return (
@@ -34,21 +35,12 @@ export default function AudioBlock({ block, onUpdate }) {
                     onFocus={(e) => e.target.style.borderColor = '#fca5a5'}
                     onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
                 />
-                <button
-                    onClick={() => onUpdate(block.id, { mandatory: !block.mandatory })}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: '0.35rem',
-                        padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
-                        fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.05em',
-                        background: block.mandatory ? '#ef4444' : '#ffffff',
-                        color: block.mandatory ? '#ffffff' : '#ef4444',
-                        border: block.mandatory ? '1px solid #ef4444' : '1px solid #fca5a5',
-                        transition: 'all 0.2s', whiteSpace: 'nowrap', flexShrink: 0,
-                    }}
-                >
-                    <ShieldCheck style={{ width: 14, height: 14 }} />
-                    {block.mandatory ? 'MANDATORY' : 'OPTIONAL'}
-                </button>
+                <MandatorySelect
+                    value={!!block.mandatory}
+                    onChange={(mandatory) => onUpdate(block.id, { mandatory })}
+                    size="compact"
+                    style={{ flexShrink: 0 }}
+                />
             </div>
             {block.audioUrl ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

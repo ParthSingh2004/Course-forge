@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { ShieldCheck, FileUp, Trash2, X } from 'lucide-react';
+import { FileUp, Trash2, X } from 'lucide-react';
+import MandatorySelect from '../ui/MandatorySelect';
 
 export default function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
     const [activeQuiz, setActiveQuiz] = useState(null);
@@ -85,23 +86,12 @@ export default function InteractiveVideoBlock({ block, onUpdate, readOnly }) {
             {!readOnly && (
                 <div style={{ marginBottom: '1rem', padding: '0.5rem', background: '#171717', border: '1px solid #7f1d1d', borderRadius: 6, display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
-                        <button
-                            type="button"
-                            onClick={() => onUpdate(block.id, { mandatory: !block.mandatory })}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '0.35rem',
-                                padding: '0.25rem 0.625rem', borderRadius: 6, cursor: 'pointer',
-                                fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '0.06em',
-                                background: block.mandatory ? '#8b1a1a' : '#fff5f5',
-                                color: block.mandatory ? 'white' : '#8b6060',
-                                border: block.mandatory ? '1px solid #8b1a1a' : '1px solid #EAD0D0',
-                                transition: 'all 0.15s',
-                                flexShrink: 0,
-                            }}
-                        >
-                            <ShieldCheck style={{ width: 12, height: 12 }} />
-                            {block.mandatory ? 'MANDATORY' : 'Optional'}
-                        </button>
+                        <MandatorySelect
+                            value={!!block.mandatory}
+                            onChange={(mandatory) => onUpdate(block.id, { mandatory })}
+                            size="compact"
+                            style={{ flexShrink: 0 }}
+                        />
                         <div style={{ color: '#d4d4d4', fontSize: '0.8125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {block.fileName || (block.videoUrl ? 'Uploaded video selected' : 'Upload a video file to add quiz interactions.')}
                         </div>

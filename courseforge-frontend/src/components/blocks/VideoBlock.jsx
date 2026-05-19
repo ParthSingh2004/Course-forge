@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Play, FileUp, ShieldCheck, Video, X } from 'lucide-react';
+import { Play, FileUp, Video, X } from 'lucide-react';
+import MandatorySelect from '../ui/MandatorySelect';
 
 export default function VideoBlock({ block, onUpdate }) {
     const [urlDraft, setUrlDraft] = useState(block.videoUrl || '');
@@ -60,21 +61,11 @@ export default function VideoBlock({ block, onUpdate }) {
                 </label>
             </div>
             <div style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid #f0e0e0', display: 'flex', alignItems: 'center' }}>
-                <button
-                    onClick={() => onUpdate(block.id, { mandatory: !block.mandatory })}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: '0.35rem',
-                        padding: '0.25rem 0.625rem', borderRadius: 6, cursor: 'pointer',
-                        fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '0.06em',
-                        background: block.mandatory ? '#8b1a1a' : '#fff5f5',
-                        color: block.mandatory ? 'white' : '#8b6060',
-                        border: block.mandatory ? '1px solid #8b1a1a' : '1px solid #EAD0D0',
-                        transition: 'all 0.15s',
-                    }}
-                >
-                    <ShieldCheck style={{ width: 12, height: 12 }} />
-                    {block.mandatory ? 'MANDATORY' : 'Optional'}
-                </button>
+                <MandatorySelect
+                    value={!!block.mandatory}
+                    onChange={(mandatory) => onUpdate(block.id, { mandatory })}
+                    size="compact"
+                />
             </div>
             <div className="cf-video-player-area">
                 {!block.videoUrl ? (

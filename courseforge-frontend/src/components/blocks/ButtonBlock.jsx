@@ -11,8 +11,8 @@ export default function ButtonBlock({ block, onUpdate, slides = [] }) {
             {/* Dynamic Style Injection to force !important and beat app.css */}
             <style>{`
                 .${uniqueButtonClass} {
-                    background: ${block.color || '#ffffff'} !important;
-                    background-color: ${block.color || '#ffffff'} !important;
+                    background: ${block.color || '#8b1a1a'} !important;
+                    background-color: ${block.color || '#8b1a1a'} !important;
                 }
             `}</style>
 
@@ -83,7 +83,7 @@ export default function ButtonBlock({ block, onUpdate, slides = [] }) {
                 </span>
                 <input
                     type="color"
-                    value={block.color || '#ffffff'}
+                    value={block.color || '#8b1a1a'}
                     onChange={(e) => onUpdate(block.id, { color: e.target.value })}
                     style={{
                         width: 34,
