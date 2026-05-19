@@ -760,7 +760,10 @@
   box-shadow: 0 1px 4px rgba(139, 26, 26, 0.35);
 }
 
-/* Heading size classes — only target the editable text area, not the toolbar */
+/* Heading size classes - inline style is primary, CSS is a bulletproof fallback */
+/* Target the wrapper, the editor div, and the contenteditable for full coverage */
+.cf-heading-h1,
+.cf-heading-h1.cf-rich-text-editor,
 .cf-heading-h1 [contenteditable] {
   font-size: 3rem;
   font-weight: 800;
@@ -768,6 +771,8 @@
   letter-spacing: -0.03em;
 }
 
+.cf-heading-h2,
+.cf-heading-h2.cf-rich-text-editor,
 .cf-heading-h2 [contenteditable] {
   font-size: 1.875rem;
   font-weight: 700;
@@ -775,6 +780,8 @@
   letter-spacing: -0.02em;
 }
 
+.cf-heading-h3,
+.cf-heading-h3.cf-rich-text-editor,
 .cf-heading-h3 [contenteditable] {
   font-size: 1.125rem;
   font-weight: 600;

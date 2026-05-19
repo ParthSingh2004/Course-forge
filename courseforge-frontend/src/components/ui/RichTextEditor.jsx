@@ -115,7 +115,7 @@ export default function RichTextEditor({ value, onChange, placeholder, style, cl
   };
 
   return (
-    <div className={`cf-rich-text-editor ${className || ''}`} style={{ border: '1px solid #EAD0D0', borderRadius: 8, overflow: 'hidden', background: 'white', ...style }}>
+    <div className={`cf-rich-text-editor ${className || ''}`} style={{ border: '1px solid #EAD0D0', borderRadius: 8, overflow: 'hidden', background: 'white', fontSize: 'inherit', fontWeight: 'inherit', lineHeight: 'inherit', letterSpacing: 'inherit', ...style }}>
       <div className="cf-rte-toolbar" style={{ display: 'flex', gap: '4px', padding: '6px 8px', background: '#FDF8F8', borderBottom: '1px solid #EAD0D0', alignItems: 'center', fontSize: '13px', fontWeight: '400', fontStyle: 'normal', textTransform: 'none', letterSpacing: 'normal', color: '#333', flexWrap: compactToolbar ? 'wrap' : 'nowrap' }}>
         <button onMouseDown={(e) => { e.preventDefault(); exec('bold'); }} style={{ padding: '4px 8px', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', color: 'inherit' }}>B</button>
         <button onMouseDown={(e) => { e.preventDefault(); exec('italic'); }} style={{ padding: '4px 8px', background: 'transparent', border: 'none', cursor: 'pointer', fontStyle: 'italic', fontSize: '13px', color: 'inherit' }}>I</button>
@@ -211,7 +211,7 @@ export default function RichTextEditor({ value, onChange, placeholder, style, cl
         onPaste={handlePaste}
         onFocus={() => { isEditing.current = true; updateToolbarState(); }}
         onBlur={() => { isEditing.current = false; handleInput(); }}
-        style={{ padding: '12px', minHeight: '80px', outline: 'none', color: 'inherit', fontFamily: 'inherit' }}
+        style={{ padding: '12px', minHeight: '80px', outline: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 'inherit', fontWeight: 'inherit', lineHeight: 'inherit', letterSpacing: 'inherit' }}
         data-placeholder={placeholder}
       />
     </div>

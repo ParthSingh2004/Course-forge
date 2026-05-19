@@ -726,7 +726,10 @@ def render_block_html(block: Dict[str, Any], block_index: int = 0) -> str:
     if block_type in ("heading", "heading-1"):
         raw_level = str(block.get("headingLevel") or block.get("level") or "h1").strip().lower()
         heading_tag = raw_level if raw_level in {"h1", "h2", "h3", "h4", "h5", "h6"} else "h1"
-        return f'<{heading_tag} style="font-family:sans-serif;margin-bottom:12px;">{content}</{heading_tag}>'
+        _h_size = {"h1": "3rem", "h2": "1.875rem", "h3": "1.125rem"}.get(heading_tag, "1rem")
+        _h_weight = {"h1": "800", "h2": "700", "h3": "600"}.get(heading_tag, "600")
+        _h_line = {"h1": "1.1", "h2": "1.2", "h3": "1.3"}.get(heading_tag, "1.3")
+        return f'<{heading_tag} style="font-family:sans-serif;font-size:{_h_size};font-weight:{_h_weight};line-height:{_h_line};margin-bottom:12px;">{content}</{heading_tag}>'
 
     if block_type == "button":
         return f'''

@@ -953,14 +953,19 @@ function App() {
                 {hLevel === 'h1' ? '— Large title' : hLevel === 'h2' ? '— Section heading' : '— Sub-heading'}
               </div>
             </div>
-            <div style={{ fontSize: hSizeMap[hLevel], fontWeight: hWeightMap[hLevel], lineHeight: hLineMap[hLevel], transition: 'font-size 0.18s ease' }}>
-              <RichTextEditor
-                className={`cf-heading-input cf-heading-${hLevel}`}
+            <RichTextEditor
+                className={`cf-heading-${hLevel}`}
                 value={block.content}
                 onChange={(val) => updateBlock(block.id, { content: val })}
                 placeholder={hLevel === 'h1' ? 'Main heading…' : hLevel === 'h2' ? 'Section heading…' : 'Sub-heading…'}
+                style={{
+                  fontSize: hSizeMap[hLevel],
+                  fontWeight: hWeightMap[hLevel],
+                  lineHeight: hLineMap[hLevel],
+                  transition: 'font-size 0.18s ease',
+                  letterSpacing: hLevel === 'h1' ? '-0.03em' : hLevel === 'h2' ? '-0.02em' : '-0.01em',
+                }}
               />
-            </div>
           </div>
         );
       }
