@@ -2219,10 +2219,16 @@ class CourseForgeRuntime {
         const tfCorrectStr = comp.correctAnswer ? "true" : "false";
         const existingScore = this.state.quizScores[tfId];
         const isCorrectAlready = existingScore && existingScore.score > 0;
+        const tfQuestionImage = (comp as any).questionImage as string | undefined;
+
+        const tfImageHtml = tfQuestionImage
+          ? `<div style="margin:0.75rem 0;"><img src="${tfQuestionImage}" alt="Question image" style="max-width:100%;max-height:280px;object-fit:contain;border-radius:8px;border:1.5px solid #3f3f46;display:block;"/></div>`
+          : "";
 
         tfDiv.innerHTML = `
           <div class="cf-rt-quiz-badge">TRUE / FALSE</div>
           <div class="cf-rt-quiz-question">${comp.question}</div>
+          ${tfImageHtml}
           <div class="cf-rt-quiz-options">
             <label class="cf-rt-quiz-option" data-quiz-id="${tfId}" data-option-idx="true" ${isCorrectAlready ? 'style="opacity:0.6;cursor:not-allowed;"' : ""}>
               <input type="radio" name="tf-${tfId}" value="true" ${isCorrectAlready ? "disabled" : ""} ${isCorrectAlready && comp.correctAnswer === true ? "checked" : ""} />
@@ -2417,9 +2423,14 @@ class CourseForgeRuntime {
         `).join("");
 
         const msDiv = document.createElement("div");
+        const msQuestionImage = (comp as any).questionImage as string | undefined;
+        const msImageHtml = msQuestionImage
+          ? `<div style="margin:0.75rem 0;"><img src="${msQuestionImage}" alt="Question image" style="max-width:100%;max-height:280px;object-fit:contain;border-radius:8px;border:1.5px solid #3f3f46;display:block;"/></div>`
+          : "";
         msDiv.innerHTML = `
           <div class="cf-rt-quiz-badge">MULTI-SELECT</div>
           <div class="cf-rt-quiz-question">${comp.question}</div>
+          ${msImageHtml}
           <div class="cf-rt-quiz-options">${optionsHtml}</div>
           <button class="cf-rt-quiz-submit" data-quiz-id="${msId}" disabled ${isCorrectAlready ? 'style="opacity:0.6;cursor:not-allowed;"' : ""}>${isCorrectAlready ? "Submitted" : "Submit Answer"}</button>
           <div id="fb-${msId}" class="cf-rt-quiz-feedback">
@@ -2923,6 +2934,7 @@ class CourseForgeRuntime {
   private renderQuizHTML(quiz: Extract<Component, { type: "quiz" }>): string {
     const existingScore = this.state.quizScores[quiz.id];
     const isCorrectAlready = existingScore && existingScore.score > 0;
+    const questionImage = (quiz as any).questionImage as string | undefined;
 
     const optionsHtml = quiz.options.map((opt, idx) => `
       <label class="cf-rt-quiz-option" data-quiz-id="${quiz.id}" data-option-idx="${idx}" ${isCorrectAlready ? 'style="opacity:0.6;cursor:not-allowed;"' : ""}>
@@ -2931,9 +2943,14 @@ class CourseForgeRuntime {
       </label>
     `).join("");
 
+    const imageHtml = questionImage
+      ? `<div style="margin:0.75rem 0;"><img src="${questionImage}" alt="Question image" style="max-width:100%;max-height:280px;object-fit:contain;border-radius:8px;border:1.5px solid #3f3f46;display:block;"/></div>`
+      : "";
+
     return `
       <div class="cf-rt-quiz-badge">QUIZ</div>
       <div class="cf-rt-quiz-question">${quiz.question}</div>
+      ${imageHtml}
       <div class="cf-rt-quiz-options">${optionsHtml}</div>
       <button class="cf-rt-quiz-submit" data-quiz-id="${quiz.id}" disabled ${isCorrectAlready ? 'style="opacity:0.6;cursor:not-allowed;"' : ""}>${isCorrectAlready ? "Submitted" : "Submit Answer"}</button>
       <div class="cf-rt-quiz-feedback" id="feedback-${quiz.id}">

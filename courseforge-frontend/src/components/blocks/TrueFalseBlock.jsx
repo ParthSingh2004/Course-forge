@@ -1,7 +1,19 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { ImagePlus, X } from 'lucide-react';
 import MandatorySelect from '../ui/MandatorySelect';
 
 export default function TrueFalseBlock({ block, onUpdate }) {
+    const imgInputRef = useRef(null);
+
+    const handleImageUpload = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => onUpdate(block.id, { questionImage: reader.result });
+        reader.readAsDataURL(file);
+        e.target.value = null;
+    };
+
     return (
         <div className="cf-tf-block">
             <div className="cf-assess-meta">
@@ -32,6 +44,34 @@ export default function TrueFalseBlock({ block, onUpdate }) {
                 rows={3}
                 style={{ resize: 'vertical', minHeight: 84 }}
             />
+
+            {/* Question image */}
+            {block.questionImage ? (
+                <div className="cf-quiz-img-preview">
+                    <img src={block.questionImage} alt="Question" className="cf-quiz-img" />
+                    <button
+                        type="button"
+                        className="cf-quiz-img-remove"
+                        onClick={() => onUpdate(block.id, { questionImage: null })}
+                        title="Remove image"
+                    >
+                        <X size={13} />
+                    </button>
+                </div>
+            ) : (
+                <label className="cf-quiz-img-upload-btn" title="Add an image to this question">
+                    <ImagePlus size={13} />
+                    Add Image
+                    <input
+                        ref={imgInputRef}
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={handleImageUpload}
+                    />
+                </label>
+            )}
+
             <div className="cf-tf-options">
                 <button
                     className={`cf-tf-btn${block.correctAnswer === true ? ' selected-true' : ''}`}

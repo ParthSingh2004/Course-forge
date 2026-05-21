@@ -1,8 +1,19 @@
-import React from 'react';
-import { Trash2 } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Trash2, ImagePlus, X } from 'lucide-react';
 import MandatorySelect from '../ui/MandatorySelect';
 
 export default function QuizBlock({ block, onUpdate }) {
+    const imgInputRef = useRef(null);
+
+    const handleImageUpload = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => onUpdate(block.id, { questionImage: reader.result });
+        reader.readAsDataURL(file);
+        e.target.value = null;
+    };
+
     return (
         <div className="cf-quiz-block">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', gap: '0.5rem' }}>
@@ -33,6 +44,34 @@ export default function QuizBlock({ block, onUpdate }) {
                 rows={3}
                 style={{ resize: 'vertical', minHeight: 84 }}
             />
+
+            {/* Question image */}
+            {block.questionImage ? (
+                <div className="cf-quiz-img-preview">
+                    <img src={block.questionImage} alt="Question" className="cf-quiz-img" />
+                    <button
+                        type="button"
+                        className="cf-quiz-img-remove"
+                        onClick={() => onUpdate(block.id, { questionImage: null })}
+                        title="Remove image"
+                    >
+                        <X size={13} />
+                    </button>
+                </div>
+            ) : (
+                <label className="cf-quiz-img-upload-btn" title="Add an image to this question">
+                    <ImagePlus size={13} />
+                    Add Image
+                    <input
+                        ref={imgInputRef}
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={handleImageUpload}
+                    />
+                </label>
+            )}
+
             <p className="cf-fitb-hint" style={{ marginTop: '0.5rem', marginBottom: '0.75rem' }}>
                 Select the option that should be treated as the correct answer.
             </p>

@@ -383,6 +383,7 @@ function App() {
       newBlock.options = ["", "", ""];
       newBlock.correctAnswer = 0;
       newBlock.marks = 0;
+      newBlock.questionImage = null;
     }
     if (type === 'flashcard') {
       newBlock.front = '';
@@ -421,6 +422,7 @@ function App() {
       newBlock.correctAnswer = true;
       newBlock.isMandatory = false;
       newBlock.marks = 0;
+      newBlock.questionImage = null;
     }
     if (type === 'fill_blanks') {
       newBlock.question = '';
@@ -436,6 +438,7 @@ function App() {
       newBlock.correctAnswer = [];
       newBlock.mandatory = false;
       newBlock.marks = 0;
+      newBlock.questionImage = null;
     }
     if (type === 'matching') {
       newBlock.question = '';
