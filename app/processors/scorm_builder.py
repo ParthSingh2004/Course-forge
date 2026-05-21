@@ -397,6 +397,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
                 "incorrect": "Incorrect. Try again.",
             },
             "marks": block.get("marks"),
+            "questionImage": block.get("questionImage") or None,
         }
         if block.get("mandatory"):
             comp["mandatory"] = True
@@ -414,6 +415,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
                 "incorrect": "Incorrect. Try again.",
             },
             "marks": block.get("marks"),
+            "questionImage": block.get("questionImage") or None,
         }
         if block.get("mandatory"):
             comp["mandatory"] = True
@@ -584,6 +586,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "question": block.get("question", ""),
             "correctAnswer": block.get("correctAnswer", True),
             "marks": block.get("marks"),
+            "questionImage": block.get("questionImage") or None,
         }
         if block.get("isMandatory") or block.get("mandatory"):
             comp["mandatory"] = True
@@ -1563,7 +1566,8 @@ def _get_fallback_runtime_js() -> str:
           for (var oi = 0; oi < (comp.options||[]).length; oi++) {
             opts += '<label class="cf-rt-quiz-option"><input type="radio" name="q-' + comp.id + '" value="' + oi + '"/><span>' + comp.options[oi] + '</span></label>';
           }
-          el.innerHTML = '<div class="cf-rt-quiz-badge">QUIZ</div><div class="cf-rt-quiz-question">' + comp.question + '</div><div class="cf-rt-quiz-options">' + opts + '</div><div id="fb-' + comp.id + '" style="margin-top:10px;font-size:13px;font-weight:600;"></div><button id="quiz-btn-' + comp.id + '" class="cf-rt-quiz-submit" disabled>Submit</button>';
+          var quizImgHtml = comp.questionImage ? '<img src="' + comp.questionImage + '" alt="Question image" style="max-width:100%;max-height:280px;object-fit:contain;border-radius:8px;margin-bottom:12px;display:block;"/>' : '';
+          el.innerHTML = '<div class="cf-rt-quiz-badge">QUIZ</div><div class="cf-rt-quiz-question">' + comp.question + '</div>' + quizImgHtml + '<div class="cf-rt-quiz-options">' + opts + '</div><div id="fb-' + comp.id + '" style="margin-top:10px;font-size:13px;font-weight:600;"></div><button id="quiz-btn-' + comp.id + '" class="cf-rt-quiz-submit" disabled>Submit</button>';
           (function(q) {
             setTimeout(function() {
               var btn = document.getElementById('quiz-btn-' + q.id);
@@ -1598,8 +1602,10 @@ def _get_fallback_runtime_js() -> str:
         } else if (comp.type === 'true_false') {
           var tfId = comp.id;
           var tfCorrect = comp.correctAnswer === true ? 'true' : 'false';
+          var tfImgHtml = comp.questionImage ? '<img src="' + comp.questionImage + '" alt="Question image" style="max-width:100%;max-height:280px;object-fit:contain;border-radius:8px;margin-bottom:12px;display:block;"/>' : '';
           el.innerHTML = '<div class="cf-rt-quiz-badge">TRUE / FALSE</div>' +
             '<div class="cf-rt-quiz-question">' + comp.question + '</div>' +
+            tfImgHtml +
             '<div style="display:flex;gap:10px;margin-top:12px;">' +
               '<button id="tf-true-' + tfId + '" style="flex:1;padding:10px;border-radius:8px;border:2px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;" onclick="__cfTFSubmit(\'' + tfId + '\',true,\'' + tfCorrect + '\')">✓ True</button>' +
               '<button id="tf-false-' + tfId + '" style="flex:1;padding:10px;border-radius:8px;border:2px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;" onclick="__cfTFSubmit(\'' + tfId + '\',false,\'' + tfCorrect + '\')">✗ False</button>' +
@@ -1628,8 +1634,10 @@ def _get_fallback_runtime_js() -> str:
           for (var mi = 0; mi < (comp.options || []).length; mi++) {
             msOpts += '<label class="cf-rt-quiz-option"><input type="checkbox" name="ms-' + msId + '" value="' + mi + '"/><span>' + comp.options[mi] + '</span></label>';
           }
+          var msImgHtml = comp.questionImage ? '<img src="' + comp.questionImage + '" alt="Question image" style="max-width:100%;max-height:280px;object-fit:contain;border-radius:8px;margin-bottom:12px;display:block;"/>' : '';
           el.innerHTML = '<div class="cf-rt-quiz-badge">MULTI-SELECT</div>' +
             '<div class="cf-rt-quiz-question">' + (comp.question || '') + '</div>' +
+            msImgHtml +
             '<div class="cf-rt-quiz-options">' + msOpts + '</div>' +
             '<button id="ms-btn-' + msId + '" class="cf-rt-quiz-submit" disabled>Submit Answer</button>' +
             '<div id="fb-' + msId + '" class="cf-rt-quiz-feedback"></div>';
