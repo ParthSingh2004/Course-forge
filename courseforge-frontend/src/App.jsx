@@ -5,6 +5,8 @@ import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerCli
 import Dashboard from './Dashboard';
 import RichTextEditor from './components/ui/RichTextEditor';
 import { createLocalCourse, saveCourseToBrowser } from './utils/storage';
+import { canAddBlockToSlide, getBlockCategory, checkYAxisCollision } from './utils/blockCategories';
+import { Rnd } from 'react-rnd';
 import './App.css'; // <-- External CSS Import
 
 // Content Blocks
@@ -58,20 +60,103 @@ const normalizeFillBlankAnswers = (question = '', answers = [], legacyAnswer = '
   return Array.from({ length: desiredCount }, (_, index) => source[index] ?? '');
 };
 
-const normalizeAuthoringSlides = (slides = []) => (
-  (slides || []).map(slide => ({
-    ...slide,
-    elements: (slide.elements || []).map(block => {
-      if (block.type !== 'fill_blanks') return block;
-      const answers = normalizeFillBlankAnswers(block.question, block.answers, block.answer);
-      return {
-        ...block,
-        answers,
-        answer: answers[0] || '',
-      };
-    }),
-  }))
-);
+const normalizeAuthoringSlides = (slides = []) => {
+  return (slides || []).map(slide => {
+    let currentY = 120; // Start stacking blocks below the header
+    return {
+      ...slide,
+      elements: (slide.elements || []).map(block => {
+        let normalizedBlock = { ...block };
+        if (normalizedBlock.type === 'fill_blanks') {
+          const answers = normalizeFillBlankAnswers(normalizedBlock.question, normalizedBlock.answers, normalizedBlock.answer);
+          normalizedBlock.answers = answers;
+          normalizedBlock.answer = answers[0] || '';
+        }
+
+        const category = getBlockCategory(normalizedBlock.type);
+
+        let defaultW = normalizedBlock.width;
+        let defaultH = normalizedBlock.height;
+
+        if (defaultW === undefined || defaultW === null) {
+          if (category === 'simple') {
+            const type = normalizedBlock.type;
+            defaultW = 600;
+            if (type === 'text') defaultW = 800;
+            else if (type === 'button') defaultW = 200;
+            else if (type === 'audio') defaultW = 400;
+          } else if (category === 'interactive' || category === 'complex') {
+            defaultW = 1920;
+          } else {
+            defaultW = 600;
+          }
+        }
+
+        if (defaultH === undefined || defaultH === null) {
+          if (category === 'simple') {
+            const type = normalizedBlock.type;
+            defaultH = 150;
+            if (type === 'heading') defaultH = 100;
+            else if (type === 'text') defaultH = 200;
+            else if (type === 'image') defaultH = 400;
+            else if (type === 'button') defaultH = 60;
+            else if (type === 'list') defaultH = 250;
+            else if (type === 'audio') defaultH = 120;
+          } else if (category === 'interactive') {
+            const type = normalizedBlock.type;
+            defaultH = 400;
+            if (type === 'quote') defaultH = 250;
+            else if (type === 'table') defaultH = 300;
+            else if (type === 'flashcard') defaultH = 350;
+            else if (type === 'quiz' || type === 'true_false' || type === 'fill_blanks' || type === 'multi_select' || type === 'matching') defaultH = 350;
+            else if (type === 'image-stack') defaultH = 500;
+            else if (type === 'image-hotspot') defaultH = 600;
+            else if (type === 'tabs') defaultH = 450;
+          } else if (category === 'complex') {
+            defaultH = 1080;
+          } else {
+            defaultH = 150;
+          }
+        }
+
+        let defaultX = normalizedBlock.x;
+        let defaultY = normalizedBlock.y;
+
+        if (defaultX === undefined || defaultX === null) {
+          if (category === 'simple') {
+            defaultX = (1920 - defaultW) / 2;
+          } else {
+            defaultX = 0;
+          }
+        }
+
+        if (defaultY === undefined || defaultY === null) {
+          if (category === 'complex') {
+            defaultY = 0;
+          } else {
+            defaultY = currentY;
+            currentY += defaultH + 20;
+          }
+        } else {
+          if (category !== 'complex') {
+            const blockBottom = defaultY + defaultH;
+            if (blockBottom > currentY) {
+              currentY = blockBottom + 20;
+            }
+          }
+        }
+
+        return {
+          ...normalizedBlock,
+          width: defaultW,
+          height: defaultH,
+          x: defaultX,
+          y: defaultY
+        };
+      }),
+    };
+  });
+};
 
 const makeEditorId = (prefix = 'id') => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -295,6 +380,96 @@ function App() {
   const activeSlide = activeSlideId ? slides.find(s => s.id === activeSlideId) : null;
   const activeSlideIndex = activeSlideId ? slides.findIndex(s => s.id === activeSlideId) : -1;
 
+  const [canvasScale, setCanvasScale] = useState(1);
+  const canvasWrapRef = useRef(null);
+
+  useEffect(() => {
+    if (currentView !== 'editor') return;
+    const handleResize = () => {
+      if (canvasWrapRef.current) {
+        const wrapWidth = canvasWrapRef.current.clientWidth;
+        const pad = 120; // PowerPoint-style padding to fit nicely inside margins
+        const scale = Math.max(0.1, (wrapWidth - pad) / 1920);
+        setCanvasScale(scale);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    const timer = setTimeout(handleResize, 100);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(timer);
+    };
+  }, [currentView, sidebarTab]);
+
+  const handleSimpleBlockDragStop = (block, x, y) => {
+    const candidate = { ...block, x, y };
+    const slideElements = activeSlide?.elements || [];
+    const hasCollision = checkYAxisCollision(candidate, slideElements);
+    if (hasCollision) {
+      setSlides(prev => [...prev]);
+      return;
+    }
+    updateBlock(block.id, { x, y });
+  };
+
+  const handleSimpleBlockResizeStop = (block, width, height, x, y) => {
+    const candidate = { ...block, x, y, width, height };
+    const slideElements = activeSlide?.elements || [];
+    const hasCollision = checkYAxisCollision(candidate, slideElements);
+    if (hasCollision) {
+      setSlides(prev => [...prev]);
+      return;
+    }
+    updateBlock(block.id, { x, y, width, height });
+  };
+
+  const handleInteractiveBlockDragStop = (block, y) => {
+    const slideElements = activeSlide?.elements || [];
+    let hasCollision = false;
+    for (const el of slideElements) {
+      if (el.id === block.id) continue;
+      if (getBlockCategory(el.type) === 'simple') {
+        const simpleYStart = el.y ?? 0;
+        const simpleYEnd = simpleYStart + (el.height ?? 0);
+        const candYStart = y;
+        const candYEnd = y + (block.height ?? 0);
+        if (simpleYStart < candYEnd && simpleYEnd > candYStart) {
+          hasCollision = true;
+          break;
+        }
+      }
+    }
+    if (hasCollision) {
+      setSlides(prev => [...prev]);
+      return;
+    }
+    updateBlock(block.id, { y });
+  };
+
+  const handleInteractiveBlockResizeStop = (block, height, y) => {
+    const slideElements = activeSlide?.elements || [];
+    let hasCollision = false;
+    for (const el of slideElements) {
+      if (el.id === block.id) continue;
+      if (getBlockCategory(el.type) === 'simple') {
+        const simpleYStart = el.y ?? 0;
+        const simpleYEnd = simpleYStart + (el.height ?? 0);
+        const candYStart = y;
+        const candYEnd = y + height;
+        if (simpleYStart < candYEnd && simpleYEnd > candYStart) {
+          hasCollision = true;
+          break;
+        }
+      }
+    }
+    if (hasCollision) {
+      setSlides(prev => [...prev]);
+      return;
+    }
+    updateBlock(block.id, { y, height });
+  };
+
   const SUGGESTED_PROMPTS = [
     'Key learning objectives',
     'A brief introduction',
@@ -369,7 +544,65 @@ function App() {
 
   const addBlock = (type) => {
     if (!activeSlideId) return;
+    const slideElements = activeSlide?.elements || [];
+
+    if (!canAddBlockToSlide(slideElements, type)) {
+      alert(`Cannot add block of type "${type}" to this slide. Check layout constraints (Complex blocks are fullscreen-exclusive, and other blocks cannot coexist with them).`);
+      return;
+    }
+
+    const getNextY = (elements) => {
+      if (!elements || elements.length === 0) return 100;
+      let maxY = 0;
+      elements.forEach(el => {
+        const yVal = el.y ?? 0;
+        const hVal = el.height ?? 100;
+        if (yVal + hVal > maxY) {
+          maxY = yVal + hVal;
+        }
+      });
+      return maxY + 20;
+    };
+
     const newBlock = { id: Date.now(), type };
+    const category = getBlockCategory(type);
+    const nextY = getNextY(slideElements);
+
+    if (category === 'simple') {
+      let defaultW = 600;
+      let defaultH = 150;
+      if (type === 'heading') { defaultW = 600; defaultH = 100; }
+      else if (type === 'text') { defaultW = 800; defaultH = 200; }
+      else if (type === 'image') { defaultW = 600; defaultH = 400; }
+      else if (type === 'button') { defaultW = 200; defaultH = 60; }
+      else if (type === 'list') { defaultW = 500; defaultH = 250; }
+      else if (type === 'audio') { defaultW = 400; defaultH = 120; }
+
+      newBlock.width = defaultW;
+      newBlock.height = defaultH;
+      newBlock.x = (1920 - defaultW) / 2;
+      newBlock.y = nextY;
+    } else if (category === 'interactive') {
+      let defaultH = 400;
+      if (type === 'quote') defaultH = 250;
+      else if (type === 'table') defaultH = 300;
+      else if (type === 'flashcard') defaultH = 350;
+      else if (type === 'quiz' || type === 'true_false' || type === 'fill_blanks' || type === 'multi_select' || type === 'matching') defaultH = 350;
+      else if (type === 'image-stack') defaultH = 500;
+      else if (type === 'image-hotspot') defaultH = 600;
+      else if (type === 'tabs') defaultH = 450;
+
+      newBlock.width = 1920;
+      newBlock.height = defaultH;
+      newBlock.x = 0;
+      newBlock.y = nextY;
+    } else if (category === 'complex') {
+      newBlock.width = 1920;
+      newBlock.height = 1080;
+      newBlock.x = 0;
+      newBlock.y = 0;
+    }
+
     if (type === 'heading') { newBlock.content = ""; newBlock.headingLevel = 'h1'; }
     if (type === 'text') newBlock.content = "";
     if (type === 'image') newBlock.content = "";
@@ -642,7 +875,7 @@ function App() {
         }
         return { id: Date.now() + i, type: 'slide', title: `Imported Slide ${i + 1}`, background: background || undefined, elements: [b] };
       });
-      setSlides(prev => [...prev, ...newSlides]);
+      setSlides(prev => normalizeAuthoringSlides([...prev, ...newSlides]));
     } catch {
       alert(`Failed to import ${type.toUpperCase()}.`);
     } finally {
@@ -662,10 +895,10 @@ function App() {
       const response = await fetch(buildApiUrl('/api/ai/generate'), { method: 'POST', body: formData });
       const data = await response.json();
       const newBlock = { id: Date.now(), type: 'text', content: data.data.content || JSON.stringify(data.data) };
-      setSlides(prev => prev.map(s => {
+      setSlides(prev => normalizeAuthoringSlides(prev.map(s => {
         if (s.id !== activeSlideId) return s;
         return { ...s, elements: [...s.elements, newBlock] };
-      }));
+      })));
       setNewBlockIds(prev => new Set([...prev, newBlock.id]));
       setTimeout(() => setNewBlockIds(prev => { const n = new Set(prev); n.delete(newBlock.id); return n; }), 400);
     } catch {
@@ -1287,19 +1520,32 @@ function App() {
                     { type: 'tabs', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Tabs' },
                     { type: 'accordion', icon: <ChevronDown style={{ width: 14, height: 14 }} />, label: 'Accordion' },
                     { type: 'scenario', icon: <BookOpen style={{ width: 14, height: 14 }} />, label: 'Scenario' },
-                    { type: 'canvas', icon: <Square style={{ width: 14, height: 14 }} />, label: 'Canvas' },
-                    { type: 'statement', icon: <FileText style={{ width: 14, height: 14 }} />, label: 'Statement' },
-                  ].map(({ type, icon, label }) => (
-                    <button
-                      key={type}
-                      onClick={() => addBlock(type)}
-                      className="cf-sidebar-btn"
-                      style={{ flexDirection: 'column', gap: '5px', padding: '9px 4px', fontSize: '0.69rem', justifyContent: 'center', alignItems: 'center', textAlign: 'center', lineHeight: 1.2 }}
-                    >
-                      {icon}
-                      {label}
-                    </button>
-                  ))}
+                  ].map(({ type, icon, label }) => {
+                    const canAdd = canAddBlockToSlide(activeSlide?.elements || [], type);
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => addBlock(type)}
+                        disabled={!canAdd}
+                        className="cf-sidebar-btn"
+                        style={{
+                          flexDirection: 'column',
+                          gap: '5px',
+                          padding: '9px 4px',
+                          fontSize: '0.69rem',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          textAlign: 'center',
+                          lineHeight: 1.2,
+                          opacity: canAdd ? 1 : 0.4,
+                          cursor: canAdd ? 'pointer' : 'not-allowed'
+                        }}
+                      >
+                        {icon}
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1320,17 +1566,32 @@ function App() {
                     { type: 'fill_blanks', icon: <PenLine style={{ width: 14, height: 14 }} />, label: 'Fill Blank' },
                     { type: 'multi_select', icon: <ListChecks style={{ width: 14, height: 14 }} />, label: 'Multi-Select' },
                     { type: 'matching', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Matching' },
-                  ].map(({ type, icon, label }) => (
-                    <button
-                      key={type}
-                      onClick={() => addBlock(type)}
-                      className="cf-sidebar-btn"
-                      style={{ flexDirection: 'column', gap: '5px', padding: '9px 4px', fontSize: '0.69rem', justifyContent: 'center', alignItems: 'center', textAlign: 'center', lineHeight: 1.2 }}
-                    >
-                      {icon}
-                      {label}
-                    </button>
-                  ))}
+                  ].map(({ type, icon, label }) => {
+                    const canAdd = canAddBlockToSlide(activeSlide?.elements || [], type);
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => addBlock(type)}
+                        disabled={!canAdd}
+                        className="cf-sidebar-btn"
+                        style={{
+                          flexDirection: 'column',
+                          gap: '5px',
+                          padding: '9px 4px',
+                          fontSize: '0.69rem',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          textAlign: 'center',
+                          lineHeight: 1.2,
+                          opacity: canAdd ? 1 : 0.4,
+                          cursor: canAdd ? 'pointer' : 'not-allowed'
+                        }}
+                      >
+                        {icon}
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
                 <div style={{ marginTop: '16px', background: '#fff5f5', borderRadius: 6, border: '1px solid #f0d8d8', overflow: 'hidden' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 10px 6px', borderBottom: '1px solid #f0d8d8' }}>
@@ -1452,7 +1713,7 @@ function App() {
           </aside>
 
           {/* Canvas */}
-          <div className="cf-canvas-wrap">
+          <div className="cf-canvas-wrap" ref={canvasWrapRef} style={{ height: activeSlideId ? `${1080 * canvasScale + 60}px` : 'auto', minHeight: 'unset' }}>
             {!activeSlideId ? (
               // Overview View
               <div style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>
@@ -1524,9 +1785,18 @@ function App() {
                 backgroundImage: (activeSlide?.background || { type: 'color', value: '#ffffff' }).type === 'image' ? `url("${activeSlide.background.value}")` : 'none',
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat'
+                backgroundRepeat: 'no-repeat',
+                position: 'relative',
+                width: '1920px',
+                height: '1080px',
+                transform: `scale(${canvasScale})`,
+                transformOrigin: 'top center',
+                boxShadow: '0 10px 30px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08)',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                flexShrink: 0
               }}>
-                <div style={{ marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid #f0e0e0', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid #f0e0e0', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', position: 'absolute', top: 20, left: 20, right: 20, zIndex: 1000, transform: `scale(${1 / canvasScale})`, transformOrigin: 'top left', width: `${100 * canvasScale}%` }}>
                   <button onClick={() => setActiveSlideId(null)} style={{ background: '#fdf8f8', border: '1px solid #e8d8d8', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', color: '#8b1a1a', display: 'flex', alignItems: 'center' }}>
                     <ChevronRight style={{ width: 18, height: 18, transform: 'rotate(180deg)' }} />
                   </button>
@@ -1624,77 +1894,54 @@ function App() {
                   </div>
                 </div>
 
-                {activeSlide.elements.length === 0 ? (
-                  <div className="cf-empty-state">
-                    <div className="cf-empty-icon">
-                      <BookOpen style={{ width: 24, height: 24, color: '#C4A0A0' }} />
+                <div className="cf-canvas-content" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, overflowY: 'auto', overflowX: 'hidden' }}>
+                  {activeSlide.elements.length === 0 ? (
+                    <div className="cf-empty-state" style={{ height: '100%' }}>
+                      <div className="cf-empty-icon">
+                        <BookOpen style={{ width: 24, height: 24, color: '#C4A0A0' }} />
+                      </div>
+                      <div className="cf-empty-title">This slide is empty</div>
+                      <div className="cf-empty-sub">Add blocks from the sidebar to populate this slide.</div>
                     </div>
-                    <div className="cf-empty-title">This slide is empty</div>
-                    <div className="cf-empty-sub">Add blocks from the sidebar to populate this slide.</div>
-                  </div>
-                ) : (
-                  activeSlide.elements.map((block, index) => {
-                    const fmt = block.blockFormat || {};
-                    // Build wrapper inline styles from blockFormat
-                    const wrapperStyle = {};
-                    if (fmt.bgImage) {
-                      wrapperStyle.backgroundImage = `url('${fmt.bgImage}')`;
-                      wrapperStyle.backgroundSize = fmt.bgImageSize || 'cover';
-                      wrapperStyle.backgroundPosition = 'center';
-                      wrapperStyle.backgroundRepeat = 'no-repeat';
-                    } else if (fmt.bgColor && fmt.bgColor !== 'none') {
-                      const alpha = fmt.bgOpacity !== undefined ? fmt.bgOpacity : 1;
-                      const hex = fmt.bgColor.replace('#', '');
-                      const r = parseInt(hex.substring(0, 2), 16);
-                      const g = parseInt(hex.substring(2, 4), 16);
-                      const b = parseInt(hex.substring(4, 6), 16);
-                      wrapperStyle.background = `rgba(${r},${g},${b},${alpha})`;
-                    }
-                    if (fmt.paddingV !== undefined || fmt.paddingH !== undefined) {
-                      wrapperStyle.padding = `${fmt.paddingV ?? 10}px ${fmt.paddingH ?? 12}px`;
-                    }
-                    if (fmt.borderRadius !== undefined) {
-                      wrapperStyle.borderRadius = `${fmt.borderRadius}px`;
-                    }
-                    if (fmt.borderWidth && fmt.borderWidth > 0) {
-                      wrapperStyle.border = `${fmt.borderWidth}px solid ${fmt.borderColor || '#e8c8c8'}`;
-                    }
-                    if (fmt.minHeight && fmt.minHeight > 0) {
-                      wrapperStyle.minHeight = `${fmt.minHeight}px`;
-                    }
-                    // Width/alignment
-                    let blockAlignStyle = {};
-                    if (fmt.width && fmt.width !== '100%') {
-                      blockAlignStyle = { width: fmt.width, marginLeft: 'auto', marginRight: 'auto' };
-                    }
+                  ) : (
+                    activeSlide.elements.map((block, index) => {
+                      const cat = getBlockCategory(block.type);
+                      const fmt = block.blockFormat || {};
+                      const wrapperStyle = {};
+                      if (fmt.bgImage) {
+                        wrapperStyle.backgroundImage = `url('${fmt.bgImage}')`;
+                        wrapperStyle.backgroundSize = fmt.bgImageSize || 'cover';
+                        wrapperStyle.backgroundPosition = 'center';
+                        wrapperStyle.backgroundRepeat = 'no-repeat';
+                      } else if (fmt.bgColor && fmt.bgColor !== 'none') {
+                        const alpha = fmt.bgOpacity !== undefined ? fmt.bgOpacity : 1;
+                        const hex = fmt.bgColor.replace('#', '');
+                        const r = parseInt(hex.substring(0, 2), 16);
+                        const g = parseInt(hex.substring(2, 4), 16);
+                        const b = parseInt(hex.substring(4, 6), 16);
+                        wrapperStyle.background = `rgba(${r},${g},${b},${alpha})`;
+                      }
+                      if (fmt.paddingV !== undefined || fmt.paddingH !== undefined) {
+                        wrapperStyle.padding = `${fmt.paddingV ?? 10}px ${fmt.paddingH ?? 12}px`;
+                      }
+                      if (fmt.borderRadius !== undefined) {
+                        wrapperStyle.borderRadius = `${fmt.borderRadius}px`;
+                      }
+                      if (fmt.borderWidth && fmt.borderWidth > 0) {
+                        wrapperStyle.border = `${fmt.borderWidth}px solid ${fmt.borderColor || '#e8c8c8'}`;
+                      }
+                      if (fmt.minHeight && fmt.minHeight > 0) {
+                        wrapperStyle.minHeight = `${fmt.minHeight}px`;
+                      }
+                      let blockAlignStyle = {};
+                      if (fmt.width && fmt.width !== '100%') {
+                        blockAlignStyle = { width: fmt.width, marginLeft: 'auto', marginRight: 'auto' };
+                      }
 
-                    const isFormatOpen = formatPopoverId === block.id;
+                      const isFormatOpen = formatPopoverId === block.id;
 
-                    return (
-                      <div
-                        key={block.id}
-                        draggable={true}
-                        onDragStart={(e) => {
-                          if (e.target.closest('input, textarea, .cf-rich-text-editor, button, select')) {
-                            e.preventDefault();
-                            return;
-                          }
-                          handleDragStart(e, index);
-                        }}
-                        onDragOver={handleDragOver}
-                        onDrop={(e) => handleDrop(e, index)}
-                        onDragEnd={handleDragEnd}
-                        className={`cf-block-wrapper ${draggedIdx === index ? 'dragging' : ''} ${newBlockIds.has(block.id) ? 'cf-block-enter' : ''} ${isFormatOpen ? 'format-panel-open' : ''}`}
-                        style={wrapperStyle}
-                      >
-                        <div
-                          className="cf-block-grip"
-                          onMouseEnter={() => setDragEnabledIdx(index)}
-                          onMouseLeave={() => setDragEnabledIdx(null)}
-                        >
-                          <GripVertical style={{ width: 15, height: 15 }} />
-                        </div>
-                        <div className="cf-block-controls">
+                      const blockControls = (
+                        <div className="cf-block-controls" style={{ transform: `scale(${1 / canvasScale})`, transformOrigin: 'top right' }}>
                           <select
                             className="cf-animation-select"
                             value={block.animation || 'none'}
@@ -1722,7 +1969,6 @@ function App() {
                             onChange={(e) => updateBlock(block.id, { animationDelay: parseFloat(e.target.value) || 0 })}
                           />
 
-                          {/* Format button */}
                           <div style={{ position: 'relative' }}>
                             <button
                               className="cf-block-format-btn"
@@ -1735,16 +1981,12 @@ function App() {
                               </svg>
                             </button>
                             {isFormatOpen && (
-                              <div
-                                className="cf-format-panel"
-                                onClick={(e) => e.stopPropagation()}
-                              >
+                              <div className="cf-format-panel" onClick={(e) => e.stopPropagation()}>
                                 <div className="cf-format-panel-header">
                                   <span>Block Format</span>
                                   <button onClick={() => setFormatPopoverId(null)} className="cf-format-panel-close">✕</button>
                                 </div>
 
-                                {/* Width */}
                                 <div className="cf-format-row">
                                   <label className="cf-format-label">Width</label>
                                   <div className="cf-format-width-btns">
@@ -1758,7 +2000,6 @@ function App() {
                                   </div>
                                 </div>
 
-                                {/* Background — tabs: Color / Image */}
                                 <div className="cf-format-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                                     <label className="cf-format-label">BG Color</label>
@@ -1786,7 +2027,6 @@ function App() {
                                       )}
                                     </div>
                                   </div>
-                                  {/* Image background */}
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingTop: 4, borderTop: '1px dashed #f0d8d8' }}>
                                     <label className="cf-format-label">BG Image</label>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1824,7 +2064,6 @@ function App() {
                                   </div>
                                 </div>
 
-                                {/* Padding */}
                                 <div className="cf-format-row">
                                   <label className="cf-format-label">Padding</label>
                                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1850,7 +2089,6 @@ function App() {
                                   </div>
                                 </div>
 
-                                {/* Border Radius */}
                                 <div className="cf-format-row">
                                   <label className="cf-format-label">Rounding</label>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1864,7 +2102,6 @@ function App() {
                                   </div>
                                 </div>
 
-                                {/* Border */}
                                 <div className="cf-format-row">
                                   <label className="cf-format-label">Border</label>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1886,7 +2123,6 @@ function App() {
                                   </div>
                                 </div>
 
-                                {/* Min Height (Block Length) */}
                                 <div className="cf-format-row">
                                   <label className="cf-format-label">Min Height</label>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1904,11 +2140,7 @@ function App() {
                                   </div>
                                 </div>
 
-                                {/* Reset button */}
-                                <button
-                                  onClick={() => updateBlock(block.id, { blockFormat: {} })}
-                                  className="cf-format-reset-btn"
-                                >Reset formatting</button>
+                                <button onClick={() => updateBlock(block.id, { blockFormat: {} })} className="cf-format-reset-btn">Reset formatting</button>
                               </div>
                             )}
                           </div>
@@ -1919,13 +2151,111 @@ function App() {
                             <Trash2 style={{ width: 12, height: 12 }} />
                           </button>
                         </div>
-                        <div style={blockAlignStyle}>
-                          {renderBlock(block)}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
+                      );
+
+                      if (cat === 'simple') {
+                        return (
+                          <Rnd
+                            key={block.id}
+                            size={{ width: block.width || 600, height: block.height || 150 }}
+                            position={{ x: block.x || 0, y: block.y || 0 }}
+                            onDragStop={(e, d) => handleSimpleBlockDragStop(block, d.x, d.y)}
+                            onResizeStop={(e, direction, ref, delta, position) => handleSimpleBlockResizeStop(block, ref.offsetWidth, ref.offsetHeight, position.x, position.y)}
+                            bounds="parent"
+                            dragHandleClassName="cf-block-grip"
+                            enableResizing={{
+                              top: true, right: true, bottom: true, left: true,
+                              topLeft: true, topRight: true, bottomLeft: true, bottomRight: true
+                            }}
+                            style={{
+                              zIndex: 100,
+                            }}
+                          >
+                            <div
+                              className={`cf-block-wrapper ${draggedIdx === index ? 'dragging' : ''} ${newBlockIds.has(block.id) ? 'cf-block-enter' : ''} ${isFormatOpen ? 'format-panel-open' : ''}`}
+                              style={{
+                                ...wrapperStyle,
+                                width: '100%',
+                                height: '100%',
+                                margin: 0,
+                                boxSizing: 'border-box',
+                              }}
+                            >
+                              <div className="cf-block-grip">
+                                <GripVertical style={{ width: 15, height: 15 }} />
+                              </div>
+                              {blockControls}
+                              <div style={{ ...blockAlignStyle, height: '100%', overflow: 'auto' }}>
+                                {renderBlock(block)}
+                              </div>
+                            </div>
+                          </Rnd>
+                        );
+                      } else if (cat === 'interactive') {
+                        return (
+                          <Rnd
+                            key={block.id}
+                            size={{ width: '100%', height: block.height || 400 }}
+                            position={{ x: 0, y: block.y || 0 }}
+                            onDragStop={(e, d) => handleInteractiveBlockDragStop(block, d.y)}
+                            onResizeStop={(e, direction, ref, delta, position) => handleInteractiveBlockResizeStop(block, ref.offsetHeight, position.y)}
+                            bounds="parent"
+                            dragAxis="y"
+                            dragHandleClassName="cf-block-grip"
+                            enableResizing={{
+                              top: false, right: false, bottom: true, left: false,
+                              topLeft: false, topRight: false, bottomLeft: false, bottomRight: false
+                            }}
+                            style={{
+                              zIndex: 50,
+                            }}
+                          >
+                            <div
+                              style={{
+                                ...wrapperStyle,
+                                width: '100%',
+                                height: '100%',
+                                boxSizing: 'border-box',
+                                margin: 0,
+                              }}
+                              className={`cf-block-wrapper ${draggedIdx === index ? 'dragging' : ''} ${newBlockIds.has(block.id) ? 'cf-block-enter' : ''} ${isFormatOpen ? 'format-panel-open' : ''}`}
+                            >
+                              <div className="cf-block-grip">
+                                <GripVertical style={{ width: 15, height: 15 }} />
+                              </div>
+                              {blockControls}
+                              <div style={{ ...blockAlignStyle, height: '100%', overflow: 'auto' }}>
+                                {renderBlock(block)}
+                              </div>
+                            </div>
+                          </Rnd>
+                        );
+                      } else {
+                        return (
+                          <div
+                            key={block.id}
+                            style={{
+                              ...wrapperStyle,
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              height: '100%',
+                              boxSizing: 'border-box',
+                              margin: 0,
+                            }}
+                            className={`cf-block-wrapper ${draggedIdx === index ? 'dragging' : ''} ${newBlockIds.has(block.id) ? 'cf-block-enter' : ''} ${isFormatOpen ? 'format-panel-open' : ''}`}
+                          >
+                            {blockControls}
+                            <div style={{ ...blockAlignStyle, height: '100%', overflow: 'auto' }}>
+                              {renderBlock(block)}
+                            </div>
+                          </div>
+                        );
+                      }
+                    })
+                  )}
+                </div>
               </div>
             )}
           </div>

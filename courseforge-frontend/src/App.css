@@ -562,19 +562,25 @@
 
 .cf-canvas-wrap {
   flex: 1;
-  padding: 2.5rem 3rem 5rem;
-  max-width: 1200px;
-  margin: 0 auto;
+  padding: 2rem;
   width: 100%;
+  background: #eef1f4; /* PowerPoint-style neutral slide workspace background */
+  border-radius: 12px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.06);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow: hidden;
 }
 
 .cf-canvas {
   background: #FFFFFF;
-  border-radius: 16px;
-  border: 1px solid #EAD8D8;
-  padding: 3rem 3.5rem;
-  min-height: 60vh;
-  box-shadow: 0 4px 24px rgba(139, 26, 26, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+  border-radius: 8px; /* Tighter corner rounding like real presentation slides */
+  border: 1px solid #d1d5db; /* Professional border */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08); /* Premium slide shadow */
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0; /* Keep un-shrunk width for proper centering scale */
 }
 
 .cf-empty-state {
@@ -2081,3 +2087,18 @@
 .cf-quiz-img-remove:hover {
   background: #8b1a1a;
 }
+
+/* Canvas content scrollbar */
+.cf-canvas-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.cf-canvas-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cf-canvas-content::-webkit-scrollbar-thumb {
+  background: #E8C8C8;
+  border-radius: 4px;
+}
+
