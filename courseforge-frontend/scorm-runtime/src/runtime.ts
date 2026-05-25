@@ -184,6 +184,11 @@ class CourseForgeRuntime {
         const promptEl = document.getElementById("cf-resume-prompt");
         const resumeBtn = document.getElementById("cf-prompt-resume-btn");
         const restartBtn = document.getElementById("cf-prompt-restart-btn");
+        const titleEl = document.getElementById("cf-prompt-title");
+
+        if (titleEl && this.course.title) {
+          titleEl.textContent = this.course.title;
+        }
 
         if (promptEl && resumeBtn && restartBtn) {
           promptEl.style.display = "flex";

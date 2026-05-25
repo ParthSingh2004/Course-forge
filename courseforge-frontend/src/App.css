@@ -1718,11 +1718,11 @@
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(139, 26, 26, 0.05);
   background-repeat: no-repeat, no-repeat;
-  background-position: 0 0, right 0.65rem center;
-  background-size: auto, 0.7rem;
+  background-position: right 0.65rem center, 0 0;
+  background-size: 0.7rem, auto;
   background-image:
-    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,245,245,0.98)),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' stroke='%238b6060' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' stroke='%238b6060' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,245,245,0.98));
   transition: border-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
 }
 
@@ -1740,8 +1740,8 @@
   color: #7d1111;
   border-color: #d9a0a0;
   background-image:
-    linear-gradient(180deg, #fff9f9, #ffeaea),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' stroke='%237d1111' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' stroke='%237d1111' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, #fff9f9, #ffeaea);
 }
 
 .cf-mandatory-select__control.is-optional {

@@ -2526,12 +2526,26 @@ def generate_runtime_html(
 
   <!-- Resume Prompt Overlay -->
   <div class="cf-rt-resume-overlay" id="cf-resume-prompt" style="display: none;">
-    <div class="cf-rt-resume-modal">
-      <h2 class="cf-rt-resume-title">Welcome back!</h2>
-      <p class="cf-rt-resume-text">You have saved progress in this course. Would you like to resume where you left off, or start over from the beginning?</p>
-      <div class="cf-rt-resume-actions">
-        <button class="cf-rt-resume-btn-secondary" id="cf-prompt-restart-btn">Restart</button>
-        <button class="cf-rt-resume-btn-primary" id="cf-prompt-resume-btn">Resume Course</button>
+    <div class="cf-rt-resume-container">
+      <h1 class="cf-rt-resume-title" id="cf-prompt-title">{safe_title}</h1>
+      
+      <div class="cf-rt-resume-center-wrap">
+        <button class="cf-rt-resume-btn-resume" id="cf-prompt-resume-btn" type="button">
+          <svg class="cf-rt-resume-icon-play" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          Resume
+        </button>
+      </div>
+      
+      <div class="cf-rt-resume-bottom-wrap">
+        <button class="cf-rt-resume-btn-restart" id="cf-prompt-restart-btn" type="button">
+          <svg class="cf-rt-resume-icon-restart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 4v6h-6"></path>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          Restart
+        </button>
       </div>
     </div>
   </div>
@@ -2750,42 +2764,48 @@ h4.cf-rt-heading, h5.cf-rt-heading, h6.cf-rt-heading { font-size: 1rem; font-wei
 
 /* Resume Prompt Modal */
 .cf-rt-resume-overlay {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  position: fixed; inset: 0; background: #000000;
   z-index: 9999; display: flex; align-items: center; justify-content: center;
   animation: cfFadeIn 0.3s ease;
 }
-.cf-rt-resume-modal {
-  background: #ffffff; border-radius: 16px; padding: 32px; max-width: 440px; width: 90%;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-  text-align: center; border: 1px solid #e4e4e7;
-  animation: cfZoomIn 0.3s ease;
+.cf-rt-resume-container {
+  width: 100%; height: 100%; max-width: 1200px;
+  display: flex; flex-direction: column; justify-content: space-between; align-items: center;
+  padding: 15vh 24px 8vh; box-sizing: border-box;
 }
 .cf-rt-resume-title {
-  font-size: 24px; font-weight: 700; color: #111827; margin-bottom: 12px;
+  color: #ffffff; font-size: 24px; font-weight: 700; text-align: center;
+  max-width: 800px; line-height: 1.4; margin: 0; letter-spacing: -0.01em;
 }
-.cf-rt-resume-text {
-  font-size: 15px; color: #4b5563; line-height: 1.6; margin-bottom: 32px;
+.cf-rt-resume-center-wrap {
+  display: flex; align-items: center; justify-content: center; flex: 1;
 }
-.cf-rt-resume-actions {
-  display: flex; gap: 16px; justify-content: center;
+.cf-rt-resume-btn-resume {
+  background: #ffffff; color: #000000; border: none; border-radius: 9999px;
+  padding: 16px 54px; font-size: 16px; font-weight: 600; cursor: pointer;
+  display: flex; align-items: center; gap: 12px; transition: transform 0.2s ease, background-color 0.2s ease;
+  font-family: inherit; box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
 }
-.cf-rt-resume-btn-secondary {
-  padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 600;
-  cursor: pointer; transition: all 0.2s; border: 1px solid #d1d5db;
-  background: #ffffff; color: #4b5563; font-family: inherit;
+.cf-rt-resume-btn-resume:hover {
+  background: #f4f4f5; transform: scale(1.05);
 }
-.cf-rt-resume-btn-secondary:hover {
-  background: #f3f4f6; color: #111827; border-color: #9ca3af;
+.cf-rt-resume-icon-play {
+  width: 18px; height: 18px; fill: #4b5563;
 }
-.cf-rt-resume-btn-primary {
-  padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 600;
-  cursor: pointer; transition: all 0.2s; border: none;
-  background: linear-gradient(135deg, #8b1a1a, #c0392b); color: #ffffff;
-  font-family: inherit;
+.cf-rt-resume-bottom-wrap {
+  display: flex; justify-content: center; width: 100%;
 }
-.cf-rt-resume-btn-primary:hover {
-  transform: translateY(-2px); box-shadow: 0 6px 20px rgba(139,26,26,0.4);
+.cf-rt-resume-btn-restart {
+  background: transparent; color: #ffffff; border: none; font-size: 14px;
+  font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  opacity: 0.8; transition: opacity 0.2s ease, transform 0.2s ease; font-family: inherit;
+  padding: 8px 16px;
+}
+.cf-rt-resume-btn-restart:hover {
+  opacity: 1; transform: translateY(-1px);
+}
+.cf-rt-resume-icon-restart {
+  width: 16px; height: 16px; stroke: #ffffff;
 }
 /* Sidebar wrapper — positions the toggle tab relative to the panel */
 .cf-rt-sidebar-wrapper {
