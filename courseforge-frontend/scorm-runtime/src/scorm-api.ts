@@ -339,14 +339,6 @@ export class ScormAPI {
   }
 
   private registerUnloadHandlers(): void {
-    const onUnload = () => {
-      if (this.initialized && !this.finished) {
-        this.finish();
-      }
-    };
-
-    window.addEventListener("beforeunload", onUnload);
-    window.addEventListener("pagehide", onUnload);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden" && this.initialized && !this.finished) {
         this.commit();
