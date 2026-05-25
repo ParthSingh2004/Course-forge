@@ -982,6 +982,7 @@ async def export_scorm_2004(course: CourseData):
     html = generate_runtime_html(
         course.title,
         course_def,
+        inline_assets=False,  # FIX Bug 3: reference JS as external files, not inline
         runtime_js_path=runtime_js_name,
         course_data_js_path=course_data_js_name,
     )

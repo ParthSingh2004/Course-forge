@@ -863,6 +863,9 @@ def generate_manifest_scorm2004(
       <title>{safe_title}</title>
       <item identifier="item_1" identifierref="res_1" isvisible="true">
         <title>{safe_title}</title>
+        <imsss:sequencing>
+          <imsss:deliveryControls completionSetByContent="true" objectiveSetByContent="true"/>
+        </imsss:sequencing>
       </item>
     </organization>
   </organizations>
@@ -2178,9 +2181,12 @@ def _get_fallback_runtime_js() -> str:
     visitedSlides[idx] = true;
     if (API) {
       try {
+        saveSuspendData();  // FIX Bug 4: persist full state on every navigation
         API.LMSSetValue('cmi.core.lesson_location', String(idx));
         if (!coursePassedFlag) {
           API.LMSSetValue('cmi.core.lesson_status', 'incomplete');
+          API.LMSCommit('');
+        } else {
           API.LMSCommit('');
         }
       } catch(e) {}
@@ -2316,25 +2322,69 @@ def _get_fallback_runtime_js() -> str:
   };
  
   // ---------------------------------------------------------------------------
+  // SUSPEND DATA HELPERS (fallback runtime — no lz-string, use plain JSON)
+  // ---------------------------------------------------------------------------
+  function saveSuspendData() {
+    if (!API) return;
+    try {
+      var snapshot = {
+        cs: currentSlide,
+        vs: visitedSlides,
+        sc: scorableComps,
+        mc: mandatoryCompleted
+      };
+      var json = JSON.stringify(snapshot);
+      // cmi.suspend_data is capped at 4096 chars in SCORM 1.2; truncate if needed
+      if (json.length > 4096) {
+        // Drop scorableComps first (scores can be re-derived from quiz answers)
+        snapshot.sc = {};
+        json = JSON.stringify(snapshot);
+      }
+      if (json.length <= 4096) {
+        API.LMSSetValue('cmi.suspend_data', json);
+      }
+    } catch(e) {}
+  }
+
+  function loadSuspendData() {
+    if (!API) return;
+    try {
+      var raw = API.LMSGetValue('cmi.suspend_data');
+      if (!raw || raw.trim() === '') return;
+      var snapshot = JSON.parse(raw);
+      if (typeof snapshot.cs === 'number') currentSlide = snapshot.cs;
+      if (snapshot.vs && typeof snapshot.vs === 'object') visitedSlides   = snapshot.vs;
+      if (snapshot.sc && typeof snapshot.sc === 'object') scorableComps   = snapshot.sc;
+      if (snapshot.mc && typeof snapshot.mc === 'object') mandatoryCompleted = snapshot.mc;
+    } catch(e) {}
+  }
+
+  // ---------------------------------------------------------------------------
   // BOOT
   // ---------------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', function() {
-    // FIX: Restore coursePassedFlag from a previous session so that a learner
-    //      who already passed and is re-opening the SCO doesn't get their
-    //      status downgraded back to 'incomplete' by the initial renderSlide().
     if (API) {
       try {
+        // FIX Bug 4: Restore full progress from suspend_data first.
+        // This is the primary store — it contains visited slides, quiz scores,
+        // mandatory completions, AND the current slide position.
+        loadSuspendData();
+
+        // Restore coursePassedFlag so a learner who already passed doesn't get
+        // their status downgraded back to 'incomplete' by the initial renderSlide().
         var prevStatus = API.LMSGetValue('cmi.core.lesson_status');
         if (prevStatus === 'passed') coursePassedFlag = true;
-      } catch(e) {}
-      try {
-        var loc = API.LMSGetValue('cmi.core.lesson_location');
-        if (loc && !isNaN(Number(loc))) currentSlide = Number(loc);
+
+        // If suspend_data didn't give us a slide, fall back to lesson_location.
+        if (currentSlide === 0) {
+          var loc = API.LMSGetValue('cmi.core.lesson_location');
+          if (loc && !isNaN(Number(loc))) currentSlide = Number(loc);
+        }
       } catch(e) {}
     }
- 
+
     renderSlide(currentSlide);
- 
+
     // Set 'incomplete' only on a fresh (not yet passed) attempt
     if (API && !coursePassedFlag) {
       try {
@@ -2342,17 +2392,46 @@ def _get_fallback_runtime_js() -> str:
         API.LMSCommit('');
       } catch(e) {}
     }
+
+    // Auto-commit every 60 seconds so progress survives mid-session disconnects
+    setInterval(function() {
+      if (API) {
+        try {
+          saveSuspendData();
+          API.LMSSetValue('cmi.core.lesson_location', String(currentSlide));
+          API.LMSCommit('');
+        } catch(e) {}
+      }
+    }, 60000);
   });
- 
+
+  // Persist full state on tab hide (covers LMS portals that fire visibilitychange
+  // instead of beforeunload when closing the SCO iframe).
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden' && API) {
+      try {
+        saveSuspendData();
+        API.LMSSetValue('cmi.core.lesson_location', String(currentSlide));
+        API.LMSCommit('');
+      } catch(e) {}
+    }
+  });
+
   // Auto-finish on tab/window close
   window.addEventListener('beforeunload', function() {
     if (API) {
       checkCompletion(true);
-      try { API.LMSCommit(''); API.LMSFinish(''); } catch(e) {}
+      try {
+        saveSuspendData();
+        API.LMSSetValue('cmi.core.lesson_location', String(currentSlide));
+        API.LMSCommit('');
+        API.LMSFinish('');
+      } catch(e) {}
     }
   });
 })();
 """
+
  
  
 def generate_runtime_html(
@@ -2379,8 +2458,8 @@ def generate_runtime_html(
         course_data_markup = f"<script>window.__CF_COURSE_DATA = {course_json};</script>"
         runtime_markup = f"<script>{runtime_js}</script>"
     else:
-        course_data_markup = f'<script src="{html_module.escape(course_data_js_path)}"></script>'
-        runtime_markup = f'<script src="{html_module.escape(runtime_js_path)}"></script>'
+        course_data_markup = f'<script src="{html_module.escape(course_data_js_path)}" defer></script>'
+        runtime_markup = f'<script src="{html_module.escape(runtime_js_path)}" defer></script>'
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -2388,7 +2467,10 @@ def generate_runtime_html(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{safe_title}</title>
-<link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&amp;family=Open+Sans:wght@400;600;700&amp;family=Montserrat:wght@400;600;700&amp;family=Lato:wght@400;700&amp;family=Playfair+Display:wght@400;700&amp;family=Lora:wght@400;700&amp;display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&amp;family=Open+Sans:wght@400;600;700&amp;family=Montserrat:wght@400;600;700&amp;family=Lato:wght@400;700&amp;family=Playfair+Display:wght@400;700&amp;family=Lora:wght@400;700&amp;display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&amp;family=Open+Sans:wght@400;600;700&amp;family=Montserrat:wght@400;600;700&amp;family=Lato:wght@400;700&amp;family=Playfair+Display:wght@400;700&amp;family=Lora:wght@400;700&amp;display=swap" rel="stylesheet"></noscript>
 <style>
 {_get_runtime_css()}
 </style>
@@ -2441,6 +2523,18 @@ def generate_runtime_html(
       Next &#8594;
     </button>
   </nav>
+
+  <!-- Resume Prompt Overlay -->
+  <div class="cf-rt-resume-overlay" id="cf-resume-prompt" style="display: none;">
+    <div class="cf-rt-resume-modal">
+      <h2 class="cf-rt-resume-title">Welcome back!</h2>
+      <p class="cf-rt-resume-text">You have saved progress in this course. Would you like to resume where you left off, or start over from the beginning?</p>
+      <div class="cf-rt-resume-actions">
+        <button class="cf-rt-resume-btn-secondary" id="cf-prompt-restart-btn">Restart</button>
+        <button class="cf-rt-resume-btn-primary" id="cf-prompt-resume-btn">Resume Course</button>
+      </div>
+    </div>
+  </div>
  
   <!-- Course Data -->
   {course_data_markup}
@@ -2460,7 +2554,7 @@ def _get_runtime_css() -> str:
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
  
 body {
-  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: #f4f4f5;
   color: #18181b;
   min-height: 100vh;
@@ -2653,6 +2747,46 @@ h4.cf-rt-heading, h5.cf-rt-heading, h6.cf-rt-heading { font-size: 1rem; font-wei
 .cf-rt-toast-exit { animation: cf-toast-out 0.3s ease forwards; }
 @keyframes cf-toast-in { from { opacity:0; transform: translateX(-50%) translateY(10px); } to { opacity:1; transform: translateX(-50%) translateY(0); } }
 @keyframes cf-toast-out { to { opacity:0; transform: translateX(-50%) translateY(10px); } }
+
+/* Resume Prompt Modal */
+.cf-rt-resume-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  z-index: 9999; display: flex; align-items: center; justify-content: center;
+  animation: cfFadeIn 0.3s ease;
+}
+.cf-rt-resume-modal {
+  background: #ffffff; border-radius: 16px; padding: 32px; max-width: 440px; width: 90%;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  text-align: center; border: 1px solid #e4e4e7;
+  animation: cfZoomIn 0.3s ease;
+}
+.cf-rt-resume-title {
+  font-size: 24px; font-weight: 700; color: #111827; margin-bottom: 12px;
+}
+.cf-rt-resume-text {
+  font-size: 15px; color: #4b5563; line-height: 1.6; margin-bottom: 32px;
+}
+.cf-rt-resume-actions {
+  display: flex; gap: 16px; justify-content: center;
+}
+.cf-rt-resume-btn-secondary {
+  padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; border: 1px solid #d1d5db;
+  background: #ffffff; color: #4b5563; font-family: inherit;
+}
+.cf-rt-resume-btn-secondary:hover {
+  background: #f3f4f6; color: #111827; border-color: #9ca3af;
+}
+.cf-rt-resume-btn-primary {
+  padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; border: none;
+  background: linear-gradient(135deg, #8b1a1a, #c0392b); color: #ffffff;
+  font-family: inherit;
+}
+.cf-rt-resume-btn-primary:hover {
+  transform: translateY(-2px); box-shadow: 0 6px 20px rgba(139,26,26,0.4);
+}
 /* Sidebar wrapper — positions the toggle tab relative to the panel */
 .cf-rt-sidebar-wrapper {
   position: relative;

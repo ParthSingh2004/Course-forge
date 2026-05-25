@@ -118,6 +118,32 @@ function discoverLmsApi(): { api: LmsApiHandle; mode: ScormMode } | null {
   return null;
 }
 
+/**
+ * Convert a SCORM 1.2 session time string (HHHH:MM:SS.SS) to the
+ * ISO 8601 duration format required by SCORM 2004 (PTxHyMzS).
+ *
+ * ROOT CAUSE of "Fresh start — no saved state found" on SCORM 2004 portals:
+ *   persistState() always formats session_time as SCORM 1.2 (e.g. "0000:05:30.00").
+ *   Sending that to cmi.session_time on a SCORM 2004 LMS triggers error 406
+ *   (Data Model Type Mismatch). Strict portals then fail the entire Commit(),
+ *   silently discarding the cmi.suspend_data write → every session starts fresh.
+ *
+ * SCORM 2004 spec (4th edition §4.2.9) requires ISO 8601: PTxHyMzS
+ * Examples: PT1H30M5S   PT5M30S   PT0H0M0S
+ */
+function scorm12TimeToIso8601(scorm12Time: string): string {
+  try {
+    const parts = String(scorm12Time).split(":");
+    const hours   = Math.max(0, parseInt(parts[0] ?? "0", 10) || 0);
+    const minutes = Math.max(0, parseInt(parts[1] ?? "0", 10) || 0);
+    // Round seconds — drop sub-second fraction that SCORM 1.2 uses
+    const seconds = Math.max(0, Math.round(parseFloat(parts[2] ?? "0") || 0));
+    return `PT${hours}H${minutes}M${seconds}S`;
+  } catch {
+    return "PT0H0M0S";
+  }
+}
+
 export class ScormAPI {
   private api: LmsApiHandle | null = null;
   private mode: ScormMode = null;
@@ -149,7 +175,6 @@ export class ScormAPI {
 
     if (result === "true") {
       this.initialized = true;
-      this.registerUnloadHandlers();
       console.info(`[ScormAPI] ${this.mode} LMS connection initialized successfully`);
       return true;
     }
@@ -217,7 +242,15 @@ export class ScormAPI {
       }
       if (element === "cmi.core.score.max") return this.callApi("SetValue", "cmi.score.max", value) === "true";
       if (element === "cmi.core.score.min") return this.callApi("SetValue", "cmi.score.min", value) === "true";
-      if (element === "cmi.core.session_time") return this.callApi("SetValue", "cmi.session_time", value) === "true";
+      // ── CRITICAL FIX: SCORM 2004 session_time must be ISO 8601 duration ──────
+      // SCORM 1.2 uses "HHHH:MM:SS.SS" — SCORM 2004 uses "PTxHyMzS".
+      // Sending the SCORM 1.2 format triggers error 406 on strict SCORM 2004
+      // portals, which then fails the Commit() and discards cmi.suspend_data.
+      if (element === "cmi.core.session_time") {
+        const iso = scorm12TimeToIso8601(value);
+        console.debug(`[ScormAPI] session_time converted: "${value}" → "${iso}"`);
+        return this.callApi("SetValue", "cmi.session_time", iso) === "true";
+      }
     }
 
     const result = this.mode === "2004"
@@ -231,6 +264,9 @@ export class ScormAPI {
     const result = this.mode === "2004"
       ? this.callApi("Commit", "")
       : this.callApi("LMSCommit", "");
+    if (result !== "true") {
+      console.error("[ScormAPI] Commit() failed — LMS did not acknowledge. suspend_data may not be persisted.", this._lastError);
+    }
     return result === "true";
   }
 
@@ -238,8 +274,20 @@ export class ScormAPI {
     if (this.finished) return true;
     if (!this.initialized || !this.api || !this.mode) return false;
 
+    // ── CRITICAL FIX: Set exit status to suspend ──────────────────────────────
+    // If we don't tell the LMS we are suspending, strict portals assume the
+    // attempt was completed/abandoned and will NOT restore suspend_data on the
+    // next launch (causing "Fresh start" bug).
+    if (this.mode === "2004") {
+      this.callApi("SetValue", "cmi.exit", "suspend");
+    } else {
+      this.callApi("LMSSetValue", "cmi.core.exit", "suspend");
+    }
+
     this.commit();
 
+    // Log the Terminate call so the unload flow is visible in the console
+    console.info("[ScormAPI] Calling Terminate/LMSFinish — session will be closed.");
     const result = this.mode === "2004"
       ? this.callApi("Terminate", "")
       : this.callApi("LMSFinish", "");
@@ -338,11 +386,4 @@ export class ScormAPI {
     return true;
   }
 
-  private registerUnloadHandlers(): void {
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden" && this.initialized && !this.finished) {
-        this.commit();
-      }
-    });
-  }
 }

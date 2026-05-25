@@ -110,6 +110,12 @@ class CourseForgeRuntime {
       this.slideIdToIndex.set(slide.id, idx);
     });
 
+    // ── PERFORMANCE FIX: Yield to the browser to paint the initial UI ─────────
+    // SCORM initialization is synchronous and can block the main thread for
+    // several seconds on slow LMS portals. By yielding here, the browser can
+    // paint the "Loading course..." spinner and start fetching fonts.
+    await new Promise(resolve => setTimeout(resolve, 50));
+
     // Initialize SCORM connection
     this.scorm.initialize();
 
@@ -148,9 +154,14 @@ class CourseForgeRuntime {
       const suspendData = this.scorm.getValue("cmi.suspend_data");
       const restored = decompressState(suspendData, slideCount, this.course.variables);
 
+      let needsPrompt = false;
+
       if (restored) {
         this.state = restored;
         console.info("[Runtime] Resumed from suspend_data at slide", this.state.currentSlide);
+        if (this.state.currentSlide > 0 || Object.keys(this.state.visitedSlides).length > 1) {
+          needsPrompt = true;
+        }
       } else {
         // suspend_data was empty or could not be decoded. Build a clean slate
         // and then attempt to restore at least the slide position from
@@ -162,8 +173,42 @@ class CourseForgeRuntime {
         if (!isNaN(locationIdx) && locationIdx > 0 && locationIdx < slideCount) {
           this.state.currentSlide = locationIdx;
           console.info("[Runtime] suspend_data absent/corrupt — restored slide from lesson_location:", locationIdx);
+          needsPrompt = true;
         } else {
           console.info("[Runtime] Fresh start — no saved state found");
+        }
+      }
+
+      // ── Resume Prompt Flow ──────────────────────────────────────────────────
+      if (needsPrompt) {
+        const promptEl = document.getElementById("cf-resume-prompt");
+        const resumeBtn = document.getElementById("cf-prompt-resume-btn");
+        const restartBtn = document.getElementById("cf-prompt-restart-btn");
+
+        if (promptEl && resumeBtn && restartBtn) {
+          promptEl.style.display = "flex";
+          
+          const userChoice = await new Promise<"resume" | "restart">(resolve => {
+            resumeBtn.onclick = () => {
+              promptEl.style.display = "none";
+              resolve("resume");
+            };
+            restartBtn.onclick = () => {
+              promptEl.style.display = "none";
+              resolve("restart");
+            };
+          });
+
+          if (userChoice === "restart") {
+            // Restart completely resets the state, navigates to slide 0, and persists.
+            // We can just call restartCourse() and return early, skipping the rest of boot's
+            // initial render logic (since restartCourse does it).
+            this.restartCourse();
+            
+            // Still need to register listeners and interval that usually happen at the end of boot
+            this.setupPostBootListeners();
+            return;
+          }
         }
       }
 
@@ -219,38 +264,13 @@ class CourseForgeRuntime {
     // Start elapsed time tracking
     this.startTime = Date.now() - this.state.elapsedTime * 1000;
 
-    // Auto-commit every 60 seconds
-    this.autoCommitInterval = setInterval(() => {
-      this.persistState();
-    }, 60_000);
+    this.setupPostBootListeners();
 
-    // ── FIX 2a: On-unload flush ───────────────────────────────────────────────
-    // Many LMS environments close the SCO iframe or popup without the learner
-    // ever clicking "Finish Course". Without this handler the last ≤60 s of
-    // progress is silently discarded and LMSFinish() is never called, which
-    // some LMSes interpret as an incomplete/failed attempt.
-    //
-    // `pagehide` is preferred because it fires on mobile, on desktop browsers
-    // that use the back-forward cache (bfcache), and when the tab is simply
-    // closed. `beforeunload` is the traditional desktop fallback.
-    //
-    // The `sessionFinished` guard ensures that clicking "Finish Course" and
-    // then closing the window does not call LMSFinish() twice.
-    const handleUnload = (): void => {
-      if (this.sessionFinished) return;
-      this.sessionFinished = true;
-      this.persistState();
-      if (this.scorm.isConnected) {
-        this.scorm.finish();
-      }
-    };
-
-    window.addEventListener("pagehide", handleUnload);
-    window.addEventListener("beforeunload", handleUnload);
-
-    // Render the current slide
-    this.state.visitedSlides[this.state.currentSlide] = true;
-    this.renderSlide(this.state.currentSlide);
+    // ── FIX: Persist restored state BEFORE firing triggers ────────────────────
+    // If triggers (e.g. courseStart) contain navigation actions like goToSlide(0),
+    // they would override the restored currentSlide. We must persist the true
+    // restored state first so it's not lost.
+    this.persistState();
 
     // Fire courseStart triggers
     await this.fireTrigger({ type: "courseStart" });
@@ -263,13 +283,6 @@ class CourseForgeRuntime {
 
     // Register global keyboard navigation
     this.registerKeyboardNav();
-
-    // Register media event listeners for background audio ducking
-    this.registerMediaListeners();
-
-    // Persist initial state — also writes lesson_location for the starting slide
-    // (covers resumed sessions where currentSlide > 0).
-    this.persistState();
 
     console.info(
       `[Runtime] CourseForge runtime booted — ${slideCount} slides, ` +
@@ -288,6 +301,49 @@ class CourseForgeRuntime {
 
     // Apply any restored collapsed state from sessionStorage
     this.applySidebarState();
+
+    // Re-check completion status in case they resumed on the final slide
+    this.checkCompletion();
+  }
+
+  /**
+   * Extracted common listeners that need to be set up whether we resume or restart
+   * from the boot prompt.
+   */
+  private setupPostBootListeners(): void {
+    if (this.autoCommitInterval) return; // already set up
+
+    // Auto-commit every 60 seconds
+    this.autoCommitInterval = setInterval(() => {
+      this.persistState();
+    }, 60_000);
+
+    // ── FIX 2a: On-unload flush ───────────────────────────────────────────────
+    const handleUnload = (): void => {
+      if (this.sessionFinished) return;
+      this.sessionFinished = true;
+      this.persistState();
+      if (this.scorm.isConnected) {
+        this.scorm.finish();
+      }
+    };
+
+    window.addEventListener("pagehide", handleUnload);
+    window.addEventListener("beforeunload", handleUnload);
+
+    // FIX Bug 2: Persist state when the tab is hidden
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden" && !this.sessionFinished) {
+        this.persistState();
+      }
+    });
+
+    // Render the current slide
+    this.state.visitedSlides[this.state.currentSlide] = true;
+    this.renderSlide(this.state.currentSlide);
+
+    // Register media event listeners for background audio ducking
+    this.registerMediaListeners();
   }
 
   private bindNavigationButtons(): void {
@@ -336,6 +392,14 @@ class CourseForgeRuntime {
       this.scorm.setValue("cmi.core.lesson_location", "0");
       this.scorm.commit();
     }
+
+    // Fire triggers for the fresh start
+    this.fireTrigger({ type: "courseStart" }).then(() => {
+      const currentSlide = this.course.slides[0];
+      if (currentSlide) {
+        this.fireTrigger({ type: "slideEnter", slideId: currentSlide.id });
+      }
+    });
 
     this.renderFeedback("Course restarted from the beginning.", "info");
   }
@@ -834,14 +898,14 @@ class CourseForgeRuntime {
 
     // Primary persistence: full compressed state snapshot
     const compressed = compressState(this.state, this.course.variables);
-    this.scorm.setValue("cmi.suspend_data", compressed);
+    const sdOk = this.scorm.setValue("cmi.suspend_data", compressed);
 
-    // FIX 2b: Keep lesson_location in sync on every persist, not just on
-    // explicit navigation. This ensures the lightweight bookmark is always
-    // correct even when the session ends between goToSlide() calls.
+    // Keep lesson_location in sync on every persist (lightweight bookmark fallback)
     this.scorm.setValue("cmi.core.lesson_location", String(this.state.currentSlide));
 
-    // Session time (SCORM 1.2 format: HHHH:MM:SS.SS)
+    // Session time.
+    // IMPORTANT: scorm-api.ts converts this SCORM 1.2 format to ISO 8601 (PTxHyMzS)
+    // automatically for SCORM 2004, so the LMS always receives the correct format.
     const totalSeconds = this.state.elapsedTime;
     const hours = Math.floor(totalSeconds / 3600);
     const mins  = Math.floor((totalSeconds % 3600) / 60);
@@ -849,7 +913,11 @@ class CourseForgeRuntime {
     const sessionTime = `${String(hours).padStart(4, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}.00`;
     this.scorm.setValue("cmi.core.session_time", sessionTime);
 
-    this.scorm.commit();
+    const committed = this.scorm.commit();
+    console.debug(
+      `[Runtime] persistState: suspend_data=${compressed.length}ch, ` +
+      `slide=${this.state.currentSlide}, sdOk=${sdOk}, committed=${committed}`
+    );
   }
 
   // -----------------------------------------------------------------------
