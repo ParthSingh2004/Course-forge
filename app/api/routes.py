@@ -1238,6 +1238,49 @@ def map_canvas_item(item: GeneratedCanvasItem, image_type: str) -> Dict[str, Any
                 
     return mapped
 
+def pydantic_to_gemini_schema(model_class) -> Dict[str, Any]:
+    """
+    Recursively convert Pydantic schema to Gemini-compliant dict schema.
+    Resolves `$defs` and `$ref` references, and strips unsupported keys like 'default'.
+    """
+    if hasattr(model_class, "model_json_schema"):
+        raw = model_class.model_json_schema()
+    else:
+        raw = model_class.schema()
+        
+    defs = raw.get("$defs", raw.get("definitions", {}))
+    
+    def resolve_and_clean(item):
+        if not isinstance(item, dict):
+            return item
+            
+        # Resolve $ref
+        if "$ref" in item:
+            ref_path = item["$ref"]
+            ref_name = ref_path.split("/")[-1]
+            ref_schema = defs.get(ref_name, {})
+            # Merge ref schema properties
+            merged = {**item, **ref_schema}
+            del merged["$ref"]
+            return resolve_and_clean(merged)
+            
+        cleaned = {}
+        # Only keep Gemini Schema supported keys
+        allowed_keys = {"type", "description", "properties", "required", "items", "enum", "nullable"}
+        for k, v in item.items():
+            if k in allowed_keys:
+                if k == "properties":
+                    cleaned[k] = {prop_name: resolve_and_clean(prop_val) for prop_name, prop_val in v.items()}
+                elif k == "items":
+                    cleaned[k] = resolve_and_clean(v)
+                else:
+                    # In python dict schemas, type value must be standard (e.g. object, string, etc.)
+                    cleaned[k] = v
+                    
+        return cleaned
+
+    return resolve_and_clean(raw)
+
 
 @router.post("/ai/generate-course")
 async def generate_course(req: GenerateCourseRequest):
@@ -1257,12 +1300,15 @@ async def generate_course(req: GenerateCourseRequest):
 
         prompt_text = f"{system_instruction}\n\nUser Request: Generate a course with exactly {req.num_slides} slides about: {req.prompt}"
 
+        # Clean schema dynamically to strip 'default', 'title', etc.
+        cleaned_schema = pydantic_to_gemini_schema(GeneratedCourse)
+
         # Request course generation from gemini-2.5-pro
         response = pro_model.generate_content(
             prompt_text,
             generation_config=genai.GenerationConfig(
                 response_mime_type="application/json",
-                response_schema=GeneratedCourse,
+                response_schema=cleaned_schema,
                 temperature=0.7,
             ),
         )
