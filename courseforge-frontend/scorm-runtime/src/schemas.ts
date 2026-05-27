@@ -73,6 +73,36 @@ export const ComponentSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...BaseComponentProps,
+    type: z.literal("storyline-video"),
+    id: z.string(),
+    src: z.string().optional().default(""),
+    videoUrl: z.string().optional().default(""),
+    fileName: z.string().optional(),
+    embedType: z.enum(["youtube", "vimeo", "direct"]).default("direct"),
+    mandatory: z.boolean().optional(),
+    overlays: z.array(z.object({
+      id: z.string(),
+      type: z.enum(["button", "flashcard", "dialogue"]),
+      x: z.number(),
+      y: z.number(),
+      startTime: z.number(),
+      text: z.string().default(""),
+      color: z.string().optional(),
+      textColor: z.string().optional(),
+      flashcardBackText: z.string().optional(),
+      action: z.enum(["next", "slide", "error", "resume"]).default("resume"),
+      targetSlideId: z.string().optional(),
+      errorMsg: z.string().optional(),
+      dialogueOptions: z.array(z.object({
+        text: z.string(),
+        action: z.enum(["next", "slide", "error", "resume"]),
+        targetSlideId: z.string().optional(),
+        errorMsg: z.string().optional(),
+      })).optional(),
+    })).default([]),
+  }),
+  z.object({
+    ...BaseComponentProps,
     type: z.literal("image-hotspot"),
     id: z.string(),
     src: z.string(),
@@ -80,6 +110,21 @@ export const ComponentSchema = z.discriminatedUnion("type", [
       id: z.string(),
       x: z.number(),
       y: z.number(),
+      title: z.string(),
+      content: z.string(),
+      popupColor: z.string().optional(),
+    })).default([]),
+  }),
+  z.object({
+    ...BaseComponentProps,
+    type: z.literal("360-image-hotspot"),
+    id: z.string(),
+    src: z.string().optional().default(""),
+    imageUrl: z.string().optional().default(""),
+    hotspots: z.array(z.object({
+      id: z.string(),
+      yaw: z.number(),
+      pitch: z.number(),
       title: z.string(),
       content: z.string(),
       popupColor: z.string().optional(),
@@ -123,7 +168,7 @@ export const ComponentSchema = z.discriminatedUnion("type", [
     canvasBg: z.string().default("#ffffff"),
     items: z.array(z.object({
       id: z.string(),
-      type: z.enum(["rect", "circle", "triangle", "text"]),
+      type: z.enum(["rect", "circle", "triangle", "text", "image"]),
       x: z.number(),
       y: z.number(),
       w: z.number(),
@@ -139,6 +184,10 @@ export const ComponentSchema = z.discriminatedUnion("type", [
       textAlign: z.string().optional(),
       lineHeight: z.number().optional(),
       letterSpacing: z.number().optional(),
+      animation: z.enum(["none", "fade-in", "slide-in-left", "slide-in-right", "zoom-in", "slide-in-up", "slide-in-down", "zoom-out", "flip-in", "bounce-in", "fade-in-up"]).default("none"),
+      animationDelay: z.number().min(0).default(0),
+      rotation: z.number().default(0),
+      src: z.string().optional(),
     })).default([]),
   }),
   z.object({
@@ -337,6 +386,7 @@ export const SlideSchema = z.object({
   layers: z.array(LayerSchema).min(1), // at least the base layer
   /** Trigger rule IDs that are scoped to this slide */
   triggers: z.array(z.string()).default([]),
+  locked: z.boolean().optional().default(false),
 });
 
 export type Slide = z.infer<typeof SlideSchema>;

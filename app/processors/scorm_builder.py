@@ -216,6 +216,15 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "hotspots": block.get("hotspots", []),
         }
 
+    if btype == "360-image-hotspot":
+        return {
+            "type": "360-image-hotspot",
+            "id": bid,
+            "src": _resolve_image_src(block),
+            "imageUrl": _resolve_image_src(block),
+            "hotspots": block.get("hotspots", []),
+        }
+
     if btype == "image-stack":
         slides = []
         for slide in block.get("slides", []):
@@ -254,6 +263,48 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             "src": _to_embeddable_video_url(url),
             "embedType": _detect_embed_type(url),
             "interactions": interactions
+        }
+        if block.get("mandatory"):
+            comp["mandatory"] = True
+        return comp
+
+    if btype == "storyline-video":
+        url = block.get("videoUrl") or block.get("video_url") or ""
+        overlays = []
+        for overlay in block.get("overlays", []):
+            if not isinstance(overlay, dict):
+                continue
+            diag_opts = []
+            for opt in overlay.get("dialogueOptions", []):
+                if not isinstance(opt, dict):
+                    continue
+                diag_opts.append({
+                    "text": str(opt.get("text", "")),
+                    "action": str(opt.get("action", "resume")),
+                    "targetSlideId": str(opt.get("targetSlideId", "")),
+                    "errorMsg": str(opt.get("errorMsg", ""))
+                })
+            overlays.append({
+                "id": str(overlay.get("id", _make_id("overlay"))),
+                "type": str(overlay.get("type", "button")),
+                "x": float(overlay.get("x", 0)),
+                "y": float(overlay.get("y", 0)),
+                "startTime": float(overlay.get("startTime", 0)),
+                "text": str(overlay.get("text", "")),
+                "color": overlay.get("color"),
+                "textColor": overlay.get("textColor"),
+                "flashcardBackText": overlay.get("flashcardBackText"),
+                "action": str(overlay.get("action", "resume")),
+                "targetSlideId": str(overlay.get("targetSlideId", "")),
+                "errorMsg": str(overlay.get("errorMsg", "")),
+                "dialogueOptions": diag_opts
+            })
+        comp = {
+            "type": "storyline-video",
+            "id": bid,
+            "src": _to_embeddable_video_url(url),
+            "embedType": _detect_embed_type(url),
+            "overlays": overlays
         }
         if block.get("mandatory"):
             comp["mandatory"] = True
@@ -338,7 +389,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
             if not isinstance(raw_item, dict):
                 continue
             item_type = str(raw_item.get("type") or "").strip().lower()
-            if item_type not in {"rect", "circle", "triangle", "text"}:
+            if item_type not in {"rect", "circle", "triangle", "text", "image"}:
                 continue
 
             item = {
@@ -351,6 +402,8 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
                 "zIndex": int(_safe_float(raw_item.get("zIndex"), 0)),
                 "rotation": _safe_float(raw_item.get("rotation"), 0),
                 "color": str(raw_item.get("color") or ("#111827" if item_type == "text" else DEFAULT_FLASHCARD_COLOR)),
+                "animation": str(raw_item.get("animation") or "none"),
+                "animationDelay": _safe_float(raw_item.get("animationDelay"), 0),
             }
 
             if item_type == "text":
@@ -364,6 +417,11 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
                     "textAlign": str(raw_item.get("textAlign") or "left"),
                     "lineHeight": _clamp(_safe_float(raw_item.get("lineHeight"), 1.5), 0.8, 3),
                     "letterSpacing": _safe_float(raw_item.get("letterSpacing"), 0),
+                })
+
+            if item_type == "image":
+                item.update({
+                    "src": str(raw_item.get("src") or ""),
                 })
 
             serialized_items.append(item)
@@ -729,10 +787,32 @@ def blocks_to_slides(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "title": block.get("title", f"Slide {slide_counter}"),
                 "background": block.get("background", {"type": "color", "value": "#ffffff"}),
                 "bgAudio": block.get("bgAudio"),
+                "locked": bool(block.get("locked", False)),
                 "layers": [{
                     "id": _make_id("layer"),
                     "name": "Base Layer",
                     "components": comps if comps else [{"type": "text", "id": _make_id("comp"), "content": ""}],
+                    "visible": True,
+                }],
+                "triggers": [],
+            })
+            current_title = f"Slide {slide_counter + 1}"
+            continue
+
+        if btype == "canvas":
+            flush_slide()
+            canvas_comp = _block_to_component(block, idx)
+            slide_counter += 1
+            slides.append({
+                "id": str(block.get("id", _make_id("slide"))),
+                "title": block.get("title", f"Slide {slide_counter}"),
+                "background": block.get("background", {"type": "color", "value": "#ffffff"}),
+                "bgAudio": block.get("bgAudio"),
+                "locked": bool(block.get("locked", False)),
+                "layers": [{
+                    "id": _make_id("layer"),
+                    "name": "Base Layer",
+                    "components": [canvas_comp],
                     "visible": True,
                 }],
                 "triggers": [],
@@ -1166,11 +1246,6 @@ def _get_fallback_runtime_js() -> str:
 
     container.innerHTML = '';
  
-    var title = document.createElement('h2');
-    title.className = 'cf-rt-slide-title';
-    title.textContent = slide.title;
-    container.appendChild(title);
- 
     var layers = slide.layers || [];
     for (var li = 0; li < layers.length; li++) {
       var layer = layers[li];
@@ -1293,6 +1368,297 @@ def _get_fallback_runtime_js() -> str:
               el.appendChild(dot);
             })(hotspotItems[hi]);
           }
+        } else if (comp.type === '360-image-hotspot') {
+          el.style.position = 'relative';
+          el.style.display = 'block';
+          el.style.width = '100%';
+          el.style.borderRadius = '8px';
+          el.style.overflow = 'hidden';
+
+          var container = document.createElement('div');
+          container.style.width = '100%';
+          container.style.height = '400px';
+          container.style.position = 'relative';
+          container.style.background = '#000000';
+          container.style.cursor = 'grab';
+          el.appendChild(container);
+
+          var activeHotspotId = null;
+          var activePopup = null;
+
+          function closePopup() {
+            if (activePopup) {
+              activePopup.remove();
+              activePopup = null;
+            }
+            activeHotspotId = null;
+          }
+
+          function init360(THREE) {
+            var resetBtn = document.createElement('button');
+            resetBtn.type = 'button';
+            resetBtn.style.position = 'absolute';
+            resetBtn.style.top = '12px';
+            resetBtn.style.right = '12px';
+            resetBtn.style.background = 'rgba(0,0,0,0.6)';
+            resetBtn.style.border = '1px solid rgba(255,255,255,0.15)';
+            resetBtn.style.color = '#fff';
+            resetBtn.style.borderRadius = '4px';
+            resetBtn.style.width = '32px';
+            resetBtn.style.height = '32px';
+            resetBtn.style.cursor = 'pointer';
+            resetBtn.style.zIndex = '30';
+            resetBtn.style.display = 'flex';
+            resetBtn.style.alignItems = 'center';
+            resetBtn.style.justifyContent = 'center';
+            resetBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>';
+            container.appendChild(resetBtn);
+
+            var yaw = 0;
+            var pitch = 0;
+            var isDragging = false;
+            var startMouseX = 0;
+            var startMouseY = 0;
+            var startYaw = 0;
+            var startPitch = 0;
+
+            resetBtn.onclick = function(e) {
+              e.stopPropagation();
+              yaw = 0;
+              pitch = 0;
+            };
+
+            var scene = new THREE.Scene();
+            var camera = new THREE.PerspectiveCamera(75, 1, 1, 1100);
+            var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setSize(800, 400); // Default fallback size, ResizeObserver will update this
+            container.appendChild(renderer.domElement);
+
+            var geometry = new THREE.SphereGeometry(500, 60, 40);
+            geometry.scale(-1, 1, 1);
+            var material = new THREE.MeshBasicMaterial({ color: 0x222222, side: THREE.DoubleSide });
+            var sphereMesh = new THREE.Mesh(geometry, material);
+            scene.add(sphereMesh);
+
+            var textureLoader = new THREE.TextureLoader();
+            var imgUrl = comp.src || comp.imageUrl || '';
+            if (imgUrl) {
+              textureLoader.load(imgUrl, function(texture) {
+                material.color.setHex(0xffffff);
+                material.map = texture;
+                material.needsUpdate = true;
+              });
+            }
+
+            container.addEventListener('mousedown', function(e) {
+              isDragging = true;
+              startMouseX = e.clientX;
+              startMouseY = e.clientY;
+              startYaw = yaw;
+              startPitch = pitch;
+              container.style.cursor = 'grabbing';
+            });
+
+            window.addEventListener('mousemove', function(e) {
+              if (!isDragging) return;
+              var deltaX = e.clientX - startMouseX;
+              yaw = startYaw - deltaX * 0.15;
+              pitch = 0;
+            });
+
+            window.addEventListener('mouseup', function() {
+              isDragging = false;
+              container.style.cursor = 'grab';
+            });
+
+            container.addEventListener('touchstart', function(e) {
+              if (e.touches.length !== 1) return;
+              isDragging = true;
+              startMouseX = e.touches[0].clientX;
+              startMouseY = e.touches[0].clientY;
+              startYaw = yaw;
+              startPitch = 0;
+            });
+
+            window.addEventListener('touchmove', function(e) {
+              if (!isDragging || e.touches.length !== 1) return;
+              var deltaX = e.touches[0].clientX - startMouseX;
+              yaw = startYaw - deltaX * 0.2;
+              pitch = 0;
+            });
+
+            window.addEventListener('touchend', function() {
+              isDragging = false;
+            });
+
+            var hotspotItems = comp.hotspots || [];
+            var markerEls = {};
+            hotspotItems.forEach(function(hotspot) {
+              var dot = document.createElement('button');
+              dot.type = 'button';
+              dot.setAttribute('aria-label', hotspot.title || 'Hotspot');
+              dot.style.position = 'absolute';
+              dot.style.width = '24px';
+              dot.style.height = '24px';
+              dot.style.backgroundColor = hotspot.popupColor || '#b91c1c';
+              dot.style.borderRadius = '50%';
+              dot.style.border = '2px solid white';
+              dot.style.transform = 'translate(-50%, -50%)';
+              dot.style.cursor = 'pointer';
+              dot.style.zIndex = '20';
+              dot.style.padding = '0';
+              dot.style.display = 'none';
+
+              dot.onclick = function(e) {
+                e.stopPropagation();
+                if (activeHotspotId === hotspot.id) {
+                  closePopup();
+                  return;
+                }
+
+                closePopup();
+                activeHotspotId = hotspot.id;
+
+                activePopup = document.createElement('div');
+                activePopup.style.position = 'absolute';
+                activePopup.style.bottom = '16px';
+                activePopup.style.left = '50%';
+                activePopup.style.transform = 'translateX(-50%)';
+                activePopup.style.minWidth = '260px';
+                activePopup.style.maxWidth = '340px';
+                activePopup.style.background = hotspot.popupColor || '#000000';
+                activePopup.style.border = '1px solid rgba(255,255,255,0.15)';
+                activePopup.style.color = '#fff';
+                activePopup.style.padding = '12px 16px';
+                activePopup.style.borderRadius = '6px';
+                activePopup.style.zIndex = '40';
+                activePopup.style.boxShadow = '0 8px 24px rgba(0,0,0,0.4)';
+
+                var header = document.createElement('div');
+                header.style.display = 'flex';
+                header.style.justifyContent = 'space-between';
+                header.style.alignItems = 'center';
+                header.style.marginBottom = '0.4rem';
+
+                var title = document.createElement('h4');
+                title.style.margin = '0';
+                title.style.fontSize = '0.95rem';
+                title.style.fontWeight = 'bold';
+                title.textContent = hotspot.title || 'Hotspot';
+
+                var closeBtn = document.createElement('button');
+                closeBtn.type = 'button';
+                closeBtn.innerHTML = '&times;';
+                closeBtn.style.background = 'transparent';
+                closeBtn.style.border = 'none';
+                closeBtn.style.color = '#a3a3a3';
+                closeBtn.style.fontSize = '18px';
+                closeBtn.style.cursor = 'pointer';
+                closeBtn.onclick = closePopup;
+
+                header.appendChild(title);
+                header.appendChild(closeBtn);
+
+                var content = document.createElement('p');
+                content.style.margin = '0';
+                content.style.fontSize = '0.8rem';
+                content.style.opacity = '0.85';
+                content.style.lineHeight = '1.45';
+                content.style.whiteSpace = 'pre-wrap';
+                content.textContent = hotspot.content || '';
+
+                activePopup.appendChild(header);
+                activePopup.appendChild(content);
+                container.appendChild(activePopup);
+              };
+
+              container.appendChild(dot);
+              markerEls[hotspot.id] = dot;
+            });
+
+            var animId;
+            function animate() {
+              animId = requestAnimationFrame(animate);
+              pitch = 0;
+              var phi = THREE.MathUtils.degToRad(90);
+              var theta = THREE.MathUtils.degToRad(yaw);
+
+              var target = new THREE.Vector3();
+              target.x = Math.sin(phi) * Math.cos(theta);
+              target.y = Math.cos(phi);
+              target.z = Math.sin(phi) * Math.sin(theta);
+              camera.lookAt(target);
+
+              renderer.render(scene, camera);
+
+              var w = container.clientWidth;
+              var h = 400;
+
+              hotspotItems.forEach(function(hotspot) {
+                var dot = markerEls[hotspot.id];
+                if (!dot) return;
+
+                var hPhi = THREE.MathUtils.degToRad(90 - hotspot.pitch);
+                var hTheta = THREE.MathUtils.degToRad(hotspot.yaw);
+
+                var pos = new THREE.Vector3();
+                pos.x = Math.sin(hPhi) * Math.cos(hTheta);
+                pos.y = Math.cos(hPhi);
+                pos.z = Math.sin(hPhi) * Math.sin(hTheta);
+                pos.multiplyScalar(500);
+                pos.project(camera);
+
+                var isBehind = pos.z > 1;
+                if (isBehind) {
+                  dot.style.display = 'none';
+                } else {
+                  dot.style.display = 'block';
+                  var screenX = (pos.x * 0.5 + 0.5) * w;
+                  var screenY = (pos.y * -0.5 + 0.5) * h;
+                  dot.style.left = screenX + 'px';
+                  dot.style.top = screenY + 'px';
+                }
+              });
+            }
+            animate();
+
+            var resizeObserver = new ResizeObserver(function(entries) {
+              for (var i = 0; i < entries.length; i++) {
+                var w = entries[i].contentRect.width || container.clientWidth;
+                if (w > 0) {
+                  camera.aspect = w / 400;
+                  camera.updateProjectionMatrix();
+                  renderer.setSize(w, 400);
+                }
+              }
+            });
+            resizeObserver.observe(container);
+
+            var observer = new MutationObserver(function() {
+              if (!document.body.contains(container)) {
+                cancelAnimationFrame(animId);
+                resizeObserver.disconnect();
+                geometry.dispose();
+                if (material.map) material.map.dispose();
+                material.dispose();
+                renderer.dispose();
+                observer.disconnect();
+              }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+          }
+
+          if (window.THREE) {
+            init360(window.THREE);
+          } else {
+            var script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+            script.onload = function() {
+              init360(window.THREE);
+            };
+            document.head.appendChild(script);
+          }
         } else if (comp.type === 'canvas') {
           var canvasWrap = document.createElement('div');
           canvasWrap.style.position = 'relative';
@@ -1303,6 +1669,19 @@ def _get_fallback_runtime_js() -> str:
           canvasWrap.style.borderRadius = '12px';
           canvasWrap.style.background = comp.canvasBg || '#ffffff';
           canvasWrap.style.boxShadow = 'inset 0 0 0 1px rgba(17,24,39,0.06)';
+
+          var resizeObserver = new ResizeObserver(function(entries) {
+            if (!canvasWrap.isConnected) {
+              resizeObserver.disconnect();
+              return;
+            }
+            for (var i = 0; i < entries.length; i++) {
+              var width = entries[i].contentRect.width || canvasWrap.clientWidth;
+              var ratio = width / 1000;
+              canvasWrap.style.setProperty('--canvas-scale', String(ratio));
+            }
+          });
+          resizeObserver.observe(canvasWrap);
 
           var canvasItems = Array.isArray(comp.items) ? comp.items.slice() : [];
           canvasItems.sort(function(a, b) {
@@ -1329,6 +1708,9 @@ def _get_fallback_runtime_js() -> str:
               shape.style.height = '100%';
               shape.style.background = canvasItem.color || '#3b82f6';
               shape.style.borderRadius = canvasItem.type === 'circle' ? '50%' : '4px';
+              shape.style.boxShadow = '0 4px 10px rgba(17, 24, 39, 0.15), 0 1px 4px rgba(17, 24, 39, 0.08)';
+              shape.style.border = '1px solid rgba(17, 24, 39, 0.08)';
+              shape.style.boxSizing = 'border-box';
               itemEl.appendChild(shape);
             } else if (canvasItem.type === 'triangle') {
               var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -1337,6 +1719,7 @@ def _get_fallback_runtime_js() -> str:
               svg.setAttribute('width', '100%');
               svg.setAttribute('height', '100%');
               svg.style.display = 'block';
+              svg.style.filter = 'drop-shadow(0px 4px 6px rgba(17,24,39,0.15)) drop-shadow(0px 1px 3px rgba(17,24,39,0.08))';
 
               var polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
               polygon.setAttribute('points', '50,0 100,100 0,100');
@@ -1348,16 +1731,16 @@ def _get_fallback_runtime_js() -> str:
 
               var textEl = document.createElement('div');
               textEl.style.width = '100%';
-              textEl.style.height = '100%';
+              textEl.style.height = 'auto';
               textEl.style.color = canvasItem.color || '#111827';
-              textEl.style.fontSize = String(canvasItem.fontSize || 16) + 'px';
+              textEl.style.fontSize = 'calc(var(--canvas-scale, 1) * ' + (canvasItem.fontSize || 16) + 'px)';
               textEl.style.fontFamily = canvasItem.fontFamily || 'inherit';
               textEl.style.fontWeight = canvasItem.fontWeight || 'normal';
               textEl.style.fontStyle = canvasItem.fontStyle || 'normal';
               textEl.style.textDecoration = canvasItem.textDecoration || 'none';
               textEl.style.textAlign = canvasItem.textAlign || 'left';
               textEl.style.lineHeight = String(canvasItem.lineHeight || 1.5);
-              textEl.style.letterSpacing = String(canvasItem.letterSpacing || 0) + 'px';
+              textEl.style.letterSpacing = 'calc(var(--canvas-scale, 1) * ' + (canvasItem.letterSpacing || 0) + 'px)';
               textEl.style.whiteSpace = 'pre-wrap';
               textEl.style.wordBreak = 'break-word';
               textEl.style.background = 'transparent';
@@ -2569,8 +2952,8 @@ def _get_runtime_css() -> str:
  
 body {
   font-family: 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #f4f4f5;
-  color: #18181b;
+  background: #111112;
+  color: #e4e4e7;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -2600,37 +2983,37 @@ body {
 /* Main */
 .cf-rt-main {
   flex: 1; display: flex; justify-content: center;
-  padding: 40px 24px 100px;
+  padding: 24px 16px 80px;
 }
 .cf-rt-slide-container {
-  width: 100%; max-width: 780px;
-  background: #ffffff; border: 1px solid #e4e4e7;
-  border-radius: 16px; padding: 48px 40px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  width: 100%; max-width: 1100px;
+  background: #18181b; border: 1px solid #2d2d34;
+  border-radius: 16px; padding: 24px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   min-height: 400px;
 }
  
 /* Loading */
 .cf-rt-loading {
-  text-align: center; color: #71717a; padding: 80px 0;
+  text-align: center; color: #a1a1aa; padding: 80px 0;
   font-size: 15px;
 }
  
 /* Slide title */
 .cf-rt-slide-title {
-  font-size: 28px; font-weight: 700; color: #111827;
+  font-size: 28px; font-weight: 700; color: #ffffff;
   margin-bottom: 24px; line-height: 1.3;
-  border-bottom: 1px solid #e5e7eb; padding-bottom: 16px;
+  border-bottom: 1px solid #2d2d34; padding-bottom: 16px;
 }
  
 /* Components */
 .cf-rt-component { margin-bottom: 20px; }
-.cf-rt-heading { color: #111827; margin: 0 0 12px; }
+.cf-rt-heading { color: #ffffff; margin: 0 0 12px; }
 h1.cf-rt-heading { font-size: 3rem; font-weight: 800; line-height: 1.1; }
 h2.cf-rt-heading { font-size: 1.875rem; font-weight: 700; line-height: 1.2; }
 h3.cf-rt-heading { font-size: 1.125rem; font-weight: 600; line-height: 1.3; }
 h4.cf-rt-heading, h5.cf-rt-heading, h6.cf-rt-heading { font-size: 1rem; font-weight: 600; line-height: 1.35; }
-.cf-rt-text { font-size: 15px; line-height: 1.75; color: #374151; }
+.cf-rt-text { font-size: 15px; line-height: 1.75; color: #e4e4e7; }
 .cf-rt-text ul, .cf-rt-text ol { padding-left: 24px; margin-top: 8px; margin-bottom: 8px; }
 .cf-rt-text ul { list-style-type: disc; }
 .cf-rt-text ol { list-style-type: decimal; }
@@ -2663,28 +3046,28 @@ h4.cf-rt-heading, h5.cf-rt-heading, h6.cf-rt-heading { font-size: 1rem; font-wei
 /* Quiz */
 .cf-rt-quiz-block {
   padding: 16px;
-  border: 1px solid #f0d8d8;
+  border: 1px solid #2d2d34;
   border-radius: 12px;
-  background: #fffafa;
+  background: #202026;
 }
 .cf-rt-quiz-badge {
   font-size: 10px; font-weight: 700; letter-spacing: 0.15em;
-  color: #c0392b; margin-bottom: 12px;
+  color: #ef4444; margin-bottom: 12px;
 }
 .cf-rt-quiz-question {
-  font-size: 17px; font-weight: 600; color: #1a0a0a;
+  font-size: 17px; font-weight: 600; color: #ffffff;
   margin-bottom: 16px; line-height: 1.5;
 }
 .cf-rt-quiz-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
 .cf-rt-quiz-option {
   display: flex; align-items: center; gap: 12px;
-  padding: 12px 16px; border: 1.5px solid #e8d0d0;
+  padding: 12px 16px; border: 1.5px solid #2d2d34;
   border-radius: 10px; cursor: pointer; transition: all 0.15s;
-  background: #ffffff;
+  background: #18181b;
 }
-.cf-rt-quiz-option:hover { border-color: #8b1a1a; background: #fff5f5; }
-.cf-rt-quiz-option input[type="radio"], .cf-rt-quiz-option input[type="checkbox"] { accent-color: #c0392b; width: 16px; height: 16px; }
-.cf-rt-quiz-option-text { font-size: 14px; color: #1a0a0a; }
+.cf-rt-quiz-option:hover { border-color: #ef4444; background: #1e1e24; }
+.cf-rt-quiz-option input[type="radio"], .cf-rt-quiz-option input[type="checkbox"] { accent-color: #ef4444; width: 16px; height: 16px; }
+.cf-rt-quiz-option-text { font-size: 14px; color: #e4e4e7; }
 .cf-rt-quiz-submit {
   background: linear-gradient(135deg, #8b1a1a, #c0392b);
   color: #fff; border: none; border-radius: 8px;
@@ -2718,7 +3101,7 @@ h4.cf-rt-heading, h5.cf-rt-heading, h6.cf-rt-heading { font-size: 1rem; font-wei
   border: 1px solid #4d2020; color: #fff;
 }
 .cf-rt-flashcard-back {
-  background: #fafafa; border: 2px solid #e8c8c8; color: #1a0a0a;
+  background: #1e1e24; border: 2px solid #2d2d34; color: #ffffff;
   transform: rotateY(180deg);
 }
 .cf-rt-flashcard-label { font-size: 10px; font-weight: 700; letter-spacing: 0.15em; opacity: 0.5; margin-bottom: 12px; }
@@ -2942,6 +3325,18 @@ h4.cf-rt-heading, h5.cf-rt-heading, h6.cf-rt-heading { font-size: 1rem; font-wei
   background: #27272a;
   border-color: #3f3f46;
 }
+.cf-rt-menu-item.locked-slide {
+  cursor: not-allowed !important;
+  opacity: 0.6;
+}
+.cf-rt-menu-item.locked-slide .cf-rt-menu-item-icon {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #a1a1aa;
+}
+.cf-rt-menu-item.locked-slide:hover {
+  background: transparent !important;
+}
 .cf-rt-menu-item.completed .cf-rt-menu-item-icon::after {
   content: '✓';
 }
@@ -3039,7 +3434,7 @@ h4.cf-rt-heading, h5.cf-rt-heading, h6.cf-rt-heading { font-size: 1rem; font-wei
   border: none;
   border-radius: 0;
   padding: 0;
-  color: #111111;
+  color: inherit;
 }
 @media (max-width: 900px) {
   .cf-rt-columns-grid {

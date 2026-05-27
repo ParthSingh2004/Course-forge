@@ -2,7 +2,7 @@ from PIL import Image
 import pptx
 from pptx import Presentation
 from pptx.enum.dml import MSO_COLOR_TYPE
-from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.enum.shapes import MSO_SHAPE_TYPE, MSO_SHAPE
 from pptx.util import Pt
 from pptx.oxml.ns import qn
 import io
@@ -12,6 +12,8 @@ import hashlib
 import re
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
+
+_THEME_BUNDLE_CACHE = {}
 
 def _uid(prefix="el"):
     return f"pptx_{prefix}_{uuid.uuid4().hex[:8]}"
@@ -48,6 +50,108 @@ def _rgb_to_hex(rgb) -> str:
         return ""
 
 
+def _theme_cache_key(theme_part) -> str:
+    try:
+        return str(theme_part.partname)
+    except Exception:
+        return str(id(theme_part))
+
+
+def _get_theme_part(part):
+    if part is None:
+        return None
+    for rel in part.rels.values():
+        if "relationships/theme" in rel.reltype:
+            return rel.target_part
+    return None
+
+
+def _extract_theme_bundle(theme_part) -> dict:
+    """
+    Extract theme colors plus theme background fill styles.
+
+    `p:bgRef` values point into the theme's background fill style list, so we
+    cache both the scheme colors and the raw bg fill definitions.
+    """
+    bundle = {"colors": {}, "bg_fill_styles": {}}
+    if theme_part is None:
+        return bundle
+
+    try:
+        if hasattr(theme_part, "element"):
+            root = theme_part.element
+        else:
+            from pptx.oxml import parse_xml
+            root = parse_xml(theme_part.blob)
+
+        theme_elements = root.find(qn("a:themeElements"))
+        if theme_elements is None:
+            theme_elements = root.find(f".//{qn('a:themeElements')}")
+        if theme_elements is None:
+            return bundle
+
+        clr_scheme = theme_elements.find(qn("a:clrScheme"))
+        if clr_scheme is None:
+            clr_scheme = theme_elements.find(f".//{qn('a:clrScheme')}")
+
+        if clr_scheme is not None:
+            for child in clr_scheme:
+                tag_name = child.tag.split("}")[-1]
+
+                srgb_clr = child.find(qn("a:srgbClr"))
+                if srgb_clr is not None:
+                    val = (srgb_clr.get("val") or "").strip()
+                    if re.fullmatch(r"[0-9A-Fa-f]{6}", val):
+                        bundle["colors"][tag_name] = f"#{val.lower()}"
+                    continue
+
+                sys_clr = child.find(qn("a:sysClr"))
+                if sys_clr is not None:
+                    val = (sys_clr.get("lastClr") or "").strip()
+                    if re.fullmatch(r"[0-9A-Fa-f]{6}", val):
+                        bundle["colors"][tag_name] = f"#{val.lower()}"
+                    else:
+                        sys_val = (sys_clr.get("val") or "").strip().lower()
+                        if sys_val == "windowtext":
+                            bundle["colors"][tag_name] = "#000000"
+                        elif sys_val == "window":
+                            bundle["colors"][tag_name] = "#ffffff"
+
+        fmt_scheme = theme_elements.find(qn("a:fmtScheme"))
+        if fmt_scheme is None:
+            fmt_scheme = theme_elements.find(f".//{qn('a:fmtScheme')}")
+
+        if fmt_scheme is not None:
+            bg_fill_style_lst = fmt_scheme.find(qn("a:bgFillStyleLst"))
+            if bg_fill_style_lst is not None:
+                for idx, fill_el in enumerate(list(bg_fill_style_lst), start=1001):
+                    bundle["bg_fill_styles"][idx] = fill_el
+
+    except Exception as e:
+        print(f"[pptx_parser] Could not extract theme bundle: {e}")
+
+    return bundle
+
+
+def _get_cached_theme_bundle(theme_part) -> dict:
+    if theme_part is None:
+        return {"colors": {}, "bg_fill_styles": {}}
+    cache_key = _theme_cache_key(theme_part)
+    if cache_key not in _THEME_BUNDLE_CACHE:
+        _THEME_BUNDLE_CACHE[cache_key] = _extract_theme_bundle(theme_part)
+    return _THEME_BUNDLE_CACHE[cache_key]
+
+
+def _get_theme_part_for_slide(slide):
+    try:
+        master = getattr(getattr(slide, "slide_layout", None), "slide_master", None)
+        if master is not None:
+            return _get_theme_part(master.part)
+    except Exception:
+        pass
+    return None
+
+
 def _build_theme_color_map(prs) -> dict:
     """
     Extract actual hex colors from the presentation's theme XML.
@@ -62,50 +166,14 @@ def _build_theme_color_map(prs) -> dict:
 
         for master in masters:
             try:
-                theme_part = master.part.theme_part
+                theme_part = _get_theme_part(master.part)
             except Exception:
                 continue
 
-            clrScheme = None
-            try:
-                themeElements = theme_part.element.find(qn('a:themeElements'))
-                if themeElements is not None:
-                    clrScheme = themeElements.find(qn('a:clrScheme'))
-            except Exception:
-                pass
-
-            # Secondary xpath attempt
-            if clrScheme is None:
-                try:
-                    clrScheme = theme_part.element.find(
-                        f".//{qn('a:themeElements')}/{qn('a:clrScheme')}"
-                    )
-                except Exception:
-                    pass
-
-            if clrScheme is None:
-                continue
-
-            for child in clrScheme:
-                tag_name = child.tag.split('}')[-1]
-                if tag_name in theme_colors:
-                    # First master wins — don't overwrite
-                    continue
-
-                # Explicit sRGB color
-                srgbClr = child.find(qn('a:srgbClr'))
-                if srgbClr is not None:
-                    val = (srgbClr.get("val") or "").strip()
-                    if re.fullmatch(r"[0-9A-Fa-f]{6}", val):
-                        theme_colors[tag_name] = f"#{val.lower()}"
-                    continue
-
-                # System color (e.g. windowText) — use lastClr as the resolved value
-                sysClr = child.find(qn('a:sysClr'))
-                if sysClr is not None:
-                    val = (sysClr.get("lastClr") or "").strip()
-                    if re.fullmatch(r"[0-9A-Fa-f]{6}", val):
-                        theme_colors[tag_name] = f"#{val.lower()}"
+            bundle = _get_cached_theme_bundle(theme_part)
+            for tag_name, hex_color in bundle.get("colors", {}).items():
+                if tag_name not in theme_colors:
+                    theme_colors[tag_name] = hex_color
 
     except Exception as e:
         print(f"[pptx_parser] Could not extract theme colors: {e}")
@@ -171,9 +239,20 @@ def _resolve_scheme_key(scheme_key: str, color_map=None) -> str:
     """Map a scheme key like `tx1` through the effective clrMap if needed."""
     if not scheme_key:
         return ""
+    resolved = scheme_key
     if color_map:
-        return color_map.get(scheme_key, scheme_key)
-    return scheme_key
+        resolved = color_map.get(scheme_key, scheme_key)
+
+    # Fallback to standard OOXML mapping if not overridden or maps to self
+    if resolved in ("bg1", "tx1", "bg2", "tx2"):
+        return {
+            "bg1": "lt1",
+            "tx1": "dk1",
+            "bg2": "lt2",
+            "tx2": "dk2",
+        }[resolved]
+
+    return resolved
 
 
 def _xml_element(obj):
@@ -220,7 +299,68 @@ def _apply_color_transforms(hex_color: str, scheme_el) -> str:
         return hex_color
 
 
-def _extract_hex_from_color_choice(color_parent, theme_map=None, color_map=None) -> str:
+def _extract_hex_from_color_element(color_el, theme_map=None, color_map=None, placeholder_hex="") -> str:
+    """Resolve a single OOXML color node such as schemeClr or srgbClr."""
+    if color_el is None:
+        return ""
+
+    local = color_el.tag.split("}")[-1] if "}" in color_el.tag else color_el.tag
+
+    if local == "srgbClr":
+        val = (color_el.get("val") or "").strip()
+        if re.fullmatch(r"[0-9A-Fa-f]{6}", val):
+            return _apply_color_transforms(f"#{val.lower()}", color_el)
+        return ""
+
+    if local == "scrgbClr":
+        try:
+            r = max(0, min(255, round(int(color_el.get("r", "0")) * 255 / 100000)))
+            g = max(0, min(255, round(int(color_el.get("g", "0")) * 255 / 100000)))
+            b = max(0, min(255, round(int(color_el.get("b", "0")) * 255 / 100000)))
+            return _apply_color_transforms(f"#{r:02x}{g:02x}{b:02x}", color_el)
+        except Exception:
+            return ""
+
+    if local == "schemeClr":
+        val = (color_el.get("val") or "").strip()
+        if val == "phClr" and placeholder_hex:
+            resolved = placeholder_hex
+        else:
+            val = _resolve_scheme_key(val, color_map)
+            resolved = theme_map.get(val, "") if theme_map else ""
+        if resolved:
+            resolved = _apply_color_transforms(resolved, color_el)
+        return resolved
+
+    if local == "sysClr":
+        val = (color_el.get("lastClr") or "").strip()
+        if re.fullmatch(r"[0-9A-Fa-f]{6}", val):
+            return f"#{val.lower()}"
+        sys_val = (color_el.get("val") or "").strip().lower()
+        if sys_val == "windowtext":
+            return "#000000"
+        elif sys_val == "window":
+            return "#ffffff"
+        return ""
+
+    if local == "prstClr":
+        preset_colors = {
+            "black": "#000000", "white": "#ffffff", "red": "#ff0000",
+            "green": "#008000", "blue": "#0000ff", "yellow": "#ffff00",
+            "cyan": "#00ffff", "magenta": "#ff00ff", "orange": "#ffa500",
+            "purple": "#800080", "brown": "#a52a2a", "gray": "#808080",
+            "grey": "#808080", "pink": "#ffc0cb", "navy": "#000080",
+            "teal": "#008080", "lime": "#00ff00", "maroon": "#800000",
+            "olive": "#808000", "silver": "#c0c0c0", "aqua": "#00ffff",
+            "fuchsia": "#ff00ff",
+        }
+        val = (color_el.get("val") or "").strip().lower()
+        return preset_colors.get(val, "")
+
+    return ""
+
+
+def _extract_hex_from_color_choice(color_parent, theme_map=None, color_map=None, placeholder_hex="") -> str:
     """
     Extract a CSS hex color from a pptx color XML element.
 
@@ -238,60 +378,18 @@ def _extract_hex_from_color_choice(color_parent, theme_map=None, color_map=None)
     if color_parent is None:
         return ""
 
-    # 1. Explicit sRGB
-    try:
-        srgb = color_parent.find(qn("a:srgbClr"))
-        if srgb is not None:
-            val = (srgb.get("val") or "").strip()
-            if re.fullmatch(r"[0-9A-Fa-f]{6}", val):
-                return f"#{val.lower()}"
-    except Exception:
-        pass
-
-    # 2. Scheme color — dynamic theme map ONLY (no hardcoded fallback)
-    try:
-        scheme = color_parent.find(qn("a:schemeClr"))
-        if scheme is not None:
-            val = (scheme.get("val") or "").strip()
-            val = _resolve_scheme_key(val, color_map)
-            resolved = ""
-            if theme_map:
-                resolved = theme_map.get(val, "")
-            if resolved:
-                # Apply any luminance/shade/tint modifiers
-                resolved = _apply_color_transforms(resolved, scheme)
-            return resolved  # May be "" — caller handles gracefully
-    except Exception:
-        pass
-
-    # 3. System color
-    try:
-        sys_clr = color_parent.find(qn("a:sysClr"))
-        if sys_clr is not None:
-            val = (sys_clr.get("lastClr") or "").strip()
-            if re.fullmatch(r"[0-9A-Fa-f]{6}", val):
-                return f"#{val.lower()}"
-    except Exception:
-        pass
-
-    # 4. Preset color name
-    _PRESET_COLORS = {
-        "black": "#000000", "white": "#ffffff", "red": "#ff0000",
-        "green": "#008000", "blue": "#0000ff", "yellow": "#ffff00",
-        "cyan": "#00ffff", "magenta": "#ff00ff", "orange": "#ffa500",
-        "purple": "#800080", "brown": "#a52a2a", "gray": "#808080",
-        "grey": "#808080", "pink": "#ffc0cb", "navy": "#000080",
-        "teal": "#008080", "lime": "#00ff00", "maroon": "#800000",
-        "olive": "#808000", "silver": "#c0c0c0", "aqua": "#00ffff",
-        "fuchsia": "#ff00ff",
-    }
-    try:
-        prst = color_parent.find(qn("a:prstClr"))
-        if prst is not None:
-            val = (prst.get("val") or "").strip().lower()
-            return _PRESET_COLORS.get(val, "")
-    except Exception:
-        pass
+    for tag in ("srgbClr", "scrgbClr", "schemeClr", "sysClr", "prstClr"):
+        try:
+            color_el = color_parent.find(qn(f"a:{tag}"))
+            if color_el is not None:
+                return _extract_hex_from_color_element(
+                    color_el,
+                    theme_map=theme_map,
+                    color_map=color_map,
+                    placeholder_hex=placeholder_hex,
+                )
+        except Exception:
+            pass
 
     return ""
 
@@ -573,54 +671,214 @@ def _get_indent_level(para) -> int:
 
 # ── Background extraction ────────────────────────────────────────────────────
 
-def _extract_slide_background(slide, theme_map=None, color_map=None) -> dict:
+def _hex_to_rgb_tuple(hex_color: str) -> tuple[int, int, int] | None:
+    if not hex_color or len(hex_color) != 7 or not hex_color.startswith("#"):
+        return None
+    try:
+        return (
+            int(hex_color[1:3], 16),
+            int(hex_color[3:5], 16),
+            int(hex_color[5:7], 16),
+        )
+    except Exception:
+        return None
+
+
+def _interpolate_hex_colors(start_hex: str, end_hex: str, ratio: float) -> str:
+    start_rgb = _hex_to_rgb_tuple(start_hex)
+    end_rgb = _hex_to_rgb_tuple(end_hex)
+    if start_rgb is None:
+        return end_hex
+    if end_rgb is None:
+        return start_hex
+    ratio = max(0.0, min(1.0, ratio))
+    r = round(start_rgb[0] + (end_rgb[0] - start_rgb[0]) * ratio)
+    g = round(start_rgb[1] + (end_rgb[1] - start_rgb[1]) * ratio)
+    b = round(start_rgb[2] + (end_rgb[2] - start_rgb[2]) * ratio)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _extract_gradient_midpoint_color(grad_fill, theme_map=None, color_map=None, placeholder_hex="") -> str:
+    """
+    Collapse a gradient into a representative midpoint color.
+
+    CourseForge currently stores one slide background color, so midpoint
+    sampling is the closest single-color approximation we can preserve.
+    """
+    if grad_fill is None:
+        return ""
+
+    try:
+        gs_lst = grad_fill.find(qn("a:gsLst"))
+        if gs_lst is None:
+            return ""
+
+        stops = []
+        for gs in gs_lst.findall(qn("a:gs")):
+            hex_color = _extract_hex_from_color_choice(
+                gs,
+                theme_map=theme_map,
+                color_map=color_map,
+                placeholder_hex=placeholder_hex,
+            )
+            if not hex_color:
+                continue
+            try:
+                pos = int(gs.get("pos", "0"))
+            except Exception:
+                pos = 0
+            stops.append((max(0, min(100000, pos)), hex_color))
+
+        if not stops:
+            return ""
+        if len(stops) == 1:
+            return stops[0][1]
+
+        stops.sort(key=lambda item: item[0])
+        target = 50000
+        if target <= stops[0][0]:
+            return stops[0][1]
+
+        for (start_pos, start_hex), (end_pos, end_hex) in zip(stops, stops[1:]):
+            if start_pos <= target <= end_pos:
+                if end_pos == start_pos:
+                    return end_hex
+                ratio = (target - start_pos) / (end_pos - start_pos)
+                return _interpolate_hex_colors(start_hex, end_hex, ratio)
+
+        return stops[-1][1]
+    except Exception:
+        return ""
+
+
+def _extract_image_fill(blip_fill, owner) -> dict:
+    if blip_fill is None or owner is None:
+        return {"type": "none", "value": None}
+    try:
+        blip = blip_fill.find(qn("a:blip"))
+        if blip is None:
+            return {"type": "none", "value": None}
+        r_id = blip.get(qn("r:embed"))
+        if not r_id:
+            return {"type": "none", "value": None}
+        part = owner.part.related_parts.get(r_id)
+        if not part:
+            return {"type": "none", "value": None}
+        blob, mime = _compress_image(part.blob)
+        return {"type": "image", "value": _blob_to_data_uri(blob, mime)}
+    except Exception:
+        return {"type": "none", "value": None}
+
+
+def _extract_background_from_fill(fill_el, owner=None, theme_map=None, color_map=None, placeholder_hex="") -> dict:
+    if fill_el is None:
+        return {"type": "none", "value": None}
+
+    local = fill_el.tag.split("}")[-1] if "}" in fill_el.tag else fill_el.tag
+
+    if local == "solidFill":
+        hex_color = _extract_hex_from_color_choice(
+            fill_el,
+            theme_map=theme_map,
+            color_map=color_map,
+            placeholder_hex=placeholder_hex,
+        )
+        if hex_color:
+            return {"type": "color", "value": hex_color}
+
+    elif local == "gradFill":
+        hex_color = _extract_gradient_midpoint_color(
+            fill_el,
+            theme_map=theme_map,
+            color_map=color_map,
+            placeholder_hex=placeholder_hex,
+        )
+        if hex_color:
+            return {"type": "color", "value": hex_color}
+
+    elif local == "blipFill":
+        return _extract_image_fill(fill_el, owner)
+
+    return {"type": "none", "value": None}
+
+
+def _extract_background_from_owner(owner, theme_map=None, color_map=None, theme_bundle=None) -> dict:
+    owner_el = _xml_element(owner)
+    if owner_el is None:
+        return {"type": "none", "value": None}
+
+    try:
+        c_sld = owner_el.find(qn("p:cSld"))
+        bg_el = (c_sld.find(qn("p:bg")) if c_sld is not None else None) or owner_el.find(qn("p:bg"))
+        if bg_el is None:
+            return {"type": "none", "value": None}
+
+        bg_pr = bg_el.find(qn("p:bgPr"))
+        if bg_pr is not None:
+            for fill_tag in ("solidFill", "gradFill", "blipFill"):
+                fill_el = bg_pr.find(qn(f"a:{fill_tag}"))
+                resolved = _extract_background_from_fill(
+                    fill_el,
+                    owner=owner,
+                    theme_map=theme_map,
+                    color_map=color_map,
+                )
+                if resolved["type"] != "none" and resolved["value"]:
+                    return resolved
+
+        bg_ref = bg_el.find(qn("p:bgRef"))
+        if bg_ref is not None:
+            placeholder_hex = _extract_hex_from_color_choice(
+                bg_ref,
+                theme_map=theme_map,
+                color_map=color_map,
+            )
+            try:
+                idx = int(bg_ref.get("idx", ""))
+            except Exception:
+                idx = None
+
+            if idx is not None and theme_bundle:
+                fill_el = theme_bundle.get("bg_fill_styles", {}).get(idx)
+                resolved = _extract_background_from_fill(
+                    fill_el,
+                    owner=owner,
+                    theme_map=theme_map,
+                    color_map=color_map,
+                    placeholder_hex=placeholder_hex,
+                )
+                if resolved["type"] != "none" and resolved["value"]:
+                    return resolved
+
+            if placeholder_hex:
+                return {"type": "color", "value": placeholder_hex}
+    except Exception:
+        pass
+
+    return {"type": "none", "value": None}
+
+
+def _extract_slide_background(slide, theme_map=None, color_map=None, theme_bundle=None) -> dict:
     """
     Return background info:  { "type": "color"|"image"|"none", "value": ... }
     """
-    try:
-        bg = slide.background
-        fill = bg.fill
-        fill_type = fill.type
+    owners = [
+        slide,
+        getattr(slide, "slide_layout", None),
+        getattr(getattr(slide, "slide_layout", None), "slide_master", None),
+    ]
 
-        if fill_type is not None and str(fill_type) in ("SOLID", "1"):
-            try:
-                color = fill.fore_color.rgb
-                hex_color = _rgb_to_hex(color)
-                if hex_color:
-                    return {"type": "color", "value": hex_color}
-            except Exception:
-                pass
-
-        try:
-            bgPr = bg._element.find(f".//{qn('p:bgPr')}")
-            if bgPr is not None:
-                solidFill = bgPr.find(qn("a:solidFill"))
-                if solidFill is not None:
-                    hex_color = _extract_hex_from_color_choice(solidFill, theme_map, color_map)
-                    if hex_color:
-                        return {"type": "color", "value": hex_color}
-
-                blipFill = bgPr.find(qn("a:blipFill"))
-                if blipFill is not None:
-                    blip = blipFill.find(qn("a:blip"))
-                    if blip is not None:
-                        rId = blip.get(qn("r:embed"))
-                        if rId:
-                            part = slide.part.related_parts.get(rId)
-                            if part:
-                                blob, mime = _compress_image(part.blob)
-                                return {"type": "image", "value": _blob_to_data_uri(blob, mime)}
-
-            bgRef = bg._element.find(f".//{qn('p:bgRef')}")
-            if bgRef is not None:
-                hex_color = _extract_hex_from_color_choice(bgRef, theme_map, color_map)
-                if hex_color:
-                    return {"type": "color", "value": hex_color}
-        except Exception:
-            pass
-
-    except Exception:
-        pass
+    for owner in owners:
+        if owner is None:
+            continue
+        resolved = _extract_background_from_owner(
+            owner,
+            theme_map=theme_map,
+            color_map=color_map,
+            theme_bundle=theme_bundle,
+        )
+        if resolved["type"] != "none" and resolved["value"]:
+            return resolved
 
     return {"type": "none", "value": None}
 
@@ -856,13 +1114,117 @@ def _extract_notes(slide) -> str | None:
     return None
 
 
+def _extract_shape_fill_color(shape, theme_map=None, color_map=None) -> str:
+    """Extract standard shape fill color, mapping theme/scheme colors as needed."""
+    try:
+        if not hasattr(shape, "fill") or shape.fill is None:
+            return ""
+        fill = shape.fill
+        fill_type = fill.type
+        if fill_type is not None and str(fill_type) in ("SOLID", "1"):
+            try:
+                color = fill.fore_color.rgb
+                hex_color = _rgb_to_hex(color)
+                if hex_color:
+                    return hex_color
+            except Exception:
+                pass
+        try:
+            spPr = shape._element.find(qn("p:spPr"))
+            if spPr is not None:
+                solidFill = spPr.find(qn("a:solidFill"))
+                if solidFill is not None:
+                    hex_color = _extract_hex_from_color_choice(solidFill, theme_map, color_map)
+                    if hex_color:
+                        return hex_color
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return ""
+
+
+def _extract_canvas_text_item_data(shape, slide, slide_w, slide_h, z_index, theme_map=None, color_map=None) -> dict | None:
+    """Extract text from shape as a canvas text element with resolved font sizes and colors."""
+    if not hasattr(shape, "text_frame") or shape.text_frame is None:
+        return None
+    tf = shape.text_frame
+    paragraphs = [p for p in tf.paragraphs if p.text.strip()]
+    if not paragraphs:
+        return None
+
+    text_content = "\n".join(p.text for p in paragraphs)
+
+    # Try to find a font size
+    font_size = 16
+    for p in paragraphs:
+        for run in p.runs:
+            if run.font.size:
+                font_size = int(run.font.size / 12700)
+                break
+        if font_size != 16:
+            break
+
+    # Try to find a color
+    color = "#111827"
+    for p in paragraphs:
+        for run in p.runs:
+            hex_col = _extract_run_hex_color(run, p, shape, slide, theme_map, color_map)
+            if hex_col:
+                color = hex_col
+                break
+        if color != "#111827":
+            break
+
+    x = _emu_to_pct(shape.left, slide_w)
+    y = _emu_to_pct(shape.top, slide_h)
+    w = _emu_to_pct(shape.width, slide_w)
+    h = _emu_to_pct(shape.height, slide_h)
+
+    return {
+        "id": _uid("canvasitem"),
+        "type": "text",
+        "zIndex": z_index,
+        "x": x,
+        "y": y,
+        "w": w,
+        "h": h,
+        "rotation": 0,
+        "color": color,
+        "text": text_content,
+        "fontSize": font_size,
+        "fontFamily": "inherit",
+        "fontWeight": "normal",
+        "fontStyle": "normal",
+        "textDecoration": "none",
+        "textAlign": "left",
+        "lineHeight": 1.5,
+        "letterSpacing": 0,
+        "boxBg": "#ffffff",
+        "boxBgOpacity": 0,
+    }
+
+
+def _extract_table_as_plain_text(shape) -> str | None:
+    """Extract a PPTX table as a clean pipe-separated plain text string."""
+    try:
+        table = shape.table
+        lines = []
+        for row in table.rows:
+            cells = [cell.text_frame.text.strip() if cell.text_frame else "" for cell in row.cells]
+            lines.append(" | ".join(cells))
+        return "\n".join(lines)
+    except Exception:
+        return None
+
+
 # ── Main entry point ─────────────────────────────────────────────────────────
 
 async def extract_slides(file_bytes: bytes):
     prs = Presentation(io.BytesIO(file_bytes))
 
     # 1. Build the dynamic theme color map for this specific presentation
-    theme_map = _build_theme_color_map(prs)
+    default_theme_map = _build_theme_color_map(prs)
 
     # Slide dimensions in EMU — needed to convert shape positions to percentages.
     slide_w = prs.slide_width
@@ -872,8 +1234,11 @@ async def extract_slides(file_bytes: bytes):
 
     for i, slide in enumerate(prs.slides):
         slide_title = f"Slide {i + 1}"
-        elements = []
+        items = []
+        z_index = 1
         color_map = _get_effective_color_map(slide)
+        slide_theme_bundle = _get_cached_theme_bundle(_get_theme_part_for_slide(slide))
+        theme_map = slide_theme_bundle.get("colors") or default_theme_map
 
         # ── Determine slide title from title placeholder ──────────────────────
         for shape in slide.shapes:
@@ -888,29 +1253,82 @@ async def extract_slides(file_bytes: bytes):
                 break
 
         # ── Background ────────────────────────────────────────────────────────
-        # 2. Pass the generated theme_map into the background extractor
-        bg = _extract_slide_background(slide, theme_map, color_map)
+        # Use the slide's own master theme bundle so multi-master decks keep
+        # their real accent/background colors instead of borrowing another theme.
+        bg = _extract_slide_background(slide, theme_map, color_map, slide_theme_bundle)
 
         # ── Transition ────────────────────────────────────────────────────────
         transition = _extract_transition(slide)
 
+        # ── Slide transition canvas item ──────────────────────────────────────
+        if transition:
+            items.append({
+                "id": _uid("canvasitem"),
+                "type": "text",
+                "zIndex": 9999,
+                "x": 2.0,
+                "y": 2.0,
+                "w": 30.0,
+                "h": 6.0,
+                "rotation": 0,
+                "color": "#8b1a1a",
+                "text": f"▶ TRANSITION: {transition}",
+                "fontSize": 10,
+                "fontFamily": "inherit",
+                "fontWeight": "bold",
+                "fontStyle": "normal",
+                "textDecoration": "none",
+                "textAlign": "left",
+                "lineHeight": 1.5,
+                "letterSpacing": 0,
+                "boxBg": "#fff5f5",
+                "boxBgOpacity": 100,
+            })
+
         # ── Embedded audio ────────────────────────────────────────────────────
         audio_blocks = _extract_embedded_audio(slide, slide_w, slide_h)
-        elements.extend(audio_blocks)
+        bg_audio = None
+        if audio_blocks:
+            first_audio = audio_blocks[0]
+            bg_audio = {
+                "url": first_audio["audioUrl"],
+                "name": first_audio.get("label") or "Audio Track",
+                "mediaId": first_audio.get("mediaId")
+            }
 
         # ── Per-shape extraction ──────────────────────────────────────────────
         for shape in slide.shapes:
             # --- Table ---
             if shape.shape_type == MSO_SHAPE_TYPE.TABLE:
-                tbl = _extract_table(shape)
-                if tbl:
-                    elements.append(tbl)
+                table_text = _extract_table_as_plain_text(shape)
+                if table_text:
+                    items.append({
+                        "id": _uid("canvasitem"),
+                        "type": "text",
+                        "zIndex": z_index,
+                        "x": _emu_to_pct(shape.left, slide_w),
+                        "y": _emu_to_pct(shape.top, slide_h),
+                        "w": _emu_to_pct(shape.width, slide_w),
+                        "h": _emu_to_pct(shape.height, slide_h),
+                        "rotation": 0,
+                        "color": "#111827",
+                        "text": table_text,
+                        "fontSize": 14,
+                        "fontFamily": "inherit",
+                        "fontWeight": "normal",
+                        "fontStyle": "normal",
+                        "textDecoration": "none",
+                        "textAlign": "left",
+                        "lineHeight": 1.5,
+                        "letterSpacing": 0,
+                        "boxBg": "#ffffff",
+                        "boxBgOpacity": 0,
+                    })
+                    z_index += 1
                 continue
 
             # --- Image / Picture ---
             image_blob = None
-            content_type = "image/png"
-
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                 if _find_audio_rid(shape._element):
                     continue
@@ -932,56 +1350,138 @@ async def extract_slides(file_bytes: bytes):
                     alt_text = shape.name or ""
                 except Exception:
                     pass
-                elements.append({
-                    "id": _uid("img"),
+                items.append({
+                    "id": _uid("canvasitem"),
                     "type": "image",
-                    "imageUrl": data_uri,
-                    "caption": alt_text if alt_text and alt_text != shape.name else "",
+                    "zIndex": z_index,
+                    "x": _emu_to_pct(shape.left, slide_w),
+                    "y": _emu_to_pct(shape.top, slide_h),
+                    "w": _emu_to_pct(shape.width, slide_w),
+                    "h": _emu_to_pct(shape.height, slide_h),
+                    "rotation": 0,
+                    "src": data_uri,
                 })
+                z_index += 1
                 continue
 
-            # --- Skip MEDIA shapes — already handled by _extract_embedded_audio ---
+            # --- Skip MEDIA shapes ---
             if shape.shape_type == MSO_SHAPE_TYPE.MEDIA:
                 continue
 
-            # --- Text / List ---
-            text_blocks = _extract_text_shapes(shape, slide, theme_map, color_map)
-            elements.extend(text_blocks)
+            # --- Shape / Text box ---
+            is_geom_shape = False
+            geom_shape_type = None
+            try:
+                if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
+                    ast = shape.auto_shape_type
+                    if ast in (MSO_SHAPE.RECTANGLE, MSO_SHAPE.ROUNDED_RECTANGLE):
+                        geom_shape_type = 'rect'
+                        is_geom_shape = True
+                    elif ast == MSO_SHAPE.OVAL:
+                        geom_shape_type = 'circle'
+                        is_geom_shape = True
+                    elif ast in (MSO_SHAPE.ISOSCELES_TRIANGLE, MSO_SHAPE.RIGHT_TRIANGLE):
+                        geom_shape_type = 'triangle'
+                        is_geom_shape = True
+                    else:
+                        # Fallback for other autoshapes
+                        geom_shape_type = 'rect'
+                        is_geom_shape = True
+                elif shape.shape_type == MSO_SHAPE_TYPE.RECTANGLE:
+                    geom_shape_type = 'rect'
+                    is_geom_shape = True
+            except Exception:
+                pass
 
-        # ── Speaker notes → appended as a styled text block ──────────────────
+            has_text = False
+            if hasattr(shape, "text_frame"):
+                tf = shape.text_frame
+                paragraphs = [p for p in tf.paragraphs if p.text.strip()]
+                if paragraphs:
+                    has_text = True
+
+            if is_geom_shape:
+                fill_color = _extract_shape_fill_color(shape, theme_map, color_map)
+                if not fill_color:
+                    fill_color = "#3b82f6"
+
+                items.append({
+                    "id": _uid("canvasitem"),
+                    "type": geom_shape_type,
+                    "zIndex": z_index,
+                    "x": _emu_to_pct(shape.left, slide_w),
+                    "y": _emu_to_pct(shape.top, slide_h),
+                    "w": _emu_to_pct(shape.width, slide_w),
+                    "h": _emu_to_pct(shape.height, slide_h),
+                    "rotation": 0,
+                    "color": fill_color,
+                })
+
+                if has_text:
+                    text_item = _extract_canvas_text_item_data(shape, slide, slide_w, slide_h, z_index + 1, theme_map, color_map)
+                    if text_item:
+                        items.append(text_item)
+                        z_index += 2
+                    else:
+                        z_index += 1
+                else:
+                    z_index += 1
+
+            elif has_text:
+                text_item = _extract_canvas_text_item_data(shape, slide, slide_w, slide_h, z_index, theme_map, color_map)
+                if text_item:
+                    items.append(text_item)
+                    z_index += 1
+
+        # ── Speaker notes → appended as a styled text box canvas item ────────
         notes_text = _extract_notes(slide)
         if notes_text:
-            escaped = notes_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            elements.append({
-                "id": _uid("notes"),
+            items.append({
+                "id": _uid("canvasitem"),
                 "type": "text",
-                "content": (
-                    f'<div style="border-left:3px solid #8b1a1a;padding:8px 12px;'
-                    f'background:#fff5f5;border-radius:4px;font-size:13px;color:#555;">'
-                    f'<strong style="color:#8b1a1a;font-size:10px;letter-spacing:0.1em;">SPEAKER NOTES</strong>'
-                    f'<br/>{escaped}</div>'
-                ),
+                "zIndex": z_index,
+                "x": 5.0,
+                "y": 82.0,
+                "w": 90.0,
+                "h": 15.0,
+                "rotation": 0,
+                "color": "#555555",
+                "text": f"SPEAKER NOTES:\n{notes_text}",
+                "fontSize": 12,
+                "fontFamily": "inherit",
+                "fontWeight": "normal",
+                "fontStyle": "normal",
+                "textDecoration": "none",
+                "textAlign": "left",
+                "lineHeight": 1.5,
+                "letterSpacing": 0,
+                "boxBg": "#fff5f5",
+                "boxBgOpacity": 100,
             })
+            z_index += 1
 
         # ── Build slide block ─────────────────────────────────────────────────
+        canvas_bg = "#ffffff"
+        background = {"type": "color", "value": "#ffffff"}
+        if bg["type"] in ("color", "image") and bg["value"]:
+            background = bg
+            if bg["type"] == "color":
+                canvas_bg = bg["value"]
+            elif bg["type"] == "image":
+                canvas_bg = f"url('{bg['value']}')"
+
         slide_block = {
             "id": _uid("slide"),
-            "type": "slide",
+            "type": "canvas",
             "title": slide_title,
             "slideNumber": i + 1,
-            "elements": elements,
+            "canvasBg": canvas_bg,
+            "background": background,
+            "items": items,
         }
 
-        if bg["type"] in ("color", "image") and bg["value"]:
-            slide_block["background"] = bg
-
-        if bg["type"] == "color":
-            slide_block["backgroundColor"] = bg["value"]
-        elif bg["type"] == "image":
-            slide_block["backgroundImage"] = bg["value"]
-
-        if transition:
-            slide_block["transition"] = transition
+        if bg_audio:
+            slide_block["bgAudio"] = bg_audio
 
         blocks.append(slide_block)
 

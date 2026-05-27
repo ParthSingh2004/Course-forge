@@ -1,4 +1,5 @@
 import { ScormAPI } from "./scorm-api";
+import * as THREE from "three";
 import { compressState, decompressState, createInitialState } from "./state-compressor";
 import { TriggerDispatcher } from "./trigger-worker";
 import type {
@@ -464,6 +465,24 @@ class CourseForgeRuntime {
       return;
     }
 
+    // Slide lock guard
+    const targetSlide = this.course.slides[targetIdx];
+    if (targetSlide && targetSlide.locked) {
+      // Check if any slide prior to targetIdx is incomplete
+      for (let i = 0; i < targetIdx; i++) {
+        const prevSlide = this.course.slides[i];
+        const isPrevVisited = !!this.state.visitedSlides[i];
+        const isPrevMandatoryDone = this.areMandatoryItemsComplete(prevSlide);
+        if (!isPrevVisited || !isPrevMandatoryDone) {
+          this.renderFeedback(
+            `Slide "${targetSlide.title || `Slide ${targetIdx + 1}`}" is locked until all previous slides are completed.`,
+            "info"
+          );
+          return;
+        }
+      }
+    }
+
     // Strict navigation guard (block skipping of mandatory slides)
     if (targetIdx > this.state.currentSlide) {
       for (let i = this.state.currentSlide; i < targetIdx; i++) {
@@ -732,9 +751,24 @@ class CourseForgeRuntime {
       const isVisited  = !!this.state.visitedSlides[idx];
       const isMandatoryComplete = this.areMandatoryItemsComplete(slide);
 
+      let isActuallyLocked = false;
+      if (slide.locked) {
+        for (let i = 0; i < idx; i++) {
+          const prevSlide = this.course.slides[i];
+          const isPrevVisited = !!this.state.visitedSlides[i];
+          const isPrevMandatoryDone = this.areMandatoryItemsComplete(prevSlide);
+          if (!isPrevVisited || !isPrevMandatoryDone) {
+            isActuallyLocked = true;
+            break;
+          }
+        }
+      }
+
       if (isCurrent) item.classList.add("active");
 
-      if (isVisited && isMandatoryComplete) {
+      if (isActuallyLocked) {
+        item.classList.add("locked-slide");
+      } else if (isVisited && isMandatoryComplete) {
         item.classList.add("completed");
       } else if (!isVisited) {
         item.classList.add("locked");
@@ -744,6 +778,9 @@ class CourseForgeRuntime {
 
       const icon  = document.createElement("div");
       icon.className = "cf-rt-menu-item-icon";
+      if (isActuallyLocked) {
+        icon.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #a1a1aa;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
+      }
 
       const title = document.createElement("div");
       title.className = "cf-rt-menu-item-title";
@@ -981,13 +1018,13 @@ class CourseForgeRuntime {
         container.style.backgroundColor = bg.value;
         container.style.backgroundImage = "none";
       } else if (bg.type === "image" && bg.value) {
-        container.style.backgroundColor = "#ffffff";
+        container.style.backgroundColor = "#18181b";
         container.style.backgroundImage = `url("${bg.value}")`;
         container.style.backgroundSize = "cover";
         container.style.backgroundPosition = "center";
       }
     } else {
-      container.style.backgroundColor = "#ffffff";
+      container.style.backgroundColor = "#18181b";
       container.style.backgroundImage = "none";
     }
 
@@ -1030,12 +1067,6 @@ class CourseForgeRuntime {
 
     // Clear existing content
     container.innerHTML = "";
-
-    // Render slide title
-    const titleEl = document.createElement("h2");
-    titleEl.className = "cf-rt-slide-title";
-    titleEl.textContent = slide.title;
-    container.appendChild(titleEl);
 
     // Render each layer
     for (const layer of slide.layers) {
@@ -1356,6 +1387,314 @@ class CourseForgeRuntime {
         break;
       }
 
+      case "360-image-hotspot": {
+        wrapper.style.position = "relative";
+        wrapper.style.display = "block";
+        wrapper.style.width = "100%";
+        wrapper.style.borderRadius = "8px";
+        wrapper.style.overflow = "hidden";
+
+        const container = document.createElement("div");
+        container.style.width = "100%";
+        container.style.height = "400px";
+        container.style.position = "relative";
+        container.style.background = "#000000";
+        container.style.cursor = "grab";
+        wrapper.appendChild(container);
+
+        // Reset view button
+        const resetBtn = document.createElement("button");
+        resetBtn.type = "button";
+        resetBtn.style.position = "absolute";
+        resetBtn.style.top = "12px";
+        resetBtn.style.right = "12px";
+        resetBtn.style.background = "rgba(0,0,0,0.6)";
+        resetBtn.style.border = "1px solid rgba(255,255,255,0.15)";
+        resetBtn.style.color = "#fff";
+        resetBtn.style.borderRadius = "4px";
+        resetBtn.style.width = "32px";
+        resetBtn.style.height = "32px";
+        resetBtn.style.cursor = "pointer";
+        resetBtn.style.zIndex = "30";
+        resetBtn.style.display = "flex";
+        resetBtn.style.alignItems = "center";
+        resetBtn.style.justifyContent = "center";
+        resetBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>`;
+        container.appendChild(resetBtn);
+
+        // Active state and coordinates
+        let yaw = 0;
+        let pitch = 0;
+        let isDragging = false;
+        let startMouseX = 0;
+        let startMouseY = 0;
+        let startYaw = 0;
+        let startPitch = 0;
+
+        resetBtn.onclick = (e) => {
+          e.stopPropagation();
+          yaw = 0;
+          pitch = 0;
+        };
+
+        // Initialize Three.js
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, 1, 1, 1100);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(800, 400); // Default fallback size, ResizeObserver will update this
+        container.appendChild(renderer.domElement);
+
+        // Sphere Mesh
+        const geometry = new THREE.SphereGeometry(500, 60, 40);
+        geometry.scale(-1, 1, 1);
+        const material = new THREE.MeshBasicMaterial({ color: 0x222222, side: THREE.DoubleSide });
+        const sphereMesh = new THREE.Mesh(geometry, material);
+        scene.add(sphereMesh);
+
+        // Load Texture
+        const textureLoader = new THREE.TextureLoader();
+        const imgUrl = comp.src || (comp as any).imageUrl || "";
+        if (imgUrl) {
+          textureLoader.load(imgUrl, (texture) => {
+            material.color.setHex(0xffffff);
+            material.map = texture;
+            material.needsUpdate = true;
+          });
+        }
+
+        // Drag controls
+        const onMouseDown = (e: MouseEvent) => {
+          isDragging = true;
+          startMouseX = e.clientX;
+          startMouseY = e.clientY;
+          startYaw = yaw;
+          startPitch = pitch;
+          container.style.cursor = "grabbing";
+        };
+
+        const onMouseMove = (e: MouseEvent) => {
+          if (!isDragging) return;
+          const deltaX = e.clientX - startMouseX;
+          yaw = startYaw - deltaX * 0.15;
+          pitch = 0;
+        };
+
+        const onMouseUp = () => {
+          isDragging = false;
+          container.style.cursor = "grab";
+        };
+
+        container.addEventListener("mousedown", onMouseDown);
+        window.addEventListener("mousemove", onMouseMove);
+        window.addEventListener("mouseup", onMouseUp);
+
+        // Touch support
+        const onTouchStart = (e: TouchEvent) => {
+          if (e.touches.length !== 1) return;
+          isDragging = true;
+          startMouseX = e.touches[0].clientX;
+          startMouseY = e.touches[0].clientY;
+          startYaw = yaw;
+          startPitch = 0;
+        };
+
+        const onTouchMove = (e: TouchEvent) => {
+          if (!isDragging || e.touches.length !== 1) return;
+          const deltaX = e.touches[0].clientX - startMouseX;
+          yaw = startYaw - deltaX * 0.2;
+          pitch = 0;
+        };
+
+        container.addEventListener("touchstart", onTouchStart);
+        window.addEventListener("touchmove", onTouchMove, { passive: true });
+        window.addEventListener("touchend", onMouseUp);
+
+        // Active popup state
+        let activeHotspotId: string | null = null;
+        let activePopup: HTMLDivElement | null = null;
+
+        const closePopup = () => {
+          if (activePopup) {
+            activePopup.remove();
+            activePopup = null;
+          }
+          activeHotspotId = null;
+        };
+
+        // Render loop
+        let animationFrameId: number;
+        const hotspotItems = (comp as any).hotspots || [];
+
+        // Create DOM markers for each hotspot
+        const markerEls: { [id: string]: HTMLButtonElement } = {};
+        hotspotItems.forEach((hotspot: any) => {
+          const dot = document.createElement("button");
+          dot.type = "button";
+          dot.setAttribute("aria-label", hotspot.title || "Hotspot");
+          dot.style.position = "absolute";
+          dot.style.width = "24px";
+          dot.style.height = "24px";
+          dot.style.backgroundColor = hotspot.popupColor || "#b91c1c";
+          dot.style.borderRadius = "50%";
+          dot.style.border = "2px solid white";
+          dot.style.transform = "translate(-50%, -50%)";
+          dot.style.cursor = "pointer";
+          dot.style.zIndex = "20";
+          dot.style.padding = "0";
+          dot.style.display = "none";
+
+          dot.onclick = (e) => {
+            e.stopPropagation();
+            if (activeHotspotId === hotspot.id) {
+              closePopup();
+              return;
+            }
+
+            closePopup();
+            activeHotspotId = hotspot.id;
+
+            activePopup = document.createElement("div");
+            activePopup.style.position = "absolute";
+            activePopup.style.bottom = "16px";
+            activePopup.style.left = "50%";
+            activePopup.style.transform = "translateX(-50%)";
+            activePopup.style.minWidth = "260px";
+            activePopup.style.maxWidth = "340px";
+            activePopup.style.background = hotspot.popupColor || "#000000";
+            activePopup.style.border = "1px solid rgba(255,255,255,0.15)";
+            activePopup.style.color = "#fff";
+            activePopup.style.padding = "12px 16px";
+            activePopup.style.borderRadius = "6px";
+            activePopup.style.zIndex = "40";
+            activePopup.style.boxShadow = "0 8px 24px rgba(0,0,0,0.4)";
+
+            const header = document.createElement("div");
+            header.style.display = "flex";
+            header.style.justifyContent = "space-between";
+            header.style.alignItems = "center";
+            header.style.marginBottom = "0.4rem";
+
+            const title = document.createElement("h4");
+            title.style.margin = "0";
+            title.style.fontSize = "0.95rem";
+            title.style.fontWeight = "bold";
+            title.textContent = hotspot.title || "Hotspot";
+
+            const closeBtn = document.createElement("button");
+            closeBtn.type = "button";
+            closeBtn.innerHTML = "&times;";
+            closeBtn.style.background = "transparent";
+            closeBtn.style.border = "none";
+            closeBtn.style.color = "#a3a3a3";
+            closeBtn.style.fontSize = "18px";
+            closeBtn.style.cursor = "pointer";
+            closeBtn.onclick = closePopup;
+
+            header.appendChild(title);
+            header.appendChild(closeBtn);
+
+            const content = document.createElement("p");
+            content.style.margin = "0";
+            content.style.fontSize = "0.8rem";
+            content.style.opacity = "0.85";
+            content.style.lineHeight = "1.45";
+            content.style.whiteSpace = "pre-wrap";
+            content.textContent = hotspot.content || "";
+
+            activePopup.appendChild(header);
+            activePopup.appendChild(content);
+            container.appendChild(activePopup);
+          };
+
+          container.appendChild(dot);
+          markerEls[hotspot.id] = dot;
+        });
+
+        // Animation update
+        const animate = () => {
+          animationFrameId = requestAnimationFrame(animate);
+
+          pitch = 0;
+
+          const phi = THREE.MathUtils.degToRad(90);
+          const theta = THREE.MathUtils.degToRad(yaw);
+
+          const target = new THREE.Vector3();
+          target.x = Math.sin(phi) * Math.cos(theta);
+          target.y = Math.cos(phi);
+          target.z = Math.sin(phi) * Math.sin(theta);
+          camera.lookAt(target);
+
+          renderer.render(scene, camera);
+
+          // Project coordinates
+          const w = container.clientWidth;
+          const h = 400;
+
+          hotspotItems.forEach((hotspot: any) => {
+            const dot = markerEls[hotspot.id];
+            if (!dot) return;
+
+            const hPhi = THREE.MathUtils.degToRad(90 - hotspot.pitch);
+            const hTheta = THREE.MathUtils.degToRad(hotspot.yaw);
+
+            const pos = new THREE.Vector3();
+            pos.x = Math.sin(hPhi) * Math.cos(hTheta);
+            pos.y = Math.cos(hPhi);
+            pos.z = Math.sin(hPhi) * Math.sin(hTheta);
+            pos.multiplyScalar(500);
+            pos.project(camera);
+
+            const isBehind = pos.z > 1;
+            if (isBehind) {
+              dot.style.display = "none";
+            } else {
+              dot.style.display = "block";
+              const screenX = (pos.x * 0.5 + 0.5) * w;
+              const screenY = (pos.y * -0.5 + 0.5) * h;
+              dot.style.left = `${screenX}px`;
+              dot.style.top = `${screenY}px`;
+            }
+          });
+        };
+
+        animate();
+
+        // Handle resize using ResizeObserver
+        const resizeObserver = new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            const w = entry.contentRect.width || container.clientWidth;
+            if (w > 0) {
+              camera.aspect = w / 400;
+              camera.updateProjectionMatrix();
+              renderer.setSize(w, 400);
+            }
+          }
+        });
+        resizeObserver.observe(container);
+
+        // Cleanup on slide transition/unmount
+        const observer = new MutationObserver(() => {
+          if (!document.body.contains(container)) {
+            cancelAnimationFrame(animationFrameId);
+            resizeObserver.disconnect();
+            window.removeEventListener("mousemove", onMouseMove);
+            window.removeEventListener("mouseup", onMouseUp);
+            window.removeEventListener("touchmove", onTouchMove);
+            window.removeEventListener("touchend", onMouseUp);
+            geometry.dispose();
+            if (material.map) material.map.dispose();
+            material.dispose();
+            renderer.dispose();
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        break;
+      }
+
       case "canvas": {
         const canvasWrap = document.createElement("div");
         canvasWrap.style.position = "relative";
@@ -1366,6 +1705,19 @@ class CourseForgeRuntime {
         canvasWrap.style.borderRadius = "12px";
         canvasWrap.style.background = comp.canvasBg || "#ffffff";
         canvasWrap.style.boxShadow = "inset 0 0 0 1px rgba(17,24,39,0.06)";
+
+        const resizeObserver = new ResizeObserver((entries) => {
+          if (!canvasWrap.isConnected) {
+            resizeObserver.disconnect();
+            return;
+          }
+          for (const entry of entries) {
+            const width = entry.contentRect.width || canvasWrap.clientWidth;
+            const ratio = width / 1000;
+            canvasWrap.style.setProperty("--canvas-scale", String(ratio));
+          }
+        });
+        resizeObserver.observe(canvasWrap);
 
         const items = [...(comp.items || [])].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
         items.forEach((item) => {
@@ -1387,6 +1739,9 @@ class CourseForgeRuntime {
             shape.style.height = "100%";
             shape.style.background = item.color || "#3b82f6";
             shape.style.borderRadius = item.type === "circle" ? "50%" : "4px";
+            shape.style.boxShadow = "0 4px 10px rgba(17, 24, 39, 0.15), 0 1px 4px rgba(17, 24, 39, 0.08)";
+            shape.style.border = "1px solid rgba(17, 24, 39, 0.08)";
+            shape.style.boxSizing = "border-box";
             itemEl.appendChild(shape);
           } else if (item.type === "triangle") {
             const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -1395,27 +1750,36 @@ class CourseForgeRuntime {
             svg.setAttribute("width", "100%");
             svg.setAttribute("height", "100%");
             svg.style.display = "block";
+            svg.style.filter = "drop-shadow(0px 4px 6px rgba(17,24,39,0.15)) drop-shadow(0px 1px 3px rgba(17,24,39,0.08))";
 
             const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
             polygon.setAttribute("points", "50,0 100,100 0,100");
             polygon.setAttribute("fill", item.color || "#3b82f6");
             svg.appendChild(polygon);
             itemEl.appendChild(svg);
+          } else if (item.type === "image") {
+            const img = document.createElement("img");
+            img.style.width = "100%";
+            img.style.height = "100%";
+            img.style.objectFit = "contain";
+            img.src = item.src || "";
+            img.alt = "Canvas element";
+            itemEl.appendChild(img);
           } else if (item.type === "text") {
             itemEl.style.height = "auto";
 
             const text = document.createElement("div");
             text.style.width = "100%";
-            text.style.height = "100%";
+            text.style.height = "auto";
             text.style.color = item.color || "#111827";
-            text.style.fontSize = `${item.fontSize || 16}px`;
+            text.style.fontSize = `calc(var(--canvas-scale, 1) * ${item.fontSize || 16}px)`;
             text.style.fontFamily = item.fontFamily || "inherit";
             text.style.fontWeight = item.fontWeight || "normal";
             text.style.fontStyle = item.fontStyle || "normal";
             text.style.textDecoration = item.textDecoration || "none";
             text.style.textAlign = (item.textAlign as any) || "left";
             text.style.lineHeight = String(item.lineHeight || 1.5);
-            text.style.letterSpacing = `${item.letterSpacing || 0}px`;
+            text.style.letterSpacing = `calc(var(--canvas-scale, 1) * ${item.letterSpacing || 0}px)`;
             text.style.whiteSpace = "pre-wrap";
             text.style.wordBreak = "break-word";
             text.style.background = "transparent";
@@ -1424,6 +1788,10 @@ class CourseForgeRuntime {
             text.style.margin = "0";
             text.textContent = item.text || "";
             itemEl.appendChild(text);
+          }
+          const animEl = itemEl.firstElementChild as HTMLElement;
+          if (animEl) {
+            this.applyComponentAnimation(animEl, item.animation || "none", item.animationDelay || 0);
           }
 
           canvasWrap.appendChild(itemEl);
@@ -1630,12 +1998,12 @@ class CourseForgeRuntime {
           
           // Tab bar
           const tabBar = document.createElement("div");
-          tabBar.style.cssText = "display:flex;gap:0.5rem;border-bottom:1px solid #EAD0D0;margin-bottom:1rem;overflow-x:auto;padding-bottom:0.5rem;";
+          tabBar.style.cssText = "display:flex;gap:0.5rem;border-bottom:1px solid #2d2d34;margin-bottom:1rem;overflow-x:auto;padding-bottom:0.5rem;";
           
           tabs.forEach((tab, i) => {
             const btn = document.createElement("button");
             btn.textContent = tab.title || `Tab ${i + 1}`;
-            btn.style.cssText = `padding:0.5rem 1rem;cursor:pointer;font-weight:${i === currentTab ? 600 : 400};color:${i === currentTab ? '#8B1A1A' : '#666'};border:none;background:transparent;border-bottom:${i === currentTab ? '2px solid #8B1A1A' : '2px solid transparent'};white-space:nowrap;font-family:inherit;font-size:1rem;`;
+            btn.style.cssText = `padding:0.5rem 1rem;cursor:pointer;font-weight:${i === currentTab ? 600 : 400};color:${i === currentTab ? '#ef4444' : '#a1a1aa'};border:none;background:transparent;border-bottom:${i === currentTab ? '2px solid #ef4444' : '2px solid transparent'};white-space:nowrap;font-family:inherit;font-size:1rem;`;
             btn.onclick = () => {
               currentTab = i;
               renderTabContent();
@@ -1646,12 +2014,12 @@ class CourseForgeRuntime {
 
           // Content area
           const contentArea = document.createElement("div");
-          contentArea.style.cssText = "background:#FDF8F8;border-radius:8px;padding:1.5rem;border:1px solid #F0E0E0;";
+          contentArea.style.cssText = "background:#202026;border-radius:8px;padding:1.5rem;border:1px solid #2d2d34;";
 
           const activeTab = tabs[currentTab];
           
           const titleEl = document.createElement("h3");
-          titleEl.style.cssText = "margin:0 0 1rem 0;color:#1A0A0A;font-size:1.25rem;";
+          titleEl.style.cssText = "margin:0 0 1rem 0;color:#fafafa;font-size:1.25rem;";
           titleEl.textContent = activeTab.title;
           contentArea.appendChild(titleEl);
 
@@ -1670,7 +2038,7 @@ class CourseForgeRuntime {
 
           if (activeTab.content) {
             const textEl = document.createElement("div");
-            textEl.style.cssText = "line-height:1.6;color:#333;";
+            textEl.style.cssText = "line-height:1.6;color:#e4e4e7;";
             textEl.innerHTML = activeTab.content;
             innerFlex.appendChild(textEl);
           }
@@ -1685,7 +2053,7 @@ class CourseForgeRuntime {
           const prevBtn = document.createElement("button");
           prevBtn.textContent = "← Prev";
           prevBtn.disabled = currentTab === 0;
-          prevBtn.style.cssText = `padding:0.5rem 1rem;border-radius:4px;border:1px solid #EAD0D0;background:${currentTab === 0 ? '#F5F0EE' : 'white'};color:${currentTab === 0 ? '#C4A0A0' : '#8B1A1A'};cursor:${currentTab === 0 ? 'not-allowed' : 'pointer'};font-family:inherit;font-size:0.875rem;`;
+          prevBtn.style.cssText = `padding:0.5rem 1rem;border-radius:4px;border:1px solid #2d2d34;background:${currentTab === 0 ? '#18181b' : '#202026'};color:${currentTab === 0 ? '#4b5563' : '#ef4444'};cursor:${currentTab === 0 ? 'not-allowed' : 'pointer'};font-family:inherit;font-size:0.875rem;`;
           prevBtn.onclick = () => {
             if (currentTab > 0) {
               currentTab--;
@@ -1694,13 +2062,13 @@ class CourseForgeRuntime {
           };
 
           const slideCount = document.createElement("div");
-          slideCount.style.cssText = "font-size:0.875rem;color:#666;";
+          slideCount.style.cssText = "font-size:0.875rem;color:#a1a1aa;";
           slideCount.textContent = `Slide ${currentTab + 1} of ${tabs.length}`;
 
           const nextBtn = document.createElement("button");
           nextBtn.textContent = "Next →";
           nextBtn.disabled = currentTab === tabs.length - 1;
-          nextBtn.style.cssText = `padding:0.5rem 1rem;border-radius:4px;border:1px solid #EAD0D0;background:${currentTab === tabs.length - 1 ? '#F5F0EE' : 'white'};color:${currentTab === tabs.length - 1 ? '#C4A0A0' : '#8B1A1A'};cursor:${currentTab === tabs.length - 1 ? 'not-allowed' : 'pointer'};font-family:inherit;font-size:0.875rem;`;
+          nextBtn.style.cssText = `padding:0.5rem 1rem;border-radius:4px;border:1px solid #2d2d34;background:${currentTab === tabs.length - 1 ? '#18181b' : '#202026'};color:${currentTab === tabs.length - 1 ? '#4b5563' : '#ef4444'};cursor:${currentTab === tabs.length - 1 ? 'not-allowed' : 'pointer'};font-family:inherit;font-size:0.875rem;`;
           nextBtn.onclick = () => {
             if (currentTab < tabs.length - 1) {
               currentTab++;
@@ -1727,12 +2095,12 @@ class CourseForgeRuntime {
 
         topics.forEach((topic, index) => {
           const itemWrap = document.createElement("div");
-          itemWrap.style.cssText = "border:1px solid #EAD0D0;border-radius:10px;overflow:hidden;background:#ffffff;";
+          itemWrap.style.cssText = "border:1px solid #2d2d34;border-radius:10px;overflow:hidden;background:#202026;";
 
           const headerBtn = document.createElement("button");
           headerBtn.type = "button";
           headerBtn.setAttribute("aria-expanded", "false");
-          headerBtn.style.cssText = "width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border:none;background:#FDF8F8;color:#1A0A0A;cursor:pointer;font:inherit;font-weight:700;font-size:0.95rem;text-align:left;";
+          headerBtn.style.cssText = "width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border:none;background:#1e1e24;color:#fafafa;cursor:pointer;font:inherit;font-weight:700;font-size:0.95rem;text-align:left;";
 
           const title = document.createElement("span");
           title.textContent = topic.title || `Topic ${index + 1}`;
@@ -1740,11 +2108,11 @@ class CourseForgeRuntime {
 
           const caret = document.createElement("span");
           caret.textContent = "▾";
-          caret.style.cssText = "font-size:1rem;color:#8B1A1A;transition:transform 0.18s ease;transform:rotate(0deg);";
+          caret.style.cssText = "font-size:1rem;color:#ef4444;transition:transform 0.18s ease;transform:rotate(0deg);";
           headerBtn.appendChild(caret);
 
           const body = document.createElement("div");
-          body.style.cssText = "display:none;padding:16px;background:#ffffff;border-top:1px solid #F3E4E4;";
+          body.style.cssText = "display:none;padding:16px;background:#202026;border-top:1px solid #2d2d34;";
 
           const bodyInner = document.createElement("div");
           bodyInner.style.cssText = "display:flex;flex-direction:column;gap:12px;";
@@ -1756,11 +2124,11 @@ class CourseForgeRuntime {
               const img = document.createElement("img");
               img.src = item.src;
               img.alt = item.alt || "";
-              img.style.cssText = "max-width:100%;width:100%;height:auto;max-height:320px;object-fit:contain;border-radius:8px;background:#fafafa;";
+              img.style.cssText = "max-width:100%;width:100%;height:auto;max-height:320px;object-fit:contain;border-radius:8px;background:#18181b;";
               imgWrap.appendChild(img);
               if (item.caption) {
                 const caption = document.createElement("div");
-                caption.style.cssText = "margin-top:8px;font-size:0.82rem;color:#6b7280;";
+                caption.style.cssText = "margin-top:8px;font-size:0.82rem;color:#a1a1aa;";
                 caption.textContent = item.caption;
                 imgWrap.appendChild(caption);
               }
@@ -1771,7 +2139,7 @@ class CourseForgeRuntime {
             if (item.type === "text" && item.value) {
               const textEl = document.createElement("div");
               textEl.className = "cf-rt-text";
-              textEl.style.color = "#333333";
+              textEl.style.color = "#e4e4e7";
               textEl.innerHTML = item.value;
               bodyInner.appendChild(textEl);
             }
@@ -2141,6 +2509,241 @@ class CourseForgeRuntime {
         break;
       }
 
+      case "storyline-video": {
+        wrapper.style.position = "relative";
+        
+        if ((comp as any).mandatory) {
+          const isComplete = this.state.mandatoryCompleted.includes(comp.id);
+          const badge = document.createElement("div");
+          badge.id = `mandatory-badge-${comp.id}`;
+          badge.style.cssText = `font-size:10px;font-weight:700;letter-spacing:0.15em;padding:4px 10px;border-radius:6px;margin-bottom:8px;display:inline-block;`;
+          if (isComplete) {
+            badge.textContent = "✓ COMPLETED";
+            badge.style.background = "#052e16";
+            badge.style.color = "#4ade80";
+            badge.style.border = "1px solid #166534";
+          } else {
+            badge.textContent = "⚠ MANDATORY — Watch to continue";
+            badge.style.background = "#2a0a0a";
+            badge.style.color = "#f87171";
+            badge.style.border = "1px solid #7f1d1d";
+          }
+          wrapper.appendChild(badge);
+        }
+
+        if (comp.embedType === "youtube" || comp.embedType === "vimeo") {
+          const message = document.createElement("div");
+          message.style.cssText = "padding:24px;border:1px solid #7f1d1d;border-radius:8px;background:#1a0a0a;color:#fca5a5;line-height:1.5;";
+          message.innerHTML = "<strong>Storyline video requires an uploaded video file.</strong><br />External embeds cannot expose interactive overlays.";
+          wrapper.appendChild(message);
+          break;
+        }
+
+        const video = document.createElement("video");
+        video.className = "cf-rt-video";
+        video.controls = true;
+        video.src = comp.src;
+        video.style.width = "100%";
+        video.style.borderRadius = "8px";
+        video.style.background = "#000";
+        video.style.display = "block";
+        wrapper.appendChild(video);
+
+        const overlayContainer = document.createElement("div");
+        overlayContainer.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:10;border-radius:8px;overflow:hidden;";
+        wrapper.appendChild(overlayContainer);
+
+        const resolvedOverlays = new Set<string>();
+        let activeOverlayId: string | null = null;
+
+        const resetVideo = () => {
+          resolvedOverlays.clear();
+          activeOverlayId = null;
+          overlayContainer.innerHTML = "";
+          video.currentTime = 0;
+          video.controls = true;
+          video.play();
+        };
+
+        const overlays = (comp as any).overlays || [];
+
+        if ((comp as any).mandatory) {
+          let maxWatched = 0;
+          video.addEventListener("timeupdate", () => {
+            if (!video.seeking) {
+              maxWatched = Math.max(maxWatched, video.currentTime);
+            }
+          });
+          video.addEventListener("seeking", () => {
+            if (video.currentTime > maxWatched + 1) {
+              video.currentTime = maxWatched;
+            }
+          });
+          video.addEventListener("ended", () => {
+            const allCompleted = overlays.every((ov: any) => resolvedOverlays.has(ov.id));
+            if (allCompleted) {
+              this.markMandatoryComplete(comp.id);
+            }
+          });
+        }
+
+        video.addEventListener("timeupdate", () => {
+          if (activeOverlayId) return;
+
+          const currentTime = video.currentTime;
+
+          if (currentTime < 0.2) {
+            resolvedOverlays.clear();
+          }
+
+          const hit = overlays.find((ov: any) => {
+            return !resolvedOverlays.has(ov.id) && 
+                   currentTime >= ov.startTime && 
+                   currentTime <= ov.startTime + 0.8;
+          });
+
+          if (hit) {
+            video.pause();
+            video.controls = false;
+            activeOverlayId = hit.id;
+            
+            const el = document.createElement("div");
+            el.style.cssText = `position:absolute;left:${hit.x}%;top:${hit.y}%;transform:translate(-50%,-50%);pointer-events:auto;z-index:20;`;
+            
+            const resumePlayback = () => {
+              resolvedOverlays.add(hit.id);
+              activeOverlayId = null;
+              el.remove();
+              video.controls = true;
+              video.play();
+              if ((comp as any).mandatory && overlays.every((ov: any) => resolvedOverlays.has(ov.id))) {
+                this.markMandatoryComplete(comp.id);
+              }
+            };
+
+            const triggerError = (msg: string) => {
+              this.renderFeedback(msg || "Incorrect choice! Let's watch from the beginning.", "incorrect");
+              resetVideo();
+            };
+
+            if (hit.type === "button") {
+              const btn = document.createElement("button");
+              btn.className = "cf-rt-button";
+              btn.textContent = hit.text || "Continue";
+              if (hit.color) btn.style.background = hit.color;
+              if (hit.textColor) btn.style.color = hit.textColor;
+              
+              btn.onclick = () => {
+                if (hit.action === "resume") {
+                  resumePlayback();
+                } else if (hit.action === "next") {
+                  this.nextSlide();
+                } else if (hit.action === "slide") {
+                  this.goToSlide(hit.targetSlideId);
+                } else if (hit.action === "error") {
+                  triggerError(hit.errorMsg);
+                }
+              };
+              el.appendChild(btn);
+            } 
+            else if (hit.type === "flashcard") {
+              const scene = document.createElement("div");
+              scene.className = "cf-rt-flashcard-scene";
+              scene.style.cssText = "width:240px;height:150px;";
+              
+              const inner = document.createElement("div");
+              inner.className = "cf-rt-flashcard-inner";
+              inner.style.height = "100%";
+              
+              const front = document.createElement("div");
+              front.className = "cf-rt-flashcard-face cf-rt-flashcard-front";
+              front.style.cssText = "min-height:unset;height:100%;padding:14px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;";
+              front.innerHTML = `<div class="cf-rt-flashcard-text" style="font-size:0.9rem;">${hit.text || "Flip Me"}</div><div style="font-size:0.65rem;opacity:0.6;margin-top:8px;">Click to Flip</div>`;
+              
+              const back = document.createElement("div");
+              back.className = "cf-rt-flashcard-face cf-rt-flashcard-back";
+              back.style.cssText = "min-height:unset;height:100%;padding:14px;display:flex;flex-direction:column;justify-content:space-between;align-items:center;text-align:center;";
+              
+              const backText = document.createElement("div");
+              backText.className = "cf-rt-flashcard-text";
+              backText.style.cssText = "font-size:0.9rem;flex-grow:1;display:flex;align-items:center;justify-content:center;";
+              backText.textContent = hit.flashcardBackText || "Answer revealed";
+              
+              const continueBtn = document.createElement("button");
+              continueBtn.className = "cf-rt-button";
+              continueBtn.style.cssText = "padding:4px 12px;font-size:0.75rem;margin-top:6px;border-radius:6px;";
+              continueBtn.textContent = "Continue";
+              continueBtn.onclick = (e) => {
+                e.stopPropagation();
+                resumePlayback();
+              };
+              
+              back.appendChild(backText);
+              back.appendChild(continueBtn);
+              
+              inner.appendChild(front);
+              inner.appendChild(back);
+              scene.appendChild(inner);
+              
+              scene.onclick = () => {
+                scene.classList.toggle("flipped");
+              };
+              el.appendChild(scene);
+            } 
+            else if (hit.type === "dialogue") {
+              const card = document.createElement("div");
+              card.style.cssText = "width:280px;padding:16px;background:#ffffff;border:1px solid #ead0d0;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.15);color:#1a0a0a;display:flex;flex-direction:column;gap:10px;";
+              
+              const promptText = document.createElement("div");
+              promptText.style.cssText = "font-size:0.9rem;font-weight:700;color:#1a0a0a;line-height:1.45;";
+              promptText.textContent = hit.text || "Choose an option:";
+              card.appendChild(promptText);
+              
+              const optionsContainer = document.createElement("div");
+              optionsContainer.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+              
+              const opts = hit.dialogueOptions || [];
+              opts.forEach((opt: any) => {
+                const optBtn = document.createElement("button");
+                optBtn.type = "button";
+                optBtn.style.cssText = "padding:10px 14px;font-size:0.82rem;text-align:left;border-radius:8px;width:100%;margin:0;background:#ffffff;color:#1a0a0a;border:1.5px solid #ead0d0;cursor:pointer;font-weight:600;font-family:inherit;transition:all 0.15s;";
+                optBtn.textContent = opt.text;
+                
+                optBtn.onmouseover = () => {
+                  optBtn.style.background = "#fff5f5";
+                  optBtn.style.borderColor = "#8b1a1a";
+                  optBtn.style.color = "#8b1a1a";
+                };
+                optBtn.onmouseout = () => {
+                  optBtn.style.background = "#ffffff";
+                  optBtn.style.borderColor = "#ead0d0";
+                  optBtn.style.color = "#1a0a0a";
+                };
+                
+                optBtn.onclick = () => {
+                  if (opt.action === "resume") {
+                    resumePlayback();
+                  } else if (opt.action === "next") {
+                    this.nextSlide();
+                  } else if (opt.action === "slide") {
+                    this.goToSlide(opt.targetSlideId);
+                  } else if (opt.action === "error") {
+                    triggerError(opt.errorMsg);
+                  }
+                };
+                optionsContainer.appendChild(optBtn);
+              });
+              card.appendChild(optionsContainer);
+              el.appendChild(card);
+            }
+
+            overlayContainer.appendChild(el);
+          }
+        });
+
+        break;
+      }
+
       case "video": {
         if ((comp as any).mandatory) {
           const isComplete = this.state.mandatoryCompleted.includes(comp.id);
@@ -2390,7 +2993,7 @@ class CourseForgeRuntime {
             ? ` value="${escapeAttribute(answer || "")}"`
             : "";
           const disabledAttr = isCorrectAlready ? " disabled" : "";
-          return `<input id="fitb-${fbId}-${index}" type="text" placeholder="Answer ${index + 1}" style="padding:10px 14px;border-radius:8px;border:1.5px solid #e8d0d0;background:#ffffff;color:#1a0a0a;font-size:14px;outline:none;font-family:inherit;${isCorrectAlready ? "opacity:0.6;" : ""}"${valueAttr}${disabledAttr}/>`;
+          return `<input id="fitb-${fbId}-${index}" type="text" placeholder="Answer ${index + 1}" style="padding:10px 14px;border-radius:8px;border:1.5px solid #2d2d34;background:#18181b;color:#e4e4e7;font-size:14px;outline:none;font-family:inherit;${isCorrectAlready ? "opacity:0.6;" : ""}"${valueAttr}${disabledAttr}/>`;
         }).join("")}</div>`;
 
         const fbDiv = document.createElement("div");
@@ -2598,7 +3201,7 @@ class CourseForgeRuntime {
           return `
             <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center;">
               <div style="flex:1; padding:10px; background:#18181b; border-radius:6px; color:#fafafa; border:1px solid #27272a;">${p.leftItem}</div>
-              <select class="cf-rt-match-select" data-pair-idx="${idx}" style="flex:1; padding:10px; background:#ffffff; border-radius:6px; color:#1a0a0a; border:1px solid #e8d0d0; outline:none;" ${isCorrectAlready ? "disabled" : ""}>
+              <select class="cf-rt-match-select" data-pair-idx="${idx}" style="flex:1; padding:10px; background:#18181b; border-radius:6px; color:#e4e4e7; border:1px solid #2d2d34; outline:none;" ${isCorrectAlready ? "disabled" : ""}>
                 ${optionsHtml}
               </select>
             </div>
@@ -2679,7 +3282,7 @@ class CourseForgeRuntime {
         ul.className = "cf-rt-list";
         ul.style.paddingLeft = "20px";
         ul.style.margin = "0";
-        ul.style.color = "#111111";
+        ul.style.color = "#e4e4e7";
 
         for (const item of comp.items) {
           const li = document.createElement("li");
@@ -2706,7 +3309,7 @@ class CourseForgeRuntime {
             const subEl = this.renderComponent(sub);
             if (sub.type === "text") {
               const textEl = subEl?.querySelector(".cf-rt-text") as HTMLElement | null;
-              if (textEl) textEl.style.color = "#111111";
+              if (textEl) textEl.style.color = "#e4e4e7";
             }
             if (subEl) colEl.appendChild(subEl);
           }
@@ -2721,7 +3324,7 @@ class CourseForgeRuntime {
         tableDiv.style.overflowX = "auto";
         tableDiv.style.marginBottom = "1rem";
 
-        const tableColor = (comp as any).tableColor || "#ffffff";
+        const tableColor = (comp as any).tableColor || "#18181b";
         const headerColor = (comp as any).headerColor || darkenColor(tableColor, 20);
 
         let html = `<table style="width:100%; border-collapse:collapse; border:1px solid #3f3f46; font-size:14px;">`;
@@ -2758,9 +3361,9 @@ class CourseForgeRuntime {
         qdiv.style.position = "relative";
         qdiv.style.overflow = "hidden";
         qdiv.style.padding = "0";
-        qdiv.style.background = hasBg ? "#111827" : "#fff5f5";
-        qdiv.style.borderRadius = hasBg ? "8px" : "0 8px 8px 0";
-        qdiv.style.borderLeft = hasBg ? "none" : "4px solid #8b1a1a";
+        qdiv.style.background = hasBg ? "#111827" : "#202026";
+        qdiv.style.borderRadius = "8px";
+        qdiv.style.borderLeft = "4px solid #8b1a1a";
         qdiv.style.minHeight = hasBg ? "140px" : "";
         if (hasBg) {
           qdiv.style.backgroundImage = `url(${(comp as any).bgImage})`;
@@ -2785,9 +3388,9 @@ class CourseForgeRuntime {
         inner.style.gap = "0.35rem";
         inner.style.padding = "1rem 1rem 0.6rem";
 
-        const quoteColor = hasBg ? "rgba(255,255,255,0.6)" : "#c0807080";
-        const authorColor = hasBg ? "rgba(255,255,255,0.85)" : "#8b6060";
-        const textColor = hasBg ? "#ffffff" : "#1a0a0a";
+        const quoteColor = hasBg ? "rgba(255,255,255,0.6)" : "rgba(238, 208, 208, 0.4)";
+        const authorColor = hasBg ? "rgba(255,255,255,0.85)" : "#d8b0b0";
+        const textColor = hasBg ? "#ffffff" : "#e4e4e7";
 
         if (isInline) {
           const inline = document.createElement("div");
@@ -2861,10 +3464,10 @@ class CourseForgeRuntime {
         const shell = document.createElement("div");
         shell.style.margin = "1rem 0";
         shell.style.borderRadius = "12px";
-        shell.style.border = "1px solid #e4e4e0";
+        shell.style.border = "1px solid #2d2d34";
         shell.style.overflow = "hidden";
-        shell.style.background = "#ffffff";
-        shell.style.boxShadow = "0 1px 4px rgba(0,0,0,.05), 0 2px 12px rgba(0,0,0,.04)";
+        shell.style.background = "#18181b";
+        shell.style.boxShadow = "0 4px 20px rgba(0,0,0,0.3)";
 
         const canvas = document.createElement("div");
         canvas.style.position = "relative";
@@ -2879,14 +3482,14 @@ class CourseForgeRuntime {
         if (imageSrc) {
           canvas.style.backgroundImage = `url(${imageSrc})`;
         } else {
-          canvas.style.background = "#fafaf8";
+          canvas.style.background = "#202026";
           const empty = document.createElement("div");
           empty.style.position = "absolute";
           empty.style.inset = "0";
           empty.style.display = "flex";
           empty.style.alignItems = "center";
           empty.style.justifyContent = "center";
-          empty.style.color = "#909090";
+          empty.style.color = "#a1a1aa";
           empty.style.fontSize = "0.88rem";
           empty.style.fontWeight = "600";
           empty.textContent = "No image uploaded";
@@ -3094,10 +3697,10 @@ class CourseForgeRuntime {
 
     const backBgStyles = isSolid
       ? `background:${baseColor};`
-      : `background:${fc.backBackground || "linear-gradient(145deg, #fffaf9 0%, #fff0ee 100%)"}`;
+      : `background:${fc.backBackground || "linear-gradient(145deg, #1e1e24 0%, #18181b 100%)"}`;
 
-    const backTextColor = isSolid ? "#ffffff" : (fc.backTextColor || "#1a0a0a");
-    const backBadgeColor = isSolid ? "rgba(255,255,255,0.68)" : (fc.backBadgeColor || "#c4a0a0");
+    const backTextColor = isSolid ? "#ffffff" : (fc.backTextColor || "#ffffff");
+    const backBadgeColor = isSolid ? "rgba(255,255,255,0.68)" : (fc.backBadgeColor || "#ef4444");
 
     return `
       <div class="cf-rt-flashcard-scene">
@@ -3107,7 +3710,7 @@ class CourseForgeRuntime {
             <div class="cf-rt-flashcard-text">${fc.front}</div>
             <div class="cf-rt-flashcard-hint" style="color:rgba(255,255,255,0.78);">↻ Click to flip</div>
           </div>
-          <div class="cf-rt-flashcard-face cf-rt-flashcard-back" style="${backBgStyles};border:2px solid ${fc.backBorder || "#e8c8c8"};box-shadow:0 8px 32px ${fc.backShadow || "rgba(139,26,26,0.12)"};">
+          <div class="cf-rt-flashcard-face cf-rt-flashcard-back" style="${backBgStyles};border:2px solid ${fc.backBorder || "#2d2d34"};box-shadow:0 8px 32px ${fc.backShadow || "rgba(139,26,26,0.12)"};">
             <div class="cf-rt-flashcard-label" style="color:${backBadgeColor};">ANSWER</div>
             <div class="cf-rt-flashcard-text" style="color:${backTextColor};">${fc.back}</div>
             <div class="cf-rt-flashcard-hint" style="color:${backTextColor};">↻ Click to flip back</div>

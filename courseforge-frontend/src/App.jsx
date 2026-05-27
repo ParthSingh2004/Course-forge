@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerClick, ListChecks, Trash2, GripVertical, FileUp, Globe, BookOpen, ChevronRight, CreditCard, Video, RotateCcw, Play, List, Quote, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify, ShieldCheck, ToggleLeft, PenLine, Mic, FileText, Table, Save, CheckCircle, Eye, X, ChevronDown, Copy, Plus, RefreshCw, Square } from 'lucide-react';
+import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerClick, ListChecks, Trash2, GripVertical, FileUp, Globe, BookOpen, ChevronRight, CreditCard, Video, RotateCcw, Play, List, Quote, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify, ShieldCheck, ToggleLeft, PenLine, Mic, FileText, Table, Save, CheckCircle, Eye, X, ChevronDown, Copy, Plus, RefreshCw, Square, Circle, Triangle, Lock } from 'lucide-react';
+
 
 // Core UI & Storage
 import Dashboard from './Dashboard';
@@ -13,7 +14,9 @@ import FlashcardBlock from './components/blocks/FlashcardBlock';
 import ImageBlock from './components/blocks/ImageBlock';
 import ImageStackBlock from './components/blocks/ImageStackBlock';
 import ImageHotspotBlock from './components/blocks/ImageHotspotBlock';
+import ThreeSixtyImageHotspotBlock from './components/blocks/ThreeSixtyImageHotspotBlock';
 import InteractiveVideoBlock from './components/blocks/InteractiveVideoBlock';
+import StorylineVideoBlock from './components/blocks/StorylineVideoBlock';
 import VideoBlock from './components/blocks/VideoBlock';
 import ProcessBlock from './components/blocks/ProcessBlock';
 import TableBlock from './components/blocks/TableBlock';
@@ -104,6 +107,13 @@ const cloneBlockWithFreshIds = (block) => {
     }));
   }
 
+  if (block.type === '360-image-hotspot') {
+    clonedBlock.hotspots = (block.hotspots || []).map(hotspot => ({
+      ...hotspot,
+      id: makeEditorId('hotspot'),
+    }));
+  }
+
   if (block.type === 'canvas') {
     clonedBlock.items = (block.items || []).map(item => ({
       ...item,
@@ -132,17 +142,36 @@ const cloneBlockWithFreshIds = (block) => {
   return clonedBlock;
 };
 
-const cloneSlideWithFreshIds = (slide, copyNumber = null) => ({
-  ...slide,
-  id: makeEditorId('slide'),
-  title: copyNumber ? `${slide.title || 'Untitled Slide'} Copy ${copyNumber}` : `${slide.title || 'Untitled Slide'} Copy`,
-  elements: (slide.elements || []).map(cloneBlockWithFreshIds),
-});
+const cloneSlideWithFreshIds = (slide, copyNumber = null) => {
+  const cloned = {
+    ...slide,
+    id: makeEditorId('slide'),
+    title: copyNumber ? `${slide.title || 'Untitled Slide'} Copy ${copyNumber}` : `${slide.title || 'Untitled Slide'} Copy`,
+    elements: (slide.elements || []).map(cloneBlockWithFreshIds),
+  };
+  if (slide.type === 'canvas' && slide.items) {
+    cloned.items = slide.items.map(item => ({
+      ...item,
+      id: makeEditorId('canvasitem'),
+    }));
+  }
+  return cloned;
+};
 
 const createBlankSlide = (slideNumber) => ({
   id: makeEditorId('slide'),
   type: 'slide',
   title: `Slide ${slideNumber}`,
+  elements: [],
+});
+
+const createBlankCanvasSlide = (slideNumber) => ({
+  id: makeEditorId('slide'),
+  type: 'canvas',
+  title: `Canvas Slide ${slideNumber}`,
+  items: [],
+  canvasBg: '#ffffff',
+  background: { type: 'color', value: '#ffffff' },
   elements: [],
 });
 
@@ -184,6 +213,13 @@ function App() {
   const [passingScore, setPassingScore] = useState(initialState.passingScore);
   const [slides, setSlides] = useState(initialState.slides);
   const [activeSlideId, setActiveSlideId] = useState(null);
+  const [selectedCanvasItemId, setSelectedCanvasItemId] = useState(null);
+  const canvasBlockRef = useRef(null);
+
+  useEffect(() => {
+    setSelectedCanvasItemId(null);
+  }, [activeSlideId]);
+
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewHtml, setPreviewHtml] = useState(null);
@@ -312,12 +348,31 @@ function App() {
     setSlides(prev => [...prev, newSlide]);
   };
 
+  const addCanvasSlide = () => {
+    const newSlide = createBlankCanvasSlide(slides.length + 1);
+    setSlides(prev => [...prev, newSlide]);
+  };
+
   const insertSlideNextTo = (slideId) => {
     let insertedSlideId = null;
     setSlides(prev => {
       const slideIndex = prev.findIndex(s => s.id === slideId);
       if (slideIndex < 0) return prev;
       const insertedSlide = createBlankSlide(prev.length + 1);
+      insertedSlideId = insertedSlide.id;
+      const nextSlides = [...prev];
+      nextSlides.splice(slideIndex + 1, 0, insertedSlide);
+      return nextSlides;
+    });
+    if (insertedSlideId) setActiveSlideId(insertedSlideId);
+  };
+
+  const insertCanvasSlideNextTo = (slideId) => {
+    let insertedSlideId = null;
+    setSlides(prev => {
+      const slideIndex = prev.findIndex(s => s.id === slideId);
+      if (slideIndex < 0) return prev;
+      const insertedSlide = createBlankCanvasSlide(prev.length + 1);
       insertedSlideId = insertedSlide.id;
       const nextSlides = [...prev];
       nextSlides.splice(slideIndex + 1, 0, insertedSlide);
@@ -358,6 +413,19 @@ function App() {
 
   const updateSlideTitle = (slideId, title) => {
     setSlides(prev => prev.map(s => s.id === slideId ? { ...s, title } : s));
+  };
+
+  const updateSlide = (slideId, patch) => {
+    setSlides(prev => prev.map(s => {
+      if (s.id === slideId) {
+        const updated = { ...s, ...patch };
+        if (patch.canvasBg) {
+          updated.background = { type: 'color', value: patch.canvasBg };
+        }
+        return updated;
+      }
+      return s;
+    }));
   };
 
   const goToAdjacentSlide = (direction) => {
@@ -473,7 +541,16 @@ function App() {
       newBlock.interactions = [];
       newBlock.mandatory = false;
     }
+    if (type === 'storyline-video') {
+      newBlock.videoUrl = '';
+      newBlock.overlays = [];
+      newBlock.mandatory = false;
+    }
     if (type === 'image-hotspot') {
+      newBlock.imageUrl = '';
+      newBlock.hotspots = [];
+    }
+    if (type === '360-image-hotspot') {
       newBlock.imageUrl = '';
       newBlock.hotspots = [];
     }
@@ -614,6 +691,36 @@ function App() {
             background = { type: 'image', value: b.backgroundImage };
           }
         }
+
+        if (b.type === 'canvas') {
+          const items = (b.items || []).map((item, j) => {
+            const updatedItem = { ...item, id: makeEditorId('canvasitem') };
+            if (updatedItem.type === 'image' && updatedItem.src && updatedItem.src.startsWith('/api/')) {
+              updatedItem.src = buildBackendAssetUrl(updatedItem.src);
+            }
+            return updatedItem;
+          });
+
+          let bgAudio = null;
+          if (b.bgAudio) {
+            bgAudio = { ...b.bgAudio };
+            if (bgAudio.url && bgAudio.url.startsWith('/api/')) {
+              bgAudio.url = buildBackendAssetUrl(bgAudio.url);
+            }
+          }
+
+          return {
+            id: makeEditorId('slide'),
+            type: 'canvas',
+            title: b.title || `Imported Slide ${i + 1}`,
+            canvasBg: b.canvasBg || '#ffffff',
+            background: background || { type: 'color', value: '#ffffff' },
+            items,
+            bgAudio,
+            elements: [],
+          };
+        }
+
         let elements = (b.elements || []).map((el, j) => {
           let updatedEl = { ...el, id: Date.now() + i * 1000 + j + 1 };
           if (updatedEl.type === 'audio' && updatedEl.audioUrl && updatedEl.audioUrl.startsWith('/api/')) {
@@ -680,7 +787,7 @@ function App() {
     let warnings = [];
     let emptyCount = 0;
     slides.forEach((slide, sIdx) => {
-      slide.elements.forEach((block, bIdx) => {
+      (slide.elements || []).forEach((block, bIdx) => {
         if (block.type === 'text' && !block.content?.trim()) emptyCount++;
         if (block.type === 'video' && !block.videoUrl) warnings.push(`Slide ${sIdx + 1}: Video block missing URL.`);
         if (block.type === 'audio' && !block.audioUrl && !block.mediaId) warnings.push(`Slide ${sIdx + 1}: Audio block missing media file.`);
@@ -981,7 +1088,9 @@ function App() {
       case 'flashcard': return <FlashcardBlock block={block} onUpdate={updateBlock} />;
       case 'video': return <VideoBlock block={block} onUpdate={updateBlock} />;
       case 'interactive-video': return <InteractiveVideoBlock block={block} onUpdate={updateBlock} readOnly={isPreviewOpen} />;
+      case 'storyline-video': return <StorylineVideoBlock block={block} onUpdate={updateBlock} readOnly={isPreviewOpen} slides={slides} />;
       case 'image-hotspot': return <ImageHotspotBlock block={block} onUpdate={updateBlock} readOnly={isPreviewOpen} />;
+      case '360-image-hotspot': return <ThreeSixtyImageHotspotBlock block={block} onUpdate={updateBlock} readOnly={isPreviewOpen} />;
       case 'image-stack': return <ImageStackBlock block={block} onUpdate={updateBlock} readOnly={isPreviewOpen} />;
       case 'process': return <ProcessBlock block={block} onUpdate={updateBlock} />;
       case 'table': return <TableBlock block={block} onUpdate={updateBlock} />;
@@ -1261,92 +1370,485 @@ function App() {
             {/* ── Content Tab ── */}
             {sidebarTab === 'content' && (
               <div className="cf-sidebar-section" style={{ opacity: activeSlideId ? 1 : 0.5, pointerEvents: activeSlideId ? 'auto' : 'none' }}>
-                {!activeSlideId && (
-                  <div style={{ fontSize: '0.72rem', color: '#c4a0a0', textAlign: 'center', marginBottom: '10px' }}>
-                    Select a slide to add blocks.
+                {activeSlide?.type === 'canvas' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {/* Add to Canvas Section */}
+                    <span className="cf-sidebar-label" style={{ marginTop: 0 }}>Add Elements</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+                      <button
+                        onClick={() => canvasBlockRef.current?.addItem('rect')}
+                        className="cf-sidebar-btn"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600 }}
+                      >
+                        <Square style={{ width: 14, height: 14, color: '#8b1a1a' }} /> Rectangle
+                      </button>
+                      <button
+                        onClick={() => canvasBlockRef.current?.addItem('circle')}
+                        className="cf-sidebar-btn"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600 }}
+                      >
+                        <Circle style={{ width: 14, height: 14, color: '#8b1a1a' }} /> Circle
+                      </button>
+                      <button
+                        onClick={() => canvasBlockRef.current?.addItem('triangle')}
+                        className="cf-sidebar-btn"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600 }}
+                      >
+                        <Triangle style={{ width: 14, height: 14, color: '#8b1a1a' }} /> Triangle
+                      </button>
+                      <button
+                        onClick={() => canvasBlockRef.current?.addItem('text')}
+                        className="cf-sidebar-btn"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600 }}
+                      >
+                        <Type style={{ width: 14, height: 14, color: '#8b1a1a' }} /> Text Box
+                      </button>
+                      <button
+                        onClick={() => canvasBlockRef.current?.triggerImageUpload()}
+                        className="cf-sidebar-btn"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600, gridColumn: 'span 2', justifyContent: 'center' }}
+                      >
+                        <ImageIcon style={{ width: 14, height: 14, color: '#8b1a1a' }} /> Add Image
+                      </button>
+                    </div>
+
+                    <div className="cf-sidebar-divider" style={{ margin: '8px 0' }} />
+
+                    {/* Canvas Background Section */}
+                    <div style={{ marginBottom: '8px', padding: '0 8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#000000', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Canvas BG</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <input
+                            type="color"
+                            value={activeSlide.canvasBg || '#ffffff'}
+                            onChange={e => canvasBlockRef.current?.commitCanvasBg?.(e.target.value)}
+                            style={{
+                              width: 28, height: 28, padding: 2,
+                              border: '1px solid #ead0d0', borderRadius: 6, cursor: 'pointer',
+                            }}
+                          />
+                          <span style={{ color: '#8b6060', fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums' }}>
+                            {activeSlide.canvasBg || '#ffffff'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="cf-sidebar-divider" style={{ margin: '8px 0' }} />
+
+                    {/* Selected Item Properties Section */}
+                    {selectedCanvasItemId ? (() => {
+                      const selectedItem = activeSlide.items?.find(i => i.id === selectedCanvasItemId);
+                      if (!selectedItem) return <div style={{ fontSize: '0.72rem', color: '#8b6060', fontStyle: 'italic', textAlign: 'center', padding: '10px 0' }}>Select an element to edit properties.</div>;
+                      
+                      const typeLabel = { rect: 'Rectangle', circle: 'Circle', triangle: 'Triangle', text: 'Text Box', image: 'Image' }[selectedItem.type];
+
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '0 8px' }}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#8b1a1a', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid #f0e0e0', paddingBottom: 6 }}>
+                            ✏️ Edit {typeLabel}
+                          </div>
+
+                          {selectedItem.type !== 'image' && (
+                            <div>
+                              <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 6, textTransform: 'uppercase' }}>
+                                {selectedItem.type === 'text' ? 'Text Color' : 'Fill Color'}
+                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                <input
+                                  type="color"
+                                  value={selectedItem.color}
+                                  onChange={e => canvasBlockRef.current?.patchItem?.(selectedItem.id, { color: e.target.value })}
+                                  style={{
+                                    width: 32, height: 32, border: '1px solid #ead0d0',
+                                    borderRadius: 6, cursor: 'pointer', padding: 2,
+                                  }}
+                                />
+                                <span style={{ color: '#8b6060', fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums' }}>
+                                  {selectedItem.color}
+                                </span>
+                              </div>
+                              {/* Quick palette */}
+                              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                                {['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#111827', '#6b7280'].map(c => (
+                                  <div
+                                    key={c}
+                                    onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { color: c })}
+                                    style={{
+                                      width: 18, height: 18, borderRadius: 4, background: c, cursor: 'pointer',
+                                      border: c === selectedItem.color ? '2px solid #8b1a1a' : '1px solid #ead0d0',
+                                      boxSizing: 'border-box',
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {selectedItem.type === 'text' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              {/* Font Family Dropdown */}
+                              <div>
+                                <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 4, textTransform: 'uppercase' }}>
+                                  Font Family
+                                </span>
+                                <select
+                                  value={selectedItem.fontFamily || 'inherit'}
+                                  onChange={e => canvasBlockRef.current?.patchItem?.(selectedItem.id, { fontFamily: e.target.value })}
+                                  style={{
+                                    width: '100%',
+                                    padding: '6px',
+                                    background: '#fff',
+                                    border: '1px solid #ead0d0',
+                                    borderRadius: 5,
+                                    fontSize: '0.75rem',
+                                    outline: 'none',
+                                    color: '#8b1a1a',
+                                    cursor: 'pointer',
+                                    fontFamily: 'Roboto, sans-serif'
+                                  }}
+                                >
+                                  <option value="inherit">Default (DM Sans)</option>
+                                  <option value="Roboto, sans-serif">Roboto</option>
+                                  <option value="Arial, sans-serif">Arial</option>
+                                  <option value="Georgia, serif">Georgia</option>
+                                  <option value='"Times New Roman", Times, serif'>Times New Roman</option>
+                                  <option value='"Courier New", Courier, monospace'>Courier New</option>
+                                  <option value="Verdana, Geneva, sans-serif">Verdana</option>
+                                  <option value='"Trebuchet MS", Helvetica, sans-serif'>Trebuchet MS</option>
+                                  <option value="Impact, Haettenschweiler, sans-serif">Impact</option>
+                                  <option value='"Palatino Linotype", Palatino, serif'>Palatino</option>
+                                  <option value="Tahoma, Geneva, sans-serif">Tahoma</option>
+                                </select>
+                              </div>
+
+                              {/* Font Size Slider */}
+                              <div>
+                                <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 4, textTransform: 'uppercase' }}>
+                                  Font Size — {selectedItem.fontSize}px
+                                </span>
+                                <input
+                                  type="range" min="8" max="60"
+                                  value={selectedItem.fontSize}
+                                  onChange={e => canvasBlockRef.current?.patchItem?.(selectedItem.id, { fontSize: Number(e.target.value) })}
+                                  style={{ width: '100%', accentColor: '#8b1a1a' }}
+                                />
+                              </div>
+
+                              {/* Text Style (Bold, Italic, Underline) */}
+                              <div>
+                                <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 4, textTransform: 'uppercase' }}>
+                                  Text Style
+                                </span>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                  <button
+                                    onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { fontWeight: selectedItem.fontWeight === 'bold' ? 'normal' : 'bold' })}
+                                    style={{
+                                      flex: 1, padding: '6px 4px', border: '1px solid #ead0d0', borderRadius: 5, cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold',
+                                      background: selectedItem.fontWeight === 'bold' ? '#ead0d0' : '#fff', color: '#8b1a1a', transition: 'all 0.1s'
+                                    }}
+                                    title="Bold"
+                                  >
+                                    B
+                                  </button>
+                                  <button
+                                    onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { fontStyle: selectedItem.fontStyle === 'italic' ? 'normal' : 'italic' })}
+                                    style={{
+                                      flex: 1, padding: '6px 4px', border: '1px solid #ead0d0', borderRadius: 5, cursor: 'pointer', fontSize: '0.75rem', fontStyle: 'italic',
+                                      background: selectedItem.fontStyle === 'italic' ? '#ead0d0' : '#fff', color: '#8b1a1a', transition: 'all 0.1s'
+                                    }}
+                                    title="Italic"
+                                  >
+                                    I
+                                  </button>
+                                  <button
+                                    onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { textDecoration: selectedItem.textDecoration === 'underline' ? 'none' : 'underline' })}
+                                    style={{
+                                      flex: 1, padding: '6px 4px', border: '1px solid #ead0d0', borderRadius: 5, cursor: 'pointer', fontSize: '0.75rem', textDecoration: 'underline',
+                                      background: selectedItem.textDecoration === 'underline' ? '#ead0d0' : '#fff', color: '#8b1a1a', transition: 'all 0.1s'
+                                    }}
+                                    title="Underline"
+                                  >
+                                    U
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Text Alignment */}
+                              <div>
+                                <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 4, textTransform: 'uppercase' }}>
+                                  Alignment
+                                </span>
+                                <div style={{ display: 'flex', gap: 4 }}>
+                                  {['left', 'center', 'right', 'justify'].map(align => (
+                                    <button
+                                      key={align}
+                                      onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { textAlign: align })}
+                                      style={{
+                                        flex: 1, padding: '4px 2px', border: '1px solid #ead0d0', borderRadius: 5, cursor: 'pointer', fontSize: '0.65rem', textTransform: 'capitalize',
+                                        background: (selectedItem.textAlign || 'left') === align ? '#ead0d0' : '#fff', color: '#8b1a1a', transition: 'all 0.1s'
+                                      }}
+                                      title={`${align.charAt(0).toUpperCase() + align.slice(1)} Align`}
+                                    >
+                                      {align}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          <div>
+                            <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 6, textTransform: 'uppercase' }}>
+                              Position &amp; Size
+                            </span>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                              <div>
+                                <span style={{ color: '#b08080', fontSize: '0.58rem', display: 'block', marginBottom: 2 }}>X</span>
+                                <div style={{ background: '#fff5f5', border: '1px solid #ead0d0', borderRadius: 5, padding: '4px 6px', color: '#8b6060', fontSize: '0.7rem', textAlign: 'center' }}>
+                                  {selectedItem.x.toFixed(1)}%
+                                </div>
+                              </div>
+                              <div>
+                                <span style={{ color: '#b08080', fontSize: '0.58rem', display: 'block', marginBottom: 2 }}>Y</span>
+                                <div style={{ background: '#fff5f5', border: '1px solid #ead0d0', borderRadius: 5, padding: '4px 6px', color: '#8b6060', fontSize: '0.7rem', textAlign: 'center' }}>
+                                  {selectedItem.y.toFixed(1)}%
+                                </div>
+                              </div>
+                              <div>
+                                <span style={{ color: '#b08080', fontSize: '0.58rem', display: 'block', marginBottom: 2 }}>W</span>
+                                <input
+                                  type="number" min="5" max="100" step="0.5"
+                                  value={parseFloat(selectedItem.w.toFixed(1))}
+                                  onChange={e => {
+                                    const v = parseFloat(e.target.value);
+                                    if (!isNaN(v)) canvasBlockRef.current?.patchItem?.(selectedItem.id, { w: Math.min(Math.max(v, 5), 100 - selectedItem.x) });
+                                  }}
+                                  style={{ width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '4px 6px', color: '#8b1a1a', fontSize: '0.7rem', textAlign: 'center', outline: 'none' }}
+                                />
+                              </div>
+                              <div>
+                                <span style={{ color: '#b08080', fontSize: '0.58rem', display: 'block', marginBottom: 2 }}>H</span>
+                                <input
+                                  type="number" min="5" max="100" step="0.5"
+                                  value={parseFloat(selectedItem.h.toFixed(1))}
+                                  onChange={e => {
+                                    const v = parseFloat(e.target.value);
+                                    if (!isNaN(v)) canvasBlockRef.current?.patchItem?.(selectedItem.id, { h: Math.min(Math.max(v, 5), 100 - selectedItem.y) });
+                                  }}
+                                  style={{ width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '4px 6px', color: '#8b1a1a', fontSize: '0.7rem', textAlign: 'center', outline: 'none' }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
+                            <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 6, textTransform: 'uppercase' }}>
+                              Rotation — {selectedItem.rotation || 0}°
+                            </span>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { rotation: ((selectedItem.rotation || 0) + 90) % 360 })}
+                                style={{ flex: 1, background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '6px 4px', cursor: 'pointer', color: '#8b1a1a', fontSize: '0.68rem', fontWeight: 600 }}
+                              >
+                                ↻ Rotate 90°
+                              </button>
+                              {(selectedItem.rotation || 0) !== 0 && (
+                                <button
+                                  onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { rotation: 0 })}
+                                  style={{ background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '6px 8px', cursor: 'pointer', color: '#8b6060', fontSize: '0.68rem', fontWeight: 600 }}
+                                >
+                                  Reset
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 4, textTransform: 'uppercase' }}>
+                              Animation
+                            </span>
+                            <select
+                              value={selectedItem.animation || 'none'}
+                              onChange={e => canvasBlockRef.current?.patchItem?.(selectedItem.id, { animation: e.target.value })}
+                              style={{
+                                width: '100%',
+                                padding: '6px',
+                                background: '#fff',
+                                border: '1px solid #ead0d0',
+                                borderRadius: 5,
+                                fontSize: '0.75rem',
+                                outline: 'none',
+                                color: '#8b1a1a',
+                                cursor: 'pointer',
+                                fontFamily: 'Roboto, sans-serif',
+                                marginBottom: (selectedItem.animation || 'none') !== 'none' ? '8px' : '0px',
+                              }}
+                            >
+                              <option value="none">None</option>
+                              <option value="fade-in">Fade In</option>
+                              <option value="slide-in-left">Slide In Left</option>
+                              <option value="slide-in-right">Slide In Right</option>
+                              <option value="slide-in-up">Slide In Up</option>
+                              <option value="slide-in-down">Slide In Down</option>
+                              <option value="zoom-in">Zoom In</option>
+                              <option value="zoom-out">Zoom Out</option>
+                              <option value="flip-in">Flip In</option>
+                              <option value="bounce-in">Bounce In</option>
+                              <option value="fade-in-up">Fade In Up</option>
+                            </select>
+
+                            {(selectedItem.animation || 'none') !== 'none' && (
+                              <div>
+                                <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 4, textTransform: 'uppercase' }}>
+                                  Animation Delay — {(selectedItem.animationDelay || 0).toFixed(1)}s
+                                </span>
+                                <input
+                                  type="range" min="0" max="10" step="0.1"
+                                  value={selectedItem.animationDelay || 0}
+                                  onChange={e => canvasBlockRef.current?.patchItem?.(selectedItem.id, { animationDelay: parseFloat(e.target.value) })}
+                                  style={{ width: '100%', accentColor: '#8b1a1a' }}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 6, textTransform: 'uppercase' }}>
+                              Layer Order
+                            </span>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                              <button onClick={() => canvasBlockRef.current?.bringForward?.(selectedItem.id)} style={{ background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '6px 4px', cursor: 'pointer', color: '#8b1a1a', fontSize: '0.65rem', fontWeight: 600 }}>↑ Forward</button>
+                              <button onClick={() => canvasBlockRef.current?.sendBackward?.(selectedItem.id)} style={{ background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '6px 4px', cursor: 'pointer', color: '#8b1a1a', fontSize: '0.65rem', fontWeight: 600 }}>↓ Backward</button>
+                              <button onClick={() => canvasBlockRef.current?.bringToFront?.(selectedItem.id)} style={{ background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '6px 4px', cursor: 'pointer', color: '#8b1a1a', fontSize: '0.65rem', fontWeight: 600 }}>⤒ Front</button>
+                              <button onClick={() => canvasBlockRef.current?.sendToBack?.(selectedItem.id)} style={{ background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '6px 4px', cursor: 'pointer', color: '#8b1a1a', fontSize: '0.65rem', fontWeight: 600 }}>⤓ Back</button>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              canvasBlockRef.current?.deleteItem?.(selectedItem.id);
+                              setSelectedCanvasItemId(null);
+                            }}
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '1px solid #fca5a5', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', color: '#dc2626', fontSize: '0.75rem', fontWeight: 600, transition: 'all 0.15s', marginTop: '10px' }}
+                          >
+                            <Trash2 style={{ width: 14, height: 14 }} /> Delete Element
+                          </button>
+                        </div>
+                      );
+                    })() : (
+                      <div style={{ padding: '20px 10px', textAlign: 'center', background: '#fff5f5', borderRadius: 8, border: '1px solid #f0d8d8', margin: '10px 0' }}>
+                        <Square style={{ width: 20, height: 20, color: '#b08080', margin: '0 auto 8px' }} />
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#8b6060' }}>No Element Selected</div>
+                        <div style={{ fontSize: '0.68rem', color: '#b08080', marginTop: 4, lineHeight: 1.3 }}>
+                          Click on any text, shape, or image inside the canvas to edit its properties here.
+                        </div>
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  <>
+                    {!activeSlideId && (
+                      <div style={{ fontSize: '0.72rem', color: '#c4a0a0', textAlign: 'center', marginBottom: '10px' }}>
+                        Select a slide to add blocks.
+                      </div>
+                    )}
+                    <span className="cf-sidebar-label">Content</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '12px' }}>
+                      {[
+                        { type: 'heading', icon: <Heading1 style={{ width: 14, height: 14 }} />, label: 'Heading' },
+                        { type: 'text', icon: <Type style={{ width: 14, height: 14 }} />, label: 'Text' },
+                        { type: 'image', icon: <ImageIcon style={{ width: 14, height: 14 }} />, label: 'Image' },
+                        { type: 'button', icon: <MousePointerClick style={{ width: 14, height: 14 }} />, label: 'Button' },
+                        { type: 'flashcard', icon: <CreditCard style={{ width: 14, height: 14 }} />, label: 'Flashcard' },
+                        { type: 'video', icon: <Video style={{ width: 14, height: 14 }} />, label: 'Video' },
+                        { type: 'interactive-video', icon: <Play style={{ width: 14, height: 14 }} />, label: 'Int. Video' },
+                        { type: 'storyline-video', icon: <Play style={{ width: 14, height: 14, color: '#e11d48' }} />, label: 'Storyline Video' },
+                        { type: 'image-hotspot', icon: <MousePointerClick style={{ width: 14, height: 14 }} />, label: 'Image Hotspot' },
+                        { type: '360-image-hotspot', icon: <Globe style={{ width: 14, height: 14 }} />, label: '360° Hotspot' },
+                        { type: 'image-stack', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Img Stack' },
+                        { type: 'quote', icon: <Quote style={{ width: 14, height: 14 }} />, label: 'Quote' },
+                        { type: 'process', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Process' },
+                        { type: 'audio', icon: <Mic style={{ width: 14, height: 14 }} />, label: 'Audio' },
+                        { type: 'table', icon: <Table style={{ width: 14, height: 14 }} />, label: 'Table' },
+                        { type: 'columns', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Columns' },
+                        { type: 'tabs', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Tabs' },
+                        { type: 'accordion', icon: <ChevronDown style={{ width: 14, height: 14 }} />, label: 'Accordion' },
+                        { type: 'scenario', icon: <BookOpen style={{ width: 14, height: 14 }} />, label: 'Scenario' },
+                      ].map(({ type, icon, label }) => (
+                        <button
+                          key={type}
+                          onClick={() => addBlock(type)}
+                          className="cf-sidebar-btn"
+                          style={{ flexDirection: 'column', gap: '5px', padding: '9px 4px', fontSize: '0.69rem', justifyContent: 'center', alignItems: 'center', textAlign: 'center', lineHeight: 1.2 }}
+                        >
+                          {icon}
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
-                <span className="cf-sidebar-label">Content</span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '12px' }}>
-                  {[
-                    { type: 'heading', icon: <Heading1 style={{ width: 14, height: 14 }} />, label: 'Heading' },
-                    { type: 'text', icon: <Type style={{ width: 14, height: 14 }} />, label: 'Text' },
-                    { type: 'image', icon: <ImageIcon style={{ width: 14, height: 14 }} />, label: 'Image' },
-                    { type: 'button', icon: <MousePointerClick style={{ width: 14, height: 14 }} />, label: 'Button' },
-                    { type: 'flashcard', icon: <CreditCard style={{ width: 14, height: 14 }} />, label: 'Flashcard' },
-                    { type: 'video', icon: <Video style={{ width: 14, height: 14 }} />, label: 'Video' },
-                    { type: 'interactive-video', icon: <Play style={{ width: 14, height: 14 }} />, label: 'Int. Video' },
-                    { type: 'image-hotspot', icon: <MousePointerClick style={{ width: 14, height: 14 }} />, label: 'Image Hotspot' },
-                    { type: 'image-stack', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Img Stack' },
-                    { type: 'list', icon: <List style={{ width: 14, height: 14 }} />, label: 'List' },
-                    { type: 'quote', icon: <Quote style={{ width: 14, height: 14 }} />, label: 'Quote' },
-                    { type: 'process', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Process' },
-                    { type: 'audio', icon: <Mic style={{ width: 14, height: 14 }} />, label: 'Audio' },
-                    { type: 'table', icon: <Table style={{ width: 14, height: 14 }} />, label: 'Table' },
-                    { type: 'columns', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Columns' },
-                    { type: 'tabs', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Tabs' },
-                    { type: 'accordion', icon: <ChevronDown style={{ width: 14, height: 14 }} />, label: 'Accordion' },
-                    { type: 'scenario', icon: <BookOpen style={{ width: 14, height: 14 }} />, label: 'Scenario' },
-                    { type: 'canvas', icon: <Square style={{ width: 14, height: 14 }} />, label: 'Canvas' },
-                    { type: 'statement', icon: <FileText style={{ width: 14, height: 14 }} />, label: 'Statement' },
-                  ].map(({ type, icon, label }) => (
-                    <button
-                      key={type}
-                      onClick={() => addBlock(type)}
-                      className="cf-sidebar-btn"
-                      style={{ flexDirection: 'column', gap: '5px', padding: '9px 4px', fontSize: '0.69rem', justifyContent: 'center', alignItems: 'center', textAlign: 'center', lineHeight: 1.2 }}
-                    >
-                      {icon}
-                      {label}
-                    </button>
-                  ))}
-                </div>
               </div>
             )}
 
             {/* ── Assess Tab ── */}
+            {/* ── Assess Tab ── */}
             {sidebarTab === 'assess' && (
               <div className="cf-sidebar-section" style={{ opacity: activeSlideId ? 1 : 0.5, pointerEvents: activeSlideId ? 'auto' : 'none' }}>
-                {!activeSlideId && (
-                  <div style={{ fontSize: '0.72rem', color: '#c4a0a0', textAlign: 'center', marginBottom: '10px' }}>
-                    Select a slide to add assessments.
+                {activeSlide?.type === 'canvas' ? (
+                  <div style={{ padding: '20px 10px', textAlign: 'center', background: '#fff5f5', borderRadius: 8, border: '1px solid #f0d8d8', margin: '10px 0' }}>
+                    <ShieldCheck style={{ width: 28, height: 28, color: '#8b1a1a', margin: '0 auto 10px' }} />
+                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#8b1a1a', marginBottom: 4 }}>Slide Assessments</div>
+                    <div style={{ fontSize: '0.72rem', color: '#8b6060', lineHeight: 1.4 }}>
+                      Quizzes are not supported directly inside free-flowing canvas slides. If you need a quiz, please add a standard slide.
+                    </div>
                   </div>
+                ) : (
+                  <>
+                    {!activeSlideId && (
+                      <div style={{ fontSize: '0.72rem', color: '#c4a0a0', textAlign: 'center', marginBottom: '10px' }}>
+                        Select a slide to add assessments.
+                      </div>
+                    )}
+                    <span className="cf-sidebar-label">Assessments</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                      {[
+                        { type: 'quiz', icon: <ListChecks style={{ width: 14, height: 14 }} />, label: 'MCQ' },
+                        { type: 'true_false', icon: <ToggleLeft style={{ width: 14, height: 14 }} />, label: 'True / False' },
+                        { type: 'fill_blanks', icon: <PenLine style={{ width: 14, height: 14 }} />, label: 'Fill Blank' },
+                        { type: 'multi_select', icon: <ListChecks style={{ width: 14, height: 14 }} />, label: 'Multi-Select' },
+                        { type: 'matching', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Matching' },
+                      ].map(({ type, icon, label }) => (
+                        <button
+                          key={type}
+                          onClick={() => addBlock(type)}
+                          className="cf-sidebar-btn"
+                          style={{ flexDirection: 'column', gap: '5px', padding: '9px 4px', fontSize: '0.69rem', justifyContent: 'center', alignItems: 'center', textAlign: 'center', lineHeight: 1.2 }}
+                        >
+                          {icon}
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: '16px', background: '#fff5f5', borderRadius: 6, border: '1px solid #f0d8d8', overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 10px 6px', borderBottom: '1px solid #f0d8d8' }}>
+                        <ShieldCheck style={{ width: 12, height: 12, color: '#8b1a1a', flexShrink: 0 }} />
+                        <span style={{ fontSize: '0.67rem', fontWeight: 700, color: '#8b1a1a', letterSpacing: '0.09em', textTransform: 'uppercase' }}>Passing Score</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px' }}>
+                        <input
+                          type="number" min="0" max="100"
+                          value={passingScore}
+                          onChange={(e) => setPassingScore(parseInt(e.target.value) || 0)}
+                          style={{ width: 58, textAlign: 'center', fontSize: '1.1rem', fontWeight: 700, padding: '4px 6px', borderRadius: 4, border: '1px solid #e8c8c8', background: '#fff', color: '#1a0a0a', outline: 'none', fontFamily: 'Roboto, sans-serif', cursor: 'text' }}
+                        />
+                        <span style={{ fontSize: '0.8rem', color: '#8b6060', fontWeight: 600 }}>% to pass</span>
+                      </div>
+                    </div>
+                  </>
                 )}
-                <span className="cf-sidebar-label">Assessments</span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                  {[
-                    { type: 'quiz', icon: <ListChecks style={{ width: 14, height: 14 }} />, label: 'MCQ' },
-                    { type: 'true_false', icon: <ToggleLeft style={{ width: 14, height: 14 }} />, label: 'True / False' },
-                    { type: 'fill_blanks', icon: <PenLine style={{ width: 14, height: 14 }} />, label: 'Fill Blank' },
-                    { type: 'multi_select', icon: <ListChecks style={{ width: 14, height: 14 }} />, label: 'Multi-Select' },
-                    { type: 'matching', icon: <Layers style={{ width: 14, height: 14 }} />, label: 'Matching' },
-                  ].map(({ type, icon, label }) => (
-                    <button
-                      key={type}
-                      onClick={() => addBlock(type)}
-                      className="cf-sidebar-btn"
-                      style={{ flexDirection: 'column', gap: '5px', padding: '9px 4px', fontSize: '0.69rem', justifyContent: 'center', alignItems: 'center', textAlign: 'center', lineHeight: 1.2 }}
-                    >
-                      {icon}
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ marginTop: '16px', background: '#fff5f5', borderRadius: 6, border: '1px solid #f0d8d8', overflow: 'hidden' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 10px 6px', borderBottom: '1px solid #f0d8d8' }}>
-                    <ShieldCheck style={{ width: 12, height: 12, color: '#8b1a1a', flexShrink: 0 }} />
-                    <span style={{ fontSize: '0.67rem', fontWeight: 700, color: '#8b1a1a', letterSpacing: '0.09em', textTransform: 'uppercase' }}>Passing Score</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px' }}>
-                    <input
-                      type="number" min="0" max="100"
-                      value={passingScore}
-                      onChange={(e) => setPassingScore(parseInt(e.target.value) || 0)}
-                      style={{ width: 58, textAlign: 'center', fontSize: '1.1rem', fontWeight: 700, padding: '4px 6px', borderRadius: 4, border: '1px solid #e8c8c8', background: '#fff', color: '#1a0a0a', outline: 'none', fontFamily: 'Roboto, sans-serif', cursor: 'text' }}
-                    />
-                    <span style={{ fontSize: '0.8rem', color: '#8b6060', fontWeight: 600 }}>% to pass</span>
-                  </div>
-                </div>
               </div>
             )}
 
@@ -1354,55 +1856,106 @@ function App() {
             {sidebarTab === 'slide' && (
               activeSlideId ? (
                 <div className="cf-sidebar-section">
-                  <span className="cf-sidebar-label">Slide Background</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button
-                        onClick={() => setSlides(prev => prev.map(s => s.id === activeSlideId ? { ...s, background: { ...s.background, type: 'color' } } : s))}
-                        className={`cf-sidebar-toggle-btn ${(activeSlide?.background?.type || 'color') === 'color' ? 'active' : ''}`}
-                      >Color</button>
-                      <button
-                        onClick={() => setSlides(prev => prev.map(s => s.id === activeSlideId ? { ...s, background: { ...s.background, type: 'image' } } : s))}
-                        className={`cf-sidebar-toggle-btn ${(activeSlide?.background?.type || 'color') === 'image' ? 'active' : ''}`}
-                      >Image</button>
-                    </div>
-                    {(activeSlide?.background?.type || 'color') === 'color' ? (
-                      <input
-                        type="color"
-                        value={activeSlide?.background?.value || '#ffffff'}
-                        onChange={(e) => setSlides(prev => prev.map(s => s.id === activeSlideId ? { ...s, background: { type: 'color', value: e.target.value } } : s))}
-                        style={{ width: '100%', height: '36px', cursor: 'pointer', border: '1px solid #EAD0D0', borderRadius: '4px', padding: '2px', background: 'white' }}
-                      />
-                    ) : (
-                      <label className="cf-sidebar-file-label" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                        <ImageIcon style={{ width: 15, height: 15, color: '#8B6060', marginRight: '6px' }} />
-                        Upload Image
-                        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgUpload} />
-                      </label>
-                    )}
-                    {activeSlide?.background?.type === 'image' && activeSlide?.background?.value && activeSlide?.background?.value.startsWith('data:') && (
-                      <div style={{ fontSize: '11px', color: '#10b981', textAlign: 'center', fontWeight: 600 }}>Image Set Successfully!</div>
-                    )}
-                  </div>
-                  <div className="cf-sidebar-divider" />
-                  <div style={{ marginTop: '12px' }}>
-                    <span className="cf-sidebar-label" style={{ fontSize: '11px', color: '#8b6060' }}>Background Audio</span>
-                    {activeSlide?.bgAudio ? (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff5f5', padding: '6px', borderRadius: '4px', border: '1px solid #EAD0D0', marginTop: '4px' }}>
-                        <div style={{ fontSize: '11px', color: '#1a0a0a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
-                          🎵 {activeSlide.bgAudio.name}
+                  {activeSlide.type === 'canvas' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ padding: '20px 10px', textAlign: 'center', background: '#fff5f5', borderRadius: 8, border: '1px solid #f0d8d8' }}>
+                        <Square style={{ width: 28, height: 28, color: '#8b1a1a', margin: '0 auto 10px' }} />
+                        <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#8b1a1a', marginBottom: 4 }}>Canvas Slide Background</div>
+                        <div style={{ fontSize: '0.72rem', color: '#8b6060', lineHeight: 1.4 }}>
+                          The background color for this canvas slide can be configured using the color picker under the Content tab of the sidebar.
                         </div>
-                        <button onClick={() => setSlides(prev => prev.map(s => s.id === activeSlideId ? { ...s, bgAudio: null } : s))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>
-                          Remove
-                        </button>
                       </div>
-                    ) : (
-                      <label className="cf-sidebar-file-label" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: '4px' }}>
-                        <Mic style={{ width: 15, height: 15, color: '#8B6060', marginRight: '6px' }} />
-                        Upload Audio
-                        <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={handleBgAudioUpload} />
-                      </label>
-                    )}
+                      <div className="cf-sidebar-divider" />
+                      <div style={{ marginTop: '12px' }}>
+                        <span className="cf-sidebar-label" style={{ fontSize: '11px', color: '#8b6060', marginTop: 0 }}>Background Audio</span>
+                        {activeSlide?.bgAudio ? (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff5f5', padding: '6px', borderRadius: '4px', border: '1px solid #EAD0D0', marginTop: '4px' }}>
+                            <div style={{ fontSize: '11px', color: '#1a0a0a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
+                              🎵 {activeSlide.bgAudio.name}
+                            </div>
+                            <button onClick={() => setSlides(prev => prev.map(s => s.id === activeSlideId ? { ...s, bgAudio: null } : s))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>
+                              Remove
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="cf-sidebar-file-label" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: '4px' }}>
+                            <Mic style={{ width: 15, height: 15, color: '#8B6060', marginRight: '6px' }} />
+                            Upload Audio
+                            <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={handleBgAudioUpload} />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="cf-sidebar-label">Slide Background</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            onClick={() => setSlides(prev => prev.map(s => s.id === activeSlideId ? { ...s, background: { ...s.background, type: 'color' } } : s))}
+                            className={`cf-sidebar-toggle-btn ${(activeSlide?.background?.type || 'color') === 'color' ? 'active' : ''}`}
+                          >Color</button>
+                          <button
+                            onClick={() => setSlides(prev => prev.map(s => s.id === activeSlideId ? { ...s, background: { ...s.background, type: 'image' } } : s))}
+                            className={`cf-sidebar-toggle-btn ${(activeSlide?.background?.type || 'color') === 'image' ? 'active' : ''}`}
+                          >Image</button>
+                        </div>
+                        {(activeSlide?.background?.type || 'color') === 'color' ? (
+                          <input
+                            type="color"
+                            value={activeSlide?.background?.value || '#ffffff'}
+                            onChange={(e) => setSlides(prev => prev.map(s => s.id === activeSlideId ? { ...s, background: { type: 'color', value: e.target.value } } : s))}
+                            style={{ width: '100%', height: '36px', cursor: 'pointer', border: '1px solid #EAD0D0', borderRadius: '4px', padding: '2px', background: 'white' }}
+                          />
+                        ) : (
+                          <label className="cf-sidebar-file-label" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                            <ImageIcon style={{ width: 15, height: 15, color: '#8B6060', marginRight: '6px' }} />
+                            Upload Image
+                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgUpload} />
+                          </label>
+                        )}
+                        {activeSlide?.background?.type === 'image' && activeSlide?.background?.value && activeSlide?.background?.value.startsWith('data:') && (
+                          <div style={{ fontSize: '11px', color: '#10b981', textAlign: 'center', fontWeight: 600 }}>Image Set Successfully!</div>
+                        )}
+                      </div>
+                      <div className="cf-sidebar-divider" />
+                      <div style={{ marginTop: '12px' }}>
+                        <span className="cf-sidebar-label" style={{ fontSize: '11px', color: '#8b6060' }}>Background Audio</span>
+                        {activeSlide?.bgAudio ? (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff5f5', padding: '6px', borderRadius: '4px', border: '1px solid #EAD0D0', marginTop: '4px' }}>
+                            <div style={{ fontSize: '11px', color: '#1a0a0a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
+                              🎵 {activeSlide.bgAudio.name}
+                            </div>
+                            <button onClick={() => setSlides(prev => prev.map(s => s.id === activeSlideId ? { ...s, bgAudio: null } : s))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>
+                              Remove
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="cf-sidebar-file-label" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: '4px' }}>
+                            <Mic style={{ width: 15, height: 15, color: '#8B6060', marginRight: '6px' }} />
+                            Upload Audio
+                            <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={handleBgAudioUpload} />
+                          </label>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  <div className="cf-sidebar-divider" style={{ margin: '12px 0' }} />
+                  <div style={{ marginTop: '12px' }}>
+                    <span className="cf-sidebar-label" style={{ fontSize: '11px', color: '#8b6060', marginTop: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Settings</span>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '0.72rem', color: '#1a0a0a', marginTop: '8px', lineHeight: 1.4 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!activeSlide.locked}
+                        onChange={e => setSlides(prev => prev.map(s => s.id === activeSlideId ? { ...s, locked: e.target.checked } : s))}
+                        style={{ accentColor: '#8b1a1a', marginTop: '2px', cursor: 'pointer' }}
+                      />
+                      <div>
+                        <div style={{ fontWeight: 600 }}>Lock Slide</div>
+                        <div style={{ color: '#8b6060', fontSize: '0.65rem', marginTop: '2px' }}>Requires completing all previous slides and quizzes to unlock.</div>
+                      </div>
+                    </label>
                   </div>
                 </div>
               ) : (
@@ -1439,10 +1992,12 @@ function App() {
                 <div style={{ padding: '0.65rem 0.75rem', background: '#FFF5F5', borderRadius: 6, border: '1px solid #F0D8D8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#8B1A1A' }}>
-                      {activeSlide.elements.length} Block{activeSlide.elements.length !== 1 ? 's' : ''}
+                      {activeSlide.type === 'canvas' 
+                        ? `${activeSlide.items?.length || 0} Canvas Item${(activeSlide.items?.length || 0) !== 1 ? 's' : ''}` 
+                        : `${activeSlide.elements?.length || 0} Block${(activeSlide.elements?.length || 0) !== 1 ? 's' : ''}`}
                     </div>
                     <div style={{ fontSize: '0.7rem', color: '#B08080', marginTop: '2px' }}>
-                      Drag to reorder
+                      {activeSlide.type === 'canvas' ? 'Canvas elements count' : 'Drag to reorder'}
                     </div>
                   </div>
                   <GripVertical style={{ width: 14, height: 14, color: '#e0b8b8' }} />
@@ -1461,9 +2016,14 @@ function App() {
                     <h2 style={{ fontFamily: 'Roboto', fontSize: '2rem', color: '#1a0a0a', margin: '0 0 0.5rem 0' }}>Course Slides</h2>
                     <p style={{ margin: 0, color: '#6b3a3a', fontSize: '0.9375rem' }}>Select a slide to edit its content.</p>
                   </div>
-                  <button onClick={addSlide} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#8b1a1a', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer', fontFamily: 'Roboto', fontWeight: 600 }}>
-                    <BookOpen style={{ width: 16, height: 16 }} /> Add Slide
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={addSlide} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#8b1a1a', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer', fontFamily: 'Roboto', fontWeight: 600 }}>
+                      <BookOpen style={{ width: 16, height: 16 }} /> Add Slide
+                    </button>
+                    <button onClick={addCanvasSlide} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#ffffff', color: '#8b1a1a', border: '1px solid #ead0d0', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer', fontFamily: 'Roboto', fontWeight: 600 }}>
+                      <Square style={{ width: 16, height: 16 }} /> Add Canvas
+                    </button>
+                  </div>
                 </div>
 
                 {slides.length === 0 ? (
@@ -1507,10 +2067,13 @@ function App() {
                             <Trash2 style={{ width: 16, height: 16 }} />
                           </button>
                         </div>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#b08080', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Slide {index + 1}</div>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#b08080', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          Slide {index + 1}
+                          {slide.locked && <Lock style={{ width: 11, height: 11, color: '#8b1a1a' }} title="Locked slide" />}
+                        </div>
                         <h3 style={{ margin: '0 0 1rem 0', fontFamily: 'Roboto', fontSize: '1.25rem', color: '#1a0a0a', lineHeight: 1.3 }}>{slide.title || 'Untitled Slide'}</h3>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8125rem', color: '#8b6060', background: '#fff5f5', padding: '0.25rem 0.5rem', borderRadius: 6, width: 'fit-content' }}>
-                          <ListChecks style={{ width: 12, height: 12 }} /> {slide.elements.length} Blocks
+                          <ListChecks style={{ width: 12, height: 12 }} /> {slide.type === 'canvas' ? `${slide.items?.length || 0} Canvas Elements` : `${slide.elements?.length || 0} Blocks`}
                         </div>
                       </div>
                     ))}
@@ -1524,7 +2087,11 @@ function App() {
                 backgroundImage: (activeSlide?.background || { type: 'color', value: '#ffffff' }).type === 'image' ? `url("${activeSlide.background.value}")` : 'none',
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat'
+                backgroundRepeat: 'no-repeat',
+                minHeight: '650px',
+                height: activeSlide?.type === 'canvas' ? '650px' : 'auto',
+                display: activeSlide?.type === 'canvas' ? 'flex' : 'block',
+                flexDirection: 'column',
               }}>
                 <div style={{ marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid #f0e0e0', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                   <button onClick={() => setActiveSlideId(null)} style={{ background: '#fdf8f8', border: '1px solid #e8d8d8', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', color: '#8b1a1a', display: 'flex', alignItems: 'center' }}>
@@ -1537,6 +2104,12 @@ function App() {
                     placeholder="Slide Title..."
                     style={{ fontSize: '1.75rem', flex: 1 }}
                   />
+                  {activeSlide.locked && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fff5f5', border: '1px solid #ead0d0', color: '#8b1a1a', borderRadius: '6px', padding: '4px 8px', fontSize: '0.72rem', fontWeight: 600 }}>
+                      <Lock style={{ width: 12, height: 12 }} />
+                      Locked
+                    </div>
+                  )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
                     <button
                       type="button"
@@ -1578,6 +2151,27 @@ function App() {
                     >
                       <Plus style={{ width: 15, height: 15 }} />
                       Add Slide
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => insertCanvasSlideNextTo(activeSlideId)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        background: '#fff',
+                        border: '1px solid #e8d8d8',
+                        borderRadius: 8,
+                        padding: '0.55rem 0.9rem',
+                        cursor: 'pointer',
+                        color: '#8b1a1a',
+                        fontFamily: 'Roboto',
+                        fontWeight: 600,
+                      }}
+                      title="Add a new canvas slide after this slide"
+                    >
+                      <Square style={{ width: 15, height: 15 }} />
+                      Add Canvas
                     </button>
                     <button
                       type="button"
@@ -1624,7 +2218,17 @@ function App() {
                   </div>
                 </div>
 
-                {activeSlide.elements.length === 0 ? (
+                {activeSlide.type === 'canvas' ? (
+                  <CanvasBlock
+                    key={activeSlide.id}
+                    ref={canvasBlockRef}
+                    block={activeSlide}
+                    onUpdate={(slideId, patch) => updateSlide(slideId, patch)}
+                    isSlide={true}
+                    selectedId={selectedCanvasItemId}
+                    onSelectId={setSelectedCanvasItemId}
+                  />
+                ) : activeSlide.elements.length === 0 ? (
                   <div className="cf-empty-state">
                     <div className="cf-empty-icon">
                       <BookOpen style={{ width: 24, height: 24, color: '#C4A0A0' }} />
@@ -1673,9 +2277,9 @@ function App() {
                     return (
                       <div
                         key={block.id}
-                        draggable={true}
+                        draggable={dragEnabledIdx === index}
                         onDragStart={(e) => {
-                          if (e.target.closest('input, textarea, .cf-rich-text-editor, button, select')) {
+                          if (e.target.closest('input, textarea, .cf-rich-text-editor, button, select, .cf-360-image-hotspot-block')) {
                             e.preventDefault();
                             return;
                           }

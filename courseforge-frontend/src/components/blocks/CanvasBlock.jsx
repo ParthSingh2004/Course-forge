@@ -1,8 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+
 import {
     Trash2, Square, Circle, Triangle, Type,
     Bold, Italic, Underline,
     AlignLeft, AlignCenter, AlignRight, AlignJustify,
+    Image as ImageIcon,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,6 +54,7 @@ const hexToRgb = (hex) => {
 // ─── Font families ────────────────────────────────────────────────────────────
 const FONT_FAMILIES = [
     { label: 'DM Sans (default)', value: 'inherit' },
+    { label: 'Roboto', value: 'Roboto, sans-serif' },
     { label: 'Arial', value: 'Arial, sans-serif' },
     { label: 'Georgia', value: 'Georgia, serif' },
     { label: 'Times New Roman', value: '"Times New Roman", Times, serif' },
@@ -72,7 +75,7 @@ const PALETTE = [
 let _ci = 0;
 const nextColor = () => PALETTE[_ci++ % 8]; // cycle only through vivid colours
 
-const DEFAULT_SIZES = { rect: [22, 16], circle: [16, 16], triangle: [20, 18], text: [28, 14] };
+const DEFAULT_SIZES = { rect: [22, 16], circle: [16, 16], triangle: [20, 18], text: [28, 14], image: [30, 25] };
 
 const makeItem = (type, zIndex) => {
     const [w, h] = DEFAULT_SIZES[type];
@@ -85,6 +88,8 @@ const makeItem = (type, zIndex) => {
         rotation: 0,
         color: isText ? '#111827' : nextColor(),
         text: isText ? 'Text box' : '',
+        animation: 'none',
+        animationDelay: 0,
         // ── Typography (text items only) ──────────────────────────────────
         fontSize: isText ? 16 : undefined,
         fontFamily: isText ? 'inherit' : undefined,
@@ -97,6 +102,7 @@ const makeItem = (type, zIndex) => {
         // ── Box background ────────────────────────────────────────────────
         boxBg: isText ? '#ffffff' : undefined,
         boxBgOpacity: isText ? 0 : undefined, // 0–100
+        src: type === 'image' ? '' : undefined,
     };
 };
 
@@ -132,13 +138,54 @@ function ResizeHandles({ onResizeMouseDown, extraStyle = {} }) {
 }
 
 // ─── ItemElement ──────────────────────────────────────────────────────────────
-function ItemElement({ item, isSelected, onMoveMouseDown, onResizeMouseDown, onTextChange }) {
+function ItemElement({ item, isSelected, onMoveMouseDown, onResizeMouseDown, onTextChange, canvasRef, onHeightChange }) {
     const { type, x, y, w, h, color, zIndex, text, fontSize } = item;
+
+    const textareaRef = useRef(null);
+    const wrapperRef = useRef(null);
+
+    // Auto-expand textarea and measure height
+    useEffect(() => {
+        if (type !== 'text') return;
+
+        const textarea = textareaRef.current;
+        const wrapper = wrapperRef.current;
+        const canvas = canvasRef?.current;
+        if (!textarea || !wrapper || !canvas) return;
+
+        const updateHeights = () => {
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight}px`;
+
+            const canvasRect = canvas.getBoundingClientRect();
+            const wrapperRect = wrapper.getBoundingClientRect();
+            if (canvasRect.height > 0) {
+                const calculatedH = (wrapperRect.height / canvasRect.height) * 100;
+                if (Math.abs(item.h - calculatedH) > 0.2) {
+                    onHeightChange(item.id, { h: calculatedH });
+                }
+            }
+        };
+
+        updateHeights();
+
+        const resizeObserver = new ResizeObserver(() => {
+            updateHeights();
+        });
+
+        resizeObserver.observe(wrapper);
+        resizeObserver.observe(canvas);
+
+        return () => {
+            resizeObserver.disconnect();
+        };
+    }, [text, item.w, fontSize, item.fontFamily, item.lineHeight, canvasRef, type, onHeightChange, item.h, item.id]);
 
     const baseStyle = {
         position: 'absolute',
         left: `${x}%`, top: `${y}%`,
-        width: `${w}%`, height: `${h}%`,
+        width: `${w}%`,
+        height: type === 'text' ? 'auto' : `${h}%`,
         zIndex,
         boxSizing: 'border-box',
         transform: `rotate(${item.rotation || 0}deg)`,
@@ -154,7 +201,7 @@ function ItemElement({ item, isSelected, onMoveMouseDown, onResizeMouseDown, onT
                     preserveAspectRatio="none"   // Fix #3 — stretches to fill bounding box
                     width="100%"
                     height="100%"
-                    style={{ display: 'block', pointerEvents: 'all', cursor: 'move', overflow: 'visible' }}
+                    style={{ display: 'block', pointerEvents: 'all', cursor: 'move', overflow: 'visible', filter: 'drop-shadow(0px 4px 6px rgba(17,24,39,0.15)) drop-shadow(0px 1px 3px rgba(17,24,39,0.08))' }}
                     onMouseDown={(e) => onMoveMouseDown(e, item)}
                 >
                     <polygon points="50,0 100,100 0,100" fill={color} />
@@ -182,16 +229,19 @@ function ItemElement({ item, isSelected, onMoveMouseDown, onResizeMouseDown, onT
     // ── Text box: Fix #3 — grip bar drags; textarea edits freely ─────────────
     if (type === 'text') {
         return (
-            <div style={{
-                ...baseStyle,
-                border: isSelected ? '2px solid #3b82f6' : '1.5px dashed #9ca3af',
-                borderRadius: 4,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-                background: 'rgba(255,255,255,0.05)',
-                pointerEvents: 'all',
-            }}>
+            <div 
+                ref={wrapperRef}
+                style={{
+                    ...baseStyle,
+                    border: isSelected ? '2px solid #3b82f6' : '1.5px dashed #9ca3af',
+                    borderRadius: 4,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    background: 'rgba(255,255,255,0.05)',
+                    pointerEvents: 'all',
+                }}
+            >
                 {/* Drag-only grip — Fix #3: text and drag are separate zones */}
                 <div
                     onMouseDown={(e) => onMoveMouseDown(e, item)}
@@ -219,17 +269,55 @@ function ItemElement({ item, isSelected, onMoveMouseDown, onResizeMouseDown, onT
                 </div>
                 {/* Textarea: Fix #3 — text reflows on width resize naturally */}
                 <textarea
+                    ref={textareaRef}
                     value={text}
                     onChange={(e) => onTextChange(e.target.value)}
                     onMouseDown={(e) => e.stopPropagation()}
                     placeholder="Type here…"
                     style={{
-                        flex: 1, border: 'none', outline: 'none', resize: 'none',
-                        background: 'transparent', fontFamily: "'DM Sans', 'Roboto', sans-serif",
+                        width: '100%', border: 'none', outline: 'none', resize: 'none',
+                        background: 'transparent',
+                        fontFamily: item.fontFamily === 'inherit' || !item.fontFamily ? "'DM Sans', 'Roboto', sans-serif" : item.fontFamily,
                         fontSize: `${fontSize}px`,
                         color, padding: '4px 6px',
-                        wordWrap: 'break-word', lineHeight: 1.5, cursor: 'text',
-                        overflowY: 'auto',
+                        wordWrap: 'break-word',
+                        lineHeight: item.lineHeight || 1.5,
+                        fontWeight: item.fontWeight || 'normal',
+                        fontStyle: item.fontStyle || 'normal',
+                        textDecoration: item.textDecoration || 'none',
+                        textAlign: item.textAlign || 'left',
+                        cursor: 'text',
+                        overflow: 'hidden',
+                        height: 'auto',
+                    }}
+                />
+                {isSelected && <ResizeHandles onResizeMouseDown={onResizeMouseDown} />}
+            </div>
+        );
+    }
+
+    // ── Image element ─────────────────────────────────────────────────────────
+    if (type === 'image') {
+        return (
+            <div
+                onMouseDown={(e) => onMoveMouseDown(e, item)}
+                style={{
+                    ...baseStyle,
+                    pointerEvents: 'all',
+                    cursor: 'move',
+                    outline: isSelected ? '2px solid #3b82f6' : 'none',
+                    outlineOffset: 2,
+                }}
+            >
+                <img
+                    src={item.src}
+                    alt="Canvas"
+                    style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'contain',
+                        pointerEvents: 'none',
+                        userSelect: 'none',
                     }}
                 />
                 {isSelected && <ResizeHandles onResizeMouseDown={onResizeMouseDown} />}
@@ -253,6 +341,9 @@ function ItemElement({ item, isSelected, onMoveMouseDown, onResizeMouseDown, onT
                 width: '100%', height: '100%',
                 background: color,
                 borderRadius: type === 'circle' ? '50%' : 4,
+                boxShadow: '0 4px 10px rgba(17, 24, 39, 0.15), 0 1px 4px rgba(17, 24, 39, 0.08)',
+                border: '1px solid rgba(17, 24, 39, 0.08)',
+                boxSizing: 'border-box',
             }} />
             {isSelected && <ResizeHandles onResizeMouseDown={onResizeMouseDown} />}
         </div>
@@ -260,12 +351,15 @@ function ItemElement({ item, isSelected, onMoveMouseDown, onResizeMouseDown, onT
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function InfographicBlock({ block, onUpdate }) {
+const CanvasBlock = forwardRef(({ block, onUpdate, isSlide = false, selectedId: externalSelectedId, onSelectId: externalSetSelectedId }, ref) => {
 
     // ── State ──────────────────────────────────────────────────────────────────
     const [items, setItems] = useState(() => block?.items || []);
-    const [selectedId, setSelectedId] = useState(null);
+    const [localSelectedId, setLocalSelectedId] = useState(null);
+    const selectedId = externalSelectedId !== undefined ? externalSelectedId : localSelectedId;
+    const setSelectedId = externalSetSelectedId !== undefined ? externalSetSelectedId : setLocalSelectedId;
     const [canvasBg, setCanvasBg] = useState(block?.canvasBg || '#ffffff');
+
 
     // ── Refs ───────────────────────────────────────────────────────────────────
     const canvasRef = useRef(null);
@@ -274,6 +368,25 @@ export default function InfographicBlock({ block, onUpdate }) {
     const onUpdateRef = useRef(onUpdate); // always-fresh onUpdate pointer
     const itemsRef = useRef(items);    // mirror for use inside mouseUp closure
     const canvasBgRef = useRef(canvasBg);
+    const imageInputRef = useRef(null);
+
+    const handleImageUpload = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const dataUrl = event.target.result;
+            const maxZ = items.length ? Math.max(...items.map(i => i.zIndex)) : 0;
+            const item = {
+                ...makeItem('image', maxZ + 1),
+                src: dataUrl,
+            };
+            commitItems([...items, item]);
+            setSelectedId(item.id);
+        };
+        reader.readAsDataURL(file);
+        e.target.value = null; // Reset file input
+    };
 
     useEffect(() => { onUpdateRef.current = onUpdate; });
     // Keep refs in sync with state so mouseUp closures see current values
@@ -301,17 +414,19 @@ export default function InfographicBlock({ block, onUpdate }) {
             } else {
                 // Resize — Fix #3: unified delta math for all item types
                 let { x, y, w, h } = si;
+                const isText = si.type === 'text';
+
                 if (handle.includes('e')) w = clamp(si.w + dx, 5, 100 - si.x);
-                if (handle.includes('s')) h = clamp(si.h + dy, 5, 100 - si.y);
+                if (!isText && handle.includes('s')) h = clamp(si.h + dy, 5, 100 - si.y);
                 if (handle.includes('w')) {
                     const nw = clamp(si.w - dx, 5, si.x + si.w);
                     x = si.x + si.w - nw; w = nw;
                 }
-                if (handle.includes('n')) {
+                if (!isText && handle.includes('n')) {
                     const nh = clamp(si.h - dy, 5, si.y + si.h);
                     y = si.y + si.h - nh; h = nh;
                 }
-                patch = { x, y, w, h };
+                patch = isText ? { x, w } : { x, y, w, h };
             }
 
             drag.latestPatch = patch;
@@ -471,6 +586,18 @@ export default function InfographicBlock({ block, onUpdate }) {
         }
     };
 
+    useImperativeHandle(ref, () => ({
+        addItem,
+        patchItem,
+        deleteItem,
+        bringForward,
+        sendBackward,
+        bringToFront,
+        sendToBack,
+        commitCanvasBg,
+        triggerImageUpload: () => imageInputRef.current?.click(),
+    }));
+
     // ── Derived ────────────────────────────────────────────────────────────────
     const selectedItem = items.find(i => i.id === selectedId);
     const sortedItems = [...items].sort((a, b) => a.zIndex - b.zIndex);
@@ -479,34 +606,40 @@ export default function InfographicBlock({ block, onUpdate }) {
     return (
         <div style={{
             background: '#ffffff',
-            border: '1px solid #e5e7eb',
-            borderRadius: 10,
+            border: isSlide ? 'none' : '1px solid #e5e7eb',
+            borderRadius: isSlide ? 0 : 10,
             overflow: 'hidden',
             fontFamily: "'DM Sans', 'Roboto', sans-serif",
             userSelect: 'none',
-            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+            boxShadow: isSlide ? 'none' : '0 4px 6px -1px rgba(0,0,0,0.05)',
+            flex: isSlide ? 1 : 'none',
+            display: isSlide ? 'flex' : 'block',
+            flexDirection: 'column',
+            height: isSlide ? '100%' : 'auto',
         }}>
 
             {/* ── Header ────────────────────────────────────────────────────── */}
-            <div style={{
-                background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
-                padding: '10px 16px',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            }}>
-                <span style={{
-                    color: '#111827', fontWeight: 700, fontSize: '0.8rem',
-                    letterSpacing: '0.07em', textTransform: 'uppercase',
+            {!isSlide && (
+                <div style={{
+                    background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
+                    padding: '10px 16px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 }}>
-                    🗺 Infographic Block
-                </span>
-                <span style={{ color: '#6b7280', fontSize: '0.72rem' }}>
-                    {items.length} item{items.length !== 1 ? 's' : ''} ·{' '}
-                    drag to move · corners to resize · click canvas to deselect
-                </span>
-            </div>
+                    <span style={{
+                        color: '#111827', fontWeight: 700, fontSize: '0.8rem',
+                        letterSpacing: '0.07em', textTransform: 'uppercase',
+                    }}>
+                        🗺 Infographic Block
+                    </span>
+                    <span style={{ color: '#6b7280', fontSize: '0.72rem' }}>
+                        {items.length} item{items.length !== 1 ? 's' : ''} ·{' '}
+                        drag to move · corners to resize · click canvas to deselect
+                    </span>
+                </div>
+            )}
 
             {/* ── Body ──────────────────────────────────────────────────────── */}
-            <div style={{ display: 'flex', height: 520 }}>
+            <div style={{ display: 'flex', flex: isSlide ? 1 : 'none', height: isSlide ? '100%' : 520 }}>
 
                 {/* Canvas column */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -542,6 +675,8 @@ export default function InfographicBlock({ block, onUpdate }) {
                                 onMoveMouseDown={handleMoveMouseDown}
                                 onResizeMouseDown={(e, handle) => handleResizeMouseDown(e, item, handle)}
                                 onTextChange={(text) => patchItem(item.id, { text })}
+                                canvasRef={canvasRef}
+                                onHeightChange={patchItem}
                             />
                         ))}
 
@@ -555,72 +690,97 @@ export default function InfographicBlock({ block, onUpdate }) {
                             }}>
                                 <div style={{ fontSize: '2.2rem', opacity: 0.6 }}>🖼</div>
                                 <div style={{ fontSize: '0.8rem', fontWeight: 500 }}>
-                                    Add shapes and text boxes using the toolbar below
+                                    {isSlide ? "Add elements using the sidebar on the left" : "Add shapes and text boxes using the toolbar below"}
                                 </div>
                             </div>
                         )}
                     </div>
 
                     {/* Toolbar */}
-                    <div style={{
-                        height: 50, background: '#ffffff', borderTop: '1px solid #e5e7eb',
-                        display: 'flex', alignItems: 'center', padding: '0 12px', gap: 8,
-                        flexShrink: 0,
-                    }}>
-                        {[
-                            { type: 'rect', label: 'Rectangle', Icon: Square },
-                            { type: 'circle', label: 'Circle', Icon: Circle },
-                            { type: 'triangle', label: 'Triangle', Icon: Triangle },
-                            { type: 'text', label: 'Text Box', Icon: Type },
-                        ].map(({ type, label, Icon }) => (
-                            <ToolbarButton key={type} onClick={() => addItem(type)} Icon={Icon} label={label} />
-                        ))}
+                    {!isSlide ? (
+                        <div style={{
+                            height: 50, background: '#ffffff', borderTop: '1px solid #e5e7eb',
+                            display: 'flex', alignItems: 'center', padding: '0 12px', gap: 8,
+                            flexShrink: 0,
+                        }}>
+                            {[
+                                { type: 'rect', label: 'Rectangle', Icon: Square },
+                                { type: 'circle', label: 'Circle', Icon: Circle },
+                                { type: 'triangle', label: 'Triangle', Icon: Triangle },
+                                { type: 'text', label: 'Text Box', Icon: Type },
+                            ].map(({ type, label, Icon }) => (
+                                <ToolbarButton key={type} onClick={() => addItem(type)} Icon={Icon} label={label} />
+                            ))}
 
-                        {/* Canvas BG picker */}
-                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ color: '#6b7280', fontSize: '0.7rem', fontWeight: 600 }}>Canvas BG</span>
+                            <ToolbarButton onClick={() => imageInputRef.current?.click()} Icon={ImageIcon} label="Image" />
                             <input
-                                type="color"
-                                value={canvasBg}
-                                onChange={e => commitCanvasBg(e.target.value)}
-                                title="Canvas background color"
-                                style={{
-                                    width: 30, height: 30, padding: 2,
-                                    border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer',
-                                }}
+                                type="file"
+                                ref={imageInputRef}
+                                onChange={handleImageUpload}
+                                accept="image/*"
+                                style={{ display: 'none' }}
                             />
+
+                            {/* Canvas BG picker */}
+                            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ color: '#6b7280', fontSize: '0.7rem', fontWeight: 600 }}>Canvas BG</span>
+                                <input
+                                    type="color"
+                                    value={canvasBg}
+                                    onChange={e => commitCanvasBg(e.target.value)}
+                                    title="Canvas background color"
+                                    style={{
+                                        width: 30, height: 30, padding: 2,
+                                        border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer',
+                                    }}
+                                />
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        <input
+                            type="file"
+                            ref={imageInputRef}
+                            onChange={handleImageUpload}
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                        />
+                    )}
                 </div>
 
                 {/* ── Right sidebar ─────────────────────────────────────────── */}
-                <div style={{
-                    width: 224, background: '#f9fafb', borderLeft: '1px solid #e5e7eb',
-                    display: 'flex', flexDirection: 'column',
-                    padding: 16, gap: 16, overflowY: 'auto', flexShrink: 0,
-                }}>
-                    {selectedItem ? (
-                        <SelectedPanel
-                            item={selectedItem}
-                            onPatch={(patch) => patchItem(selectedItem.id, patch)}
-                            onDelete={() => deleteItem(selectedItem.id)}
-                            onBringForward={() => bringForward(selectedItem.id)}
-                            onSendBackward={() => sendBackward(selectedItem.id)}
-                            onBringToFront={() => bringToFront(selectedItem.id)}
-                            onSendToBack={() => sendToBack(selectedItem.id)}
-                        />
-                    ) : (
-                        <EmptyPanel />
-                    )}
-                </div>
+                {!isSlide && (
+                    <div style={{
+                        width: 224, background: '#f9fafb', borderLeft: '1px solid #e5e7eb',
+                        display: 'flex', flexDirection: 'column',
+                        padding: 16, gap: 16, overflowY: 'auto', flexShrink: 0,
+                    }}>
+                        {selectedItem ? (
+                            <SelectedPanel
+                                item={selectedItem}
+                                onPatch={(patch) => patchItem(selectedItem.id, patch)}
+                                onDelete={() => deleteItem(selectedItem.id)}
+                                onBringForward={() => bringForward(selectedItem.id)}
+                                onSendBackward={() => sendBackward(selectedItem.id)}
+                                onBringToFront={() => bringToFront(selectedItem.id)}
+                                onSendToBack={() => sendToBack(selectedItem.id)}
+                            />
+                        ) : (
+                            <EmptyPanel />
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
-}
+});
+
+
+export default CanvasBlock;
+
 
 // ─── SelectedPanel ─────────────────────────────────────────────────────────────
 function SelectedPanel({ item, onPatch, onDelete, onBringForward, onSendBackward, onBringToFront, onSendToBack }) {
-    const typeLabel = { rect: 'Rectangle', circle: 'Circle', triangle: 'Triangle', text: 'Text Box' }[item.type];
+    const typeLabel = { rect: 'Rectangle', circle: 'Circle', triangle: 'Triangle', text: 'Text Box', image: 'Image' }[item.type];
 
     return (
         <>
@@ -633,52 +793,75 @@ function SelectedPanel({ item, onPatch, onDelete, onBringForward, onSendBackward
             </div>
 
             {/* Color */}
-            <div>
-                <Label>{item.type === 'text' ? 'Text Color' : 'Fill Color'}</Label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <input
-                        type="color"
-                        value={item.color}
-                        onChange={e => onPatch({ color: e.target.value })}
-                        style={{
-                            width: 34, height: 34, border: '1px solid #e5e7eb',
-                            borderRadius: 6, cursor: 'pointer', padding: 2,
-                        }}
-                    />
-                    <span style={{ color: '#6b7280', fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums' }}>
-                        {item.color}
-                    </span>
-                </div>
-                {/* Quick palette */}
-                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                    {PALETTE.map(c => (
-                        <div
-                            key={c}
-                            onClick={() => onPatch({ color: c })}
-                            title={c}
-                            style={{
-                                width: 18, height: 18, borderRadius: 4, background: c, cursor: 'pointer',
-                                border: c === item.color ? '2px solid #111827' : '2px solid transparent',
-                                boxSizing: 'border-box', flexShrink: 0,
-                                transition: 'transform 0.1s',
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.2)'; }}
-                            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
-                        />
-                    ))}
-                </div>
-            </div>
-
-            {/* Font size — text items only */}
-            {item.type === 'text' && (
+            {item.type !== 'image' && (
                 <div>
-                    <Label>Font Size — {item.fontSize}px</Label>
-                    <input
-                        type="range" min="8" max="60"
-                        value={item.fontSize}
-                        onChange={e => onPatch({ fontSize: Number(e.target.value) })}
-                        style={{ width: '100%', accentColor: '#3b82f6' }}
-                    />
+                    <Label>{item.type === 'text' ? 'Text Color' : 'Fill Color'}</Label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <input
+                            type="color"
+                            value={item.color}
+                            onChange={e => onPatch({ color: e.target.value })}
+                            style={{
+                                width: 34, height: 34, border: '1px solid #e5e7eb',
+                                borderRadius: 6, cursor: 'pointer', padding: 2,
+                            }}
+                        />
+                        <span style={{ color: '#6b7280', fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums' }}>
+                            {item.color}
+                        </span>
+                    </div>
+                    {/* Quick palette */}
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                        {PALETTE.map(c => (
+                            <div
+                                key={c}
+                                onClick={() => onPatch({ color: c })}
+                                title={c}
+                                style={{
+                                    width: 18, height: 18, borderRadius: 4, background: c, cursor: 'pointer',
+                                    border: c === item.color ? '2px solid #111827' : '2px solid transparent',
+                                    boxSizing: 'border-box', flexShrink: 0,
+                                    transition: 'transform 0.1s',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.2)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Font family & size — text items only */}
+            {item.type === 'text' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div>
+                        <Label>Font Family</Label>
+                        <select
+                            value={item.fontFamily || 'inherit'}
+                            onChange={e => onPatch({ fontFamily: e.target.value })}
+                            onMouseDown={e => e.stopPropagation()}
+                            style={{
+                                width: '100%', boxSizing: 'border-box',
+                                background: '#ffffff', border: '1px solid #e5e7eb',
+                                borderRadius: 5, padding: '6px 8px',
+                                color: '#374151', fontSize: '0.75rem',
+                                outline: 'none',
+                            }}
+                        >
+                            {FONT_FAMILIES.map(f => (
+                                <option key={f.value} value={f.value}>{f.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <Label>Font Size — {item.fontSize}px</Label>
+                        <input
+                            type="range" min="8" max="60"
+                            value={item.fontSize}
+                            onChange={e => onPatch({ fontSize: Number(e.target.value) })}
+                            style={{ width: '100%', accentColor: '#3b82f6' }}
+                        />
+                    </div>
                 </div>
             )}
 
@@ -787,6 +970,48 @@ function SelectedPanel({ item, onPatch, onDelete, onBringForward, onSendBackward
                         </button>
                     )}
                 </div>
+            </div>
+
+            {/* Animation */}
+            <div>
+                <Label>Animation</Label>
+                <select
+                    value={item.animation || 'none'}
+                    onChange={e => onPatch({ animation: e.target.value })}
+                    onMouseDown={e => e.stopPropagation()}
+                    style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: '#ffffff', border: '1px solid #e5e7eb',
+                        borderRadius: 5, padding: '6px 8px',
+                        color: '#374151', fontSize: '0.75rem',
+                        outline: 'none', marginBottom: 8,
+                    }}
+                >
+                    <option value="none">None</option>
+                    <option value="fade-in">Fade In</option>
+                    <option value="slide-in-left">Slide In Left</option>
+                    <option value="slide-in-right">Slide In Right</option>
+                    <option value="slide-in-up">Slide In Up</option>
+                    <option value="slide-in-down">Slide In Down</option>
+                    <option value="zoom-in">Zoom In</option>
+                    <option value="zoom-out">Zoom Out</option>
+                    <option value="flip-in">Flip In</option>
+                    <option value="bounce-in">Bounce In</option>
+                    <option value="fade-in-up">Fade In Up</option>
+                </select>
+
+                {(item.animation || 'none') !== 'none' && (
+                    <div>
+                        <Label>Animation Delay — {(item.animationDelay || 0).toFixed(1)}s</Label>
+                        <input
+                            type="range" min="0" max="10" step="0.1"
+                            value={item.animationDelay || 0}
+                            onChange={e => onPatch({ animationDelay: parseFloat(e.target.value) })}
+                            onMouseDown={e => e.stopPropagation()}
+                            style={{ width: '100%', accentColor: '#3b82f6' }}
+                        />
+                    </div>
+                )}
             </div>
 
             {/* Z-index / layer order — Fix #1 */}

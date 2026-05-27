@@ -782,9 +782,39 @@ async def upload_pptx(file: UploadFile = File(...)):
     slides = await extract_slides(contents)
     
     for slide in slides:
-        for element in slide.get("elements", []):
-            if element.get("type") == "audio" and element.get("audioUrl", "").startswith("data:"):
-                audio_url = element["audioUrl"]
+        # 1. Slide-level bgAudio
+        bg_audio = slide.get("bgAudio")
+        if bg_audio and bg_audio.get("url", "").startswith("data:"):
+            audio_url = bg_audio["url"]
+            media_id = bg_audio.get("mediaId")
+            
+            try:
+                header, b64_data = audio_url.split(",", 1)
+                mime_type = header.split(";")[0].split(":")[1]
+                audio_bytes = base64.b64decode(b64_data)
+                
+                if not media_id:
+                    media_id = uuid.uuid4().hex
+                    bg_audio["mediaId"] = media_id
+                    
+                ext = mime_type.split("/")[-1] if "/" in mime_type else "mp3"
+                filename = f"audio_{media_id}.{ext}"
+                
+                _MEDIA_STORE[media_id] = {
+                    "filename": filename,
+                    "bytes": audio_bytes,
+                    "mime": mime_type,
+                }
+                
+                bg_audio["url"] = f"/api/media/{media_id}"
+            except Exception as e:
+                print(f"Failed to wire PPTX slide bgAudio to media store: {e}")
+
+        # 2. Canvas items / Slide elements level audio
+        all_objs = slide.get("elements", []) + slide.get("items", [])
+        for element in all_objs:
+            audio_url = element.get("audioUrl") or element.get("src")
+            if element.get("type") == "audio" and audio_url and audio_url.startswith("data:"):
                 media_id = element.get("mediaId")
                 
                 try:
@@ -805,9 +835,12 @@ async def upload_pptx(file: UploadFile = File(...)):
                         "mime": mime_type,
                     }
                     
-                    element["audioUrl"] = f"/api/media/{media_id}"
+                    if "audioUrl" in element:
+                        element["audioUrl"] = f"/api/media/{media_id}"
+                    if "src" in element:
+                        element["src"] = f"/api/media/{media_id}"
                 except Exception as e:
-                    print(f"Failed to wire PPTX audio to media store: {e}")
+                    print(f"Failed to wire PPTX item audio to media store: {e}")
                     
     return {"status": "success", "blocks": slides}
 
@@ -1108,7 +1141,7 @@ def _extract_media_from_course(course_def: Dict[str, Any], media_files: Dict[str
                     continue
 
                 # ── Video data URIs
-                if ctype in ("video", "interactive-video") and comp.get("src", "").startswith("data:"):
+                if ctype in ("video", "interactive-video", "storyline-video") and comp.get("src", "").startswith("data:"):
                     media_counter += 1
                     data_uri = comp["src"]
                     match = re.match(r"data:([\w/+.-]+);base64,(.*)", data_uri, re.DOTALL)
@@ -1156,6 +1189,24 @@ def _extract_media_from_course(course_def: Dict[str, Any], media_files: Dict[str
                                         sub["src"] = fname
                                     except Exception:
                                         pass
+                    continue
+
+                # ── Canvas: walk items and extract nested image elements
+                if ctype == "canvas":
+                    for item in comp.get("items", []):
+                        if item.get("type") == "image" and item.get("src", "").startswith("data:"):
+                            media_counter += 1
+                            data_uri = item["src"]
+                            match = re.match(r"data:([\w/+.-]+);base64,(.*)", data_uri, re.DOTALL)
+                            if match:
+                                mime, b64_data = match.group(1), match.group(2)
+                                ext = _mime_to_ext(mime)
+                                fname = f"media/canvas_img_{media_counter}.{ext}"
+                                try:
+                                    media_files[fname] = base64.b64decode(b64_data)
+                                    item["src"] = fname
+                                except Exception:
+                                    pass
                     continue
 
 def _mime_to_ext(mime: str) -> str:
