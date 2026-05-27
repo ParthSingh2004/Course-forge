@@ -1082,13 +1082,17 @@ def map_content_block(b: GeneratedContentBlock, image_type: str) -> Dict[str, An
     elif block_type == "image":
         mapped["content"] = ""
         if image_type == "unsplash" and b.unsplashQuery:
+            print(f"[AI Generator] Searching stock photo on Unsplash for: '{b.unsplashQuery}'")
             b64 = _fetch_unsplash_base64(b.unsplashQuery)
             if b64:
                 mapped["content"] = b64
+                print("[AI Generator] Stock photo fetched successfully.")
         elif image_type == "ai" and b.imagePrompt:
+            print(f"[AI Generator] Generating image with Imagen for: '{b.imagePrompt}'")
             b64 = _generate_imagen_base64(b.imagePrompt)
             if b64:
                 mapped["content"] = b64
+                print("[AI Generator] AI Image generated successfully.")
     elif block_type == "button":
         mapped["content"] = b.content or "Click Here"
         mapped["targetSlideId"] = b.targetSlideId or ""
@@ -1228,13 +1232,17 @@ def map_canvas_item(item: GeneratedCanvasItem, image_type: str) -> Dict[str, Any
     elif item.type == "image":
         mapped["src"] = ""
         if image_type == "unsplash" and item.unsplashQuery:
+            print(f"[AI Generator] Searching stock photo on Unsplash for canvas: '{item.unsplashQuery}'")
             b64 = _fetch_unsplash_base64(item.unsplashQuery)
             if b64:
                 mapped["src"] = b64
+                print("[AI Generator] Canvas stock photo fetched successfully.")
         elif image_type == "ai" and item.imagePrompt:
+            print(f"[AI Generator] Generating canvas image with Imagen for: '{item.imagePrompt}'")
             b64 = _generate_imagen_base64(item.imagePrompt)
             if b64:
                 mapped["src"] = b64
+                print("[AI Generator] Canvas AI Image generated successfully.")
                 
     return mapped
 
@@ -1285,6 +1293,11 @@ def pydantic_to_gemini_schema(model_class) -> Dict[str, Any]:
 @router.post("/ai/generate-course")
 async def generate_course(req: GenerateCourseRequest):
     try:
+        print(f"\n--- AI COURSE GENERATOR REQUEST ---")
+        print(f"Prompt: {req.prompt}")
+        print(f"Slides count: {req.num_slides}")
+        print(f"ImageType selection: {req.image_type}")
+
         system_instruction = (
             "You are CourseForge AI, an expert instructional designer. "
             "Your task is to generate a comprehensive, highly engaging slide-based course "
@@ -1300,10 +1313,10 @@ async def generate_course(req: GenerateCourseRequest):
 
         prompt_text = f"{system_instruction}\n\nUser Request: Generate a course with exactly {req.num_slides} slides about: {req.prompt}"
 
-        # Clean schema dynamically to strip 'default', 'title', etc.
+        print("[AI Generator] Building/cleaning schema...")
         cleaned_schema = pydantic_to_gemini_schema(GeneratedCourse)
 
-        # Request course generation from gemini-2.5-pro
+        print("[AI Generator] Calling Gemini 2.5 Pro (this might take 10-35s)...")
         response = pro_model.generate_content(
             prompt_text,
             generation_config=genai.GenerationConfig(
@@ -1313,15 +1326,21 @@ async def generate_course(req: GenerateCourseRequest):
             ),
         )
 
+        print("[AI Generator] Response received. Parsing JSON text...")
         raw_course = json.loads(response.text.strip())
 
-        # Map to CourseForge React state model
+        print(f"[AI Generator] Course outline parsed: '{raw_course.get('courseTitle')}'")
+        print(f"[AI Generator] Mapping {len(raw_course.get('slides', []))} slides to CourseForge editor model...")
+
         mapped_slides = []
         for slide in raw_course.get("slides", []):
             slide_type = slide.get("type", "slide")
+            slide_title = slide.get("title") or "Untitled Slide"
+            print(f"[AI Generator] Mapping slide: '{slide_title}' (Type: {slide_type})")
+            
             mapped_slide = {
                 "id": generate_react_id("slide"),
-                "title": slide.get("title") or "Untitled Slide",
+                "title": slide_title,
                 "type": slide_type
             }
 
