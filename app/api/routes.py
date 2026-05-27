@@ -8,10 +8,12 @@ import base64
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import List, Dict, Any
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional, Literal, Union
 from dotenv import load_dotenv
 import google.generativeai as genai
+import time
+import random
 import shutil
 import tempfile
 import html
@@ -134,6 +136,7 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-2.5-flash')
+pro_model = genai.GenerativeModel('gemini-2.5-pro')
 
 class GenerateImageRequest(BaseModel):
     prompt: str
@@ -922,6 +925,389 @@ async def generate_ai_content(prompt: str = Form(...), block_type: str = Form("P
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# AI COURSE GENERATOR & SCHEMAS
+# ---------------------------------------------------------------------------
+
+class GeneratedContentBlock(BaseModel):
+    type: str = Field(
+        ...,
+        description="The block type. Allowed values: 'heading', 'text', 'image', 'button', 'quiz', 'true_false', 'fill_blanks', 'multi_select', 'matching', 'flashcard', 'quote', 'process', 'tabs', 'accordion', 'list', 'table', 'columns'"
+    )
+    content: Optional[str] = Field(None, description="Main text content. For 'heading', 'text', 'button', 'quote'.")
+    headingLevel: Optional[str] = Field(None, description="For 'heading' blocks: 'h1', 'h2', or 'h3'.")
+    alignment: Optional[str] = Field(None, description="For 'button' blocks: 'left', 'center', or 'right'.")
+    
+    imagePrompt: Optional[str] = Field(None, description="Detailed description of the image content to generate via AI. Make it descriptive (e.g. 'A close-up photograph of a modern office desk with a safety manual'). Only if type is 'image'.")
+    unsplashQuery: Optional[str] = Field(None, description="Short search term for stock photos on Unsplash. Only if type is 'image'.")
+    
+    question: Optional[str] = Field(None, description="The question text for interactive assessment blocks.")
+    options: Optional[List[str]] = Field(None, description="List of options for 'quiz' or 'multi_select' blocks.")
+    correctAnswerIndex: Optional[int] = Field(None, description="0-based index of the correct answer for 'quiz' blocks.")
+    correctAnswerBool: Optional[bool] = Field(None, description="True or False value for 'true_false' blocks.")
+    correctAnswersList: Optional[List[str]] = Field(None, description="Ordered list of answers for 'fill_blanks' blocks matching the '____' placeholders.")
+    correctAnswerIndices: Optional[List[int]] = Field(None, description="List of 0-based indices of the correct answers for 'multi_select' blocks.")
+    matchingPairs: Optional[List[Dict[str, str]]] = Field(None, description="List of dicts with keys 'leftItem' and 'rightItem' for 'matching' blocks.")
+    
+    front: Optional[str] = Field(None, description="Flashcard front text.")
+    back: Optional[str] = Field(None, description="Flashcard back text.")
+    
+    author: Optional[str] = Field(None, description="Author of the quote.")
+    
+    steps: Optional[List[Dict[str, str]]] = Field(None, description="List of process steps. Each step must be a dict with keys 'title' and 'content'.")
+    
+    tabs: Optional[List[Dict[str, str]]] = Field(None, description="List of tabs. Each tab must be a dict with keys 'title' and 'content'.")
+    
+    topics: Optional[List[Dict[str, Any]]] = Field(None, description="List of accordion topics. Each topic is a dict with keys 'title' (string) and 'items' (list of dicts like {'type': 'text', 'value': string}).")
+    
+    items: Optional[List[str]] = Field(None, description="List of bullet points for 'list' blocks.")
+    headers: Optional[List[str]] = Field(None, description="List of headers for 'table' blocks.")
+    rows: Optional[List[List[str]]] = Field(None, description="List of row cell arrays for 'table' blocks.")
+    
+    columnsText: Optional[List[List[str]]] = Field(None, description="Columns layout: outer list is column array, inner list is list of paragraph text strings.")
+
+
+class GeneratedCanvasItem(BaseModel):
+    type: str = Field(..., description="Canvas element type: 'rect', 'circle', 'triangle', 'text', 'image'")
+    x: float = Field(..., description="X coordinate as percentage (0 to 100) relative to the slide canvas.")
+    y: float = Field(..., description="Y coordinate as percentage (0 to 100) relative to the slide canvas.")
+    w: float = Field(..., description="Width as percentage (5 to 100).")
+    h: float = Field(..., description="Height as percentage (5 to 100).")
+    color: str = Field("#3b82f6", description="Hex color code for shape or text color.")
+    text: Optional[str] = Field(None, description="Text content (only for type='text').")
+    fontSize: Optional[int] = Field(16, description="Font size in pixels (only for type='text').")
+    imagePrompt: Optional[str] = Field(None, description="Image generation prompt (only for type='image').")
+    unsplashQuery: Optional[str] = Field(None, description="Unsplash search query (only for type='image').")
+
+
+class GeneratedSlide(BaseModel):
+    type: str = Field("slide", description="Slide layout type. Use 'slide' for normal vertical block scrolling, or 'canvas' for coordinate-based infographic elements.")
+    title: str = Field(..., description="Slide title.")
+    
+    elements: Optional[List[GeneratedContentBlock]] = Field(None, description="Blocks list (must be populated if type is 'slide').")
+    
+    canvasBg: Optional[str] = Field("#ffffff", description="Hex color for canvas background (only if type is 'canvas').")
+    canvasItems: Optional[List[GeneratedCanvasItem]] = Field(None, description="List of items on the canvas (must be populated if type is 'canvas').")
+
+
+class GeneratedCourse(BaseModel):
+    courseTitle: str = Field(..., description="The overall title of the course.")
+    passingScore: int = Field(70, description="Passing score percentage (0-100).")
+    slides: List[GeneratedSlide] = Field(..., description="List of slides.")
+
+
+class GenerateCourseRequest(BaseModel):
+    prompt: str
+    num_slides: int
+    image_type: str  # "ai" or "unsplash"
+
+
+def generate_react_id(prefix: str = "id") -> str:
+    import random
+    import time
+    rand_part = "".join(random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=6))
+    return f"{prefix}_{int(time.time())}_{rand_part}"
+
+
+def _fetch_unsplash_base64(query: str) -> str | None:
+    try:
+        client_id = os.getenv("NEXT_PUBLIC_UNSPLASH_ACCESS_KEY", "MGjPRsN98K3iYFnC8T_XqwV3oVZApm9x9IoZjhlTfeQ")
+        search_url = "https://api.unsplash.com/search/photos"
+        resp = requests.get(search_url, params={"query": query, "client_id": client_id, "per_page": 1}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        results = data.get("results", [])
+        if results:
+            img_url = results[0].get("urls", {}).get("regular") or results[0].get("urls", {}).get("small")
+            if img_url:
+                download_location = results[0].get("links", {}).get("download_location")
+                if download_location:
+                    try:
+                        requests.get(download_location, params={"client_id": client_id}, timeout=5)
+                    except Exception:
+                        pass
+                img_resp = requests.get(img_url, timeout=10)
+                img_resp.raise_for_status()
+                content_type = img_resp.headers.get("Content-Type", "image/jpeg")
+                b64 = base64.b64encode(img_resp.content).decode("utf-8")
+                return f"data:{content_type};base64,{b64}"
+    except Exception as e:
+        print(f"Error fetching Unsplash image for '{query}': {e}")
+    return None
+
+
+def _generate_imagen_base64(prompt: str) -> str | None:
+    try:
+        key = os.getenv("ENTERPRISE_GEMINI_IMAGE_KEY")
+        if not key:
+            return None
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key={key}"
+        payload = {
+            "instances": [{"prompt": prompt}],
+            "parameters": {"sampleCount": 1}
+        }
+        resp = requests.post(url, json=payload, timeout=20)
+        if resp.ok:
+            data = resp.json()
+            predictions = data.get("predictions", [])
+            if predictions:
+                b64_str = predictions[0].get("bytesBase64Encoded")
+                if b64_str:
+                    return f"data:image/png;base64,{b64_str}"
+        else:
+            print(f"Imagen API failed: {resp.text}")
+    except Exception as e:
+        print(f"Error generating Imagen image for '{prompt}': {e}")
+    return None
+
+
+def map_content_block(b: GeneratedContentBlock, image_type: str) -> Dict[str, Any]:
+    block_type = b.type.lower().replace("-", "_")
+    if block_type == "accordian":
+        block_type = "accordion"
+        
+    mapped = {
+        "id": generate_react_id("block"),
+        "type": block_type
+    }
+    
+    if block_type in ("heading", "heading_1"):
+        mapped["type"] = "heading"
+        mapped["content"] = b.content or "Heading"
+        mapped["headingLevel"] = b.headingLevel or "h1"
+    elif block_type == "text":
+        mapped["content"] = b.content or ""
+    elif block_type == "image":
+        mapped["content"] = ""
+        if image_type == "unsplash" and b.unsplashQuery:
+            b64 = _fetch_unsplash_base64(b.unsplashQuery)
+            if b64:
+                mapped["content"] = b64
+        elif image_type == "ai" and b.imagePrompt:
+            b64 = _generate_imagen_base64(b.imagePrompt)
+            if b64:
+                mapped["content"] = b64
+    elif block_type == "button":
+        mapped["content"] = b.content or "Click Here"
+        mapped["targetSlideId"] = b.targetSlideId or ""
+        mapped["alignment"] = b.alignment or "center"
+    elif block_type == "quiz":
+        mapped["question"] = b.question or ""
+        mapped["options"] = b.options or ["Option 1", "Option 2", "Option 3"]
+        mapped["correctAnswer"] = b.correctAnswerIndex or 0
+        mapped["marks"] = 10
+        mapped["questionImage"] = None
+    elif block_type == "true_false":
+        mapped["question"] = b.question or ""
+        mapped["correctAnswer"] = b.correctAnswerBool if b.correctAnswerBool is not None else True
+        mapped["marks"] = 10
+    elif block_type == "fill_blanks":
+        mapped["question"] = b.question or "Fill in the blank ____"
+        answers = b.correctAnswersList or [""]
+        mapped["answers"] = answers
+        mapped["answer"] = answers[0] if answers else ""
+        mapped["caseSensitive"] = False
+        mapped["marks"] = 10
+    elif block_type == "multi_select":
+        mapped["question"] = b.question or ""
+        options = b.options or ["Option 1", "Option 2", "Option 3"]
+        mapped["options"] = options
+        correct_indices = b.correctAnswerIndices or []
+        correct_answers = [options[i] for i in correct_indices if i < len(options)]
+        mapped["correctAnswer"] = correct_answers
+        mapped["marks"] = 10
+    elif block_type == "matching":
+        mapped["question"] = b.question or ""
+        pairs = []
+        if b.matchingPairs:
+            for pair in b.matchingPairs:
+                pairs.append({
+                    "leftItem": pair.get("leftItem", ""),
+                    "rightItem": pair.get("rightItem", "")
+                })
+        else:
+            pairs = [{"leftItem": "A", "rightItem": "B"}]
+        mapped["pairs"] = pairs
+        mapped["marks"] = 10
+    elif block_type == "flashcard":
+        mapped["front"] = b.front or ""
+        mapped["back"] = b.back or ""
+    elif block_type == "quote":
+        mapped["content"] = b.content or ""
+        mapped["author"] = b.author or ""
+        mapped["layout"] = "below-left"
+        mapped["bgOverlay"] = 0.45
+    elif block_type == "process":
+        steps = []
+        if b.steps:
+            for step in b.steps:
+                steps.append({
+                    "title": step.get("title", ""),
+                    "content": step.get("content", "")
+                })
+        mapped["steps"] = steps
+    elif block_type == "tabs":
+        tabs = []
+        if b.tabs:
+            for tab in b.tabs:
+                tabs.append({
+                    "title": tab.get("title", ""),
+                    "content": tab.get("content", ""),
+                    "image": None
+                })
+        mapped["tabs"] = tabs
+    elif block_type == "accordion":
+        topics = []
+        if b.topics:
+            for topic in b.topics:
+                items = []
+                for item in topic.get("items", []):
+                    items.append({
+                        "id": generate_react_id("accordionitem"),
+                        "type": item.get("type", "text"),
+                        "value": item.get("value", "")
+                    })
+                topics.append({
+                    "id": generate_react_id("topic"),
+                    "title": topic.get("title", ""),
+                    "items": items
+                })
+        mapped["topics"] = topics
+    elif block_type == "list":
+        mapped["items"] = b.items or [""]
+    elif block_type == "table":
+        mapped["headers"] = b.headers or ["Col 1", "Col 2"]
+        mapped["rows"] = b.rows or [["", ""]]
+        mapped["tableColor"] = "#ffffff"
+        mapped["headerColor"] = "#d5b4b4"
+    elif block_type == "columns":
+        columns = []
+        if b.columnsText:
+            for text_list in b.columnsText:
+                col_blocks = []
+                for text in text_list:
+                    col_blocks.append({
+                        "id": generate_react_id("subblock"),
+                        "type": "text",
+                        "content": text
+                    })
+                columns.append(col_blocks)
+        mapped["columns"] = columns
+        
+    return mapped
+
+
+def map_canvas_item(item: GeneratedCanvasItem, image_type: str) -> Dict[str, Any]:
+    mapped = {
+        "id": generate_react_id("canvasitem"),
+        "type": item.type,
+        "x": item.x,
+        "y": item.y,
+        "w": item.w,
+        "h": item.h,
+        "color": item.color or "#111827",
+        "rotation": 0,
+        "animation": "none",
+        "animationDelay": 0,
+    }
+    
+    if item.type == "text":
+        mapped["text"] = item.text or "Text"
+        mapped["fontSize"] = item.fontSize or 16
+        mapped["fontFamily"] = "inherit"
+        mapped["fontWeight"] = "normal"
+        mapped["fontStyle"] = "normal"
+        mapped["textDecoration"] = "none"
+        mapped["textAlign"] = "left"
+        mapped["lineHeight"] = 1.5
+        mapped["letterSpacing"] = 0
+        mapped["boxBg"] = "#ffffff"
+        mapped["boxBgOpacity"] = 0
+    elif item.type == "image":
+        mapped["src"] = ""
+        if image_type == "unsplash" and item.unsplashQuery:
+            b64 = _fetch_unsplash_base64(item.unsplashQuery)
+            if b64:
+                mapped["src"] = b64
+        elif image_type == "ai" and item.imagePrompt:
+            b64 = _generate_imagen_base64(item.imagePrompt)
+            if b64:
+                mapped["src"] = b64
+                
+    return mapped
+
+
+@router.post("/ai/generate-course")
+async def generate_course(req: GenerateCourseRequest):
+    try:
+        system_instruction = (
+            "You are CourseForge AI, an expert instructional designer. "
+            "Your task is to generate a comprehensive, highly engaging slide-based course "
+            "conforming strictly to the requested schema. "
+            "Design instructions:\n"
+            "1. Structure the slides in a logical learning progression.\n"
+            "2. Mix block types for variety: use heading, text, lists, flashcards, accordions, quizzes, tables, and canvas slides.\n"
+            "3. Keep the content educational, accurate, and concise.\n"
+            "4. For canvas slides (type: 'canvas'), lay out elements on a 100x100 grid. Use 'text' items for captions/labels, 'rect' or 'circle' for visual frames/containers, and 'image' items for infographics. Ensure coordinates do not overlap awkwardly.\n"
+            "5. For any block of type 'image', provide either a detailed 'imagePrompt' (for AI generation) or a precise 'unsplashQuery' (for stock search) matching the topic.\n"
+            "6. Place a quiz, true_false, or matching assessment slide at the end of the course to verify understanding."
+        )
+
+        prompt_text = f"{system_instruction}\n\nUser Request: Generate a course with exactly {req.num_slides} slides about: {req.prompt}"
+
+        # Request course generation from gemini-2.5-pro
+        response = pro_model.generate_content(
+            prompt_text,
+            generation_config=genai.GenerationConfig(
+                response_mime_type="application/json",
+                response_schema=GeneratedCourse,
+                temperature=0.7,
+            ),
+        )
+
+        raw_course = json.loads(response.text.strip())
+
+        # Map to CourseForge React state model
+        mapped_slides = []
+        for slide in raw_course.get("slides", []):
+            slide_type = slide.get("type", "slide")
+            mapped_slide = {
+                "id": generate_react_id("slide"),
+                "title": slide.get("title") or "Untitled Slide",
+                "type": slide_type
+            }
+
+            if slide_type == "canvas":
+                mapped_slide["canvasBg"] = slide.get("canvasBg") or "#ffffff"
+                mapped_slide["background"] = {"type": "color", "value": slide.get("canvasBg") or "#ffffff"}
+                mapped_slide["items"] = [
+                    map_canvas_item(GeneratedCanvasItem(**item), req.image_type)
+                    for item in slide.get("canvasItems") or []
+                ]
+                mapped_slide["elements"] = []
+            else:
+                mapped_slide["elements"] = [
+                    map_content_block(GeneratedContentBlock(**block), req.image_type)
+                    for block in slide.get("elements") or []
+                ]
+
+            mapped_slides.append(mapped_slide)
+
+        return {
+            "status": "success",
+            "courseTitle": raw_course.get("courseTitle") or "Untitled Generated Course",
+            "passingScore": raw_course.get("passingScore") or 70,
+            "slides": mapped_slides
+        }
+
+    except Exception as e:
+        import traceback
+        print("\n--- GENERATE COURSE CRASH ---")
+        traceback.print_exc()
+        print("----------------------\n")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------------------------

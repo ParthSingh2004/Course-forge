@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookOpen, FolderOpen, Plus, Trash2, Clock, ChevronRight } from 'lucide-react';
+import { BookOpen, FolderOpen, Plus, Trash2, Clock, ChevronRight, Sparkles } from 'lucide-react';
 import { deleteLocalCourse, getAllLocalCourses } from './utils/storage';
 
 // Google Fonts import via style tag
@@ -445,7 +445,7 @@ function formatCourseDate(timestamp) {
   }).format(new Date(timestamp));
 }
 
-function Dashboard({ onCreateNew, onOpenCourse }) {
+function Dashboard({ onCreateNew, onOpenCourse, onOpenAIGenerator }) {
   const [courses, setCourses] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -508,10 +508,16 @@ function Dashboard({ onCreateNew, onOpenCourse }) {
               Open and manage course authoring projects saved in this browser.
             </p>
           </div>
-          <button type="button" onClick={onCreateNew} className="dash-btn-primary">
-            <Plus size={14} />
-            Create New Course
-          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" onClick={onOpenAIGenerator} className="dash-btn-primary" style={{ background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', border: 'none', boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)' }}>
+              <Sparkles size={14} style={{ marginRight: 4 }} />
+              Generate with AI
+            </button>
+            <button type="button" onClick={onCreateNew} className="dash-btn-primary">
+              <Plus size={14} />
+              Create New Course
+            </button>
+          </div>
         </div>
 
         {/* Stats row */}

@@ -4,6 +4,7 @@ import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerCli
 
 // Core UI & Storage
 import Dashboard from './Dashboard';
+import AICourseGeneratorModal from './components/ui/AICourseGeneratorModal';
 import RichTextEditor from './components/ui/RichTextEditor';
 import { createLocalCourse, saveCourseToBrowser } from './utils/storage';
 import './App.css'; // <-- External CSS Import
@@ -319,6 +320,7 @@ function App() {
   const [slideDragEnabledIdx, setSlideDragEnabledIdx] = useState(null);
   const [newBlockIds, setNewBlockIds] = useState(new Set());
   const [showAIModal, setShowAIModal] = useState(false);
+  const [isAIGeneratorOpen, setIsAIGeneratorOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiBlockType, setAiBlockType] = useState('Paragraph');
   const [exportProgress, setExportProgress] = useState(0);
@@ -783,6 +785,47 @@ function App() {
     }
   };
 
+  const handleGenerateCourse = async (promptText, numSlides, imagePreference) => {
+    try {
+      const response = await fetch(buildApiUrl('/api/ai/generate-course'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          prompt: promptText.trim(),
+          num_slides: numSlides,
+          image_type: imagePreference
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Course generation failed on server.');
+      }
+
+      const data = await response.json();
+      if (data.status !== 'success') {
+        throw new Error(data.message || 'Course generation failed.');
+      }
+
+      const payload = {
+        courseTitle: data.courseTitle,
+        passingScore: data.passingScore,
+        slides: data.slides
+      };
+      
+      const newCourse = await createLocalCourse(payload);
+      loadAuthoringStateIntoEditor(newCourse.id, newCourse.authoringState);
+      
+      if (data.slides.length > 0) {
+        setActiveSlideId(data.slides[0].id);
+      }
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
   const validateCourseForExport = () => {
     let warnings = [];
     let emptyCount = 0;
@@ -1157,7 +1200,20 @@ function App() {
   };
 
   if (currentView === 'dashboard') {
-    return <Dashboard onCreateNew={handleCreateNewCourse} onOpenCourse={handleOpenCourse} />;
+    return (
+      <>
+        <Dashboard
+          onCreateNew={handleCreateNewCourse}
+          onOpenCourse={handleOpenCourse}
+          onOpenAIGenerator={() => setIsAIGeneratorOpen(true)}
+        />
+        <AICourseGeneratorModal
+          isOpen={isAIGeneratorOpen}
+          onClose={() => setIsAIGeneratorOpen(false)}
+          onGenerate={handleGenerateCourse}
+        />
+      </>
+    );
   }
 
   return (
@@ -1222,6 +1278,17 @@ function App() {
                 ? <span className="cf-spin" style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%' }} />
                 : <Eye style={{ width: 13, height: 13 }} />}
               {isPreviewLoading ? 'Building…' : 'Preview'}
+            </button>
+
+            {/* AI Course Generate */}
+            <button
+              onClick={() => setIsAIGeneratorOpen(true)}
+              className="cf-btn cf-btn-ai"
+              title="Generate entire course with AI"
+              style={{ height: 30, padding: '0 11px', gap: '5px', background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', border: 'none' }}
+            >
+              <Sparkles style={{ width: 13, height: 13, color: '#ffffff' }} />
+              AI Course
             </button>
 
             {/* AI Generate */}
@@ -2643,6 +2710,13 @@ function App() {
           Draft saved to browser
         </div>
       )}
+
+      {/* AI Course Generator Modal */}
+      <AICourseGeneratorModal
+        isOpen={isAIGeneratorOpen}
+        onClose={() => setIsAIGeneratorOpen(false)}
+        onGenerate={handleGenerateCourse}
+      />
     </>
   );
 }
