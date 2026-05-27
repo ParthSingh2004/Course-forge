@@ -1293,10 +1293,10 @@ def pydantic_to_gemini_schema(model_class) -> Dict[str, Any]:
 @router.post("/ai/generate-course")
 async def generate_course(req: GenerateCourseRequest):
     try:
-        print(f"\n--- AI COURSE GENERATOR REQUEST ---")
-        print(f"Prompt: {req.prompt}")
-        print(f"Slides count: {req.num_slides}")
-        print(f"ImageType selection: {req.image_type}")
+        print(f"\n--- AI COURSE GENERATOR REQUEST ---", flush=True)
+        print(f"Prompt: {req.prompt}", flush=True)
+        print(f"Slides count: {req.num_slides}", flush=True)
+        print(f"ImageType selection: {req.image_type}", flush=True)
 
         system_instruction = (
             "You are CourseForge AI, an expert instructional designer. "
@@ -1313,10 +1313,10 @@ async def generate_course(req: GenerateCourseRequest):
 
         prompt_text = f"{system_instruction}\n\nUser Request: Generate a course with exactly {req.num_slides} slides about: {req.prompt}"
 
-        print("[AI Generator] Building/cleaning schema...")
+        print("[AI Generator] Building/cleaning schema...", flush=True)
         cleaned_schema = pydantic_to_gemini_schema(GeneratedCourse)
 
-        print("[AI Generator] Calling Gemini 2.5 Pro (this might take 10-35s)...")
+        print("[AI Generator] Calling Gemini 2.5 Pro (this might take 10-35s)...", flush=True)
         response = pro_model.generate_content(
             prompt_text,
             generation_config=genai.GenerationConfig(
@@ -1326,17 +1326,17 @@ async def generate_course(req: GenerateCourseRequest):
             ),
         )
 
-        print("[AI Generator] Response received. Parsing JSON text...")
+        print("[AI Generator] Response received. Parsing JSON text...", flush=True)
         raw_course = json.loads(response.text.strip())
 
-        print(f"[AI Generator] Course outline parsed: '{raw_course.get('courseTitle')}'")
-        print(f"[AI Generator] Mapping {len(raw_course.get('slides', []))} slides to CourseForge editor model...")
+        print(f"[AI Generator] Course outline parsed: '{raw_course.get('courseTitle')}'", flush=True)
+        print(f"[AI Generator] Mapping {len(raw_course.get('slides', []))} slides to CourseForge editor model...", flush=True)
 
         mapped_slides = []
         for slide in raw_course.get("slides", []):
             slide_type = slide.get("type", "slide")
             slide_title = slide.get("title") or "Untitled Slide"
-            print(f"[AI Generator] Mapping slide: '{slide_title}' (Type: {slide_type})")
+            print(f"[AI Generator] Mapping slide: '{slide_title}' (Type: {slide_type})", flush=True)
             
             mapped_slide = {
                 "id": generate_react_id("slide"),

@@ -787,7 +787,10 @@ function App() {
 
   const handleGenerateCourse = async (promptText, numSlides, imagePreference) => {
     try {
-      const response = await fetch(buildApiUrl('/api/ai/generate-course'), {
+      const targetUrl = buildApiUrl('/api/ai/generate-course');
+      console.log("[AI Generator] Submitting request to URL:", targetUrl);
+
+      const response = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
