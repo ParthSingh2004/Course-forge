@@ -136,7 +136,7 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-2.5-flash')
-pro_model = genai.GenerativeModel('gemini-2.5-pro')
+pro_model = genai.GenerativeModel('gemini-2.5-flash')
 
 class GenerateImageRequest(BaseModel):
     prompt: str
@@ -1305,10 +1305,11 @@ async def generate_course(req: GenerateCourseRequest):
             "Design instructions:\n"
             "1. Structure the slides in a logical learning progression.\n"
             "2. Mix block types for variety: use heading, text, lists, flashcards, accordions, quizzes, tables, and canvas slides.\n"
-            "3. Keep the content educational, accurate, and concise.\n"
-            "4. For canvas slides (type: 'canvas'), lay out elements on a 100x100 grid. Use 'text' items for captions/labels, 'rect' or 'circle' for visual frames/containers, and 'image' items for infographics. Ensure coordinates do not overlap awkwardly.\n"
-            "5. For any block of type 'image', provide either a detailed 'imagePrompt' (for AI generation) or a precise 'unsplashQuery' (for stock search) matching the topic.\n"
-            "6. Place a quiz, true_false, or matching assessment slide at the end of the course to verify understanding."
+            "3. Keep the content educational, accurate, and detailed. Do not leave text blocks empty.\n"
+            "4. Each slide of type 'slide' must contain a mix of 2 to 4 content blocks (e.g. a heading, followed by detailed text blocks, lists, quotes, or image blocks). Never generate slides containing only a heading block.\n"
+            "5. For canvas slides (type: 'canvas'), lay out elements on a 100x100 grid. Use 'text' items for captions/labels, 'rect' or 'circle' for visual frames/containers, and 'image' items for infographics. Ensure coordinates do not overlap awkwardly.\n"
+            "6. For any block of type 'image', provide either a detailed 'imagePrompt' (for AI generation) or a precise 'unsplashQuery' (for stock search) matching the topic.\n"
+            "7. Place a quiz, true_false, or matching assessment slide at the end of the course to verify understanding."
         )
 
         prompt_text = f"{system_instruction}\n\nUser Request: Generate a course with exactly {req.num_slides} slides about: {req.prompt}"
@@ -1316,7 +1317,7 @@ async def generate_course(req: GenerateCourseRequest):
         print("[AI Generator] Building/cleaning schema...", flush=True)
         cleaned_schema = pydantic_to_gemini_schema(GeneratedCourse)
 
-        print("[AI Generator] Calling Gemini 2.5 Pro (this might take 10-35s)...", flush=True)
+        print("[AI Generator] Calling Gemini 2.5 Flash (this might take 5-15s)...", flush=True)
         response = pro_model.generate_content(
             prompt_text,
             generation_config=genai.GenerationConfig(
