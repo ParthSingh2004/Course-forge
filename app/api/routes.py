@@ -1327,7 +1327,8 @@ async def generate_course(req: GenerateCourseRequest):
             ),
         )
 
-        print("[AI Generator] Response received. Parsing JSON text...", flush=True)
+        print("[AI Generator] Response received. Raw JSON:", response.text, flush=True)
+        print("[AI Generator] Parsing JSON text...", flush=True)
         raw_course = json.loads(response.text.strip())
 
         print(f"[AI Generator] Course outline parsed: '{raw_course.get('courseTitle')}'", flush=True)
