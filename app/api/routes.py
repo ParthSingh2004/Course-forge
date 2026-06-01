@@ -134,9 +134,9 @@ api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     raise ValueError("No GEMINI_API_KEY found in .env file")
 
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-2.5-flash')
-pro_model = genai.GenerativeModel('gemini-2.5-flash')
+genai.configure(api_key=api_key, transport="rest")
+model = genai.GenerativeModel('gemini-3.5-flash')
+pro_model = genai.GenerativeModel('gemini-3.5-flash')
 
 class GenerateImageRequest(BaseModel):
     prompt: str
@@ -931,42 +931,31 @@ async def generate_ai_content(prompt: str = Form(...), block_type: str = Form("P
 # AI COURSE GENERATOR & SCHEMAS
 # ---------------------------------------------------------------------------
 
+class NestedItem(BaseModel):
+    text: str = Field(..., description="Title/text or left-side item")
+    secondaryText: str = Field(..., description="Description/content or right-side item")
+
+
+class MatrixRow(BaseModel):
+    cells: Optional[List[str]] = Field(None, description="List of cell values in this row or column")
+    items: Optional[List[str]] = Field(None, description="List of cell values in this row or column")
+
+
 class GeneratedContentBlock(BaseModel):
     type: str = Field(
         ...,
-        description="The block type. Allowed values: 'heading', 'text', 'image', 'button', 'quiz', 'true_false', 'fill_blanks', 'multi_select', 'matching', 'flashcard', 'quote', 'process', 'tabs', 'accordion', 'list', 'table', 'columns'"
+        description="Block type. Allowed: 'heading', 'text', 'image', 'button', 'quiz', 'true_false', 'fill_blanks', 'multi_select', 'matching', 'flashcard', 'quote', 'process', 'tabs', 'accordion', 'list', 'table', 'columns'"
     )
-    content: Optional[str] = Field(None, description="Main text content. For 'heading', 'text', 'button', 'quote'.")
-    headingLevel: Optional[str] = Field(None, description="For 'heading' blocks: 'h1', 'h2', or 'h3'.")
-    alignment: Optional[str] = Field(None, description="For 'button' blocks: 'left', 'center', or 'right'.")
-    
-    imagePrompt: Optional[str] = Field(None, description="Detailed description of the image content to generate via AI. Make it descriptive (e.g. 'A close-up photograph of a modern office desk with a safety manual'). Only if type is 'image'.")
-    unsplashQuery: Optional[str] = Field(None, description="Short search term for stock photos on Unsplash. Only if type is 'image'.")
-    
-    question: Optional[str] = Field(None, description="The question text for interactive assessment blocks.")
-    options: Optional[List[str]] = Field(None, description="List of options for 'quiz' or 'multi_select' blocks.")
-    correctAnswerIndex: Optional[int] = Field(None, description="0-based index of the correct answer for 'quiz' blocks.")
-    correctAnswerBool: Optional[bool] = Field(None, description="True or False value for 'true_false' blocks.")
-    correctAnswersList: Optional[List[str]] = Field(None, description="Ordered list of answers for 'fill_blanks' blocks matching the '____' placeholders.")
-    correctAnswerIndices: Optional[List[int]] = Field(None, description="List of 0-based indices of the correct answers for 'multi_select' blocks.")
-    matchingPairs: Optional[List[Dict[str, str]]] = Field(None, description="List of dicts with keys 'leftItem' and 'rightItem' for 'matching' blocks.")
-    
-    front: Optional[str] = Field(None, description="Flashcard front text.")
-    back: Optional[str] = Field(None, description="Flashcard back text.")
-    
-    author: Optional[str] = Field(None, description="Author of the quote.")
-    
-    steps: Optional[List[Dict[str, str]]] = Field(None, description="List of process steps. Each step must be a dict with keys 'title' and 'content'.")
-    
-    tabs: Optional[List[Dict[str, str]]] = Field(None, description="List of tabs. Each tab must be a dict with keys 'title' and 'content'.")
-    
-    topics: Optional[List[Dict[str, Any]]] = Field(None, description="List of accordion topics. Each topic is a dict with keys 'title' (string) and 'items' (list of dicts like {'type': 'text', 'value': string}).")
-    
-    items: Optional[List[str]] = Field(None, description="List of bullet points for 'list' blocks.")
-    headers: Optional[List[str]] = Field(None, description="List of headers for 'table' blocks.")
-    rows: Optional[List[List[str]]] = Field(None, description="List of row cell arrays for 'table' blocks.")
-    
-    columnsText: Optional[List[List[str]]] = Field(None, description="Columns layout: outer list is column array, inner list is list of paragraph text strings.")
+    text: Optional[str] = Field(..., description="Primary text content. For headings, paragraph text, buttons, quotes. For 'quiz', 'true_false', 'fill_blanks', 'multi_select', 'matching', this MUST be the question text (or statement text for true_false). For 'flashcard', this is the front text of the card.")
+    secondaryText: Optional[str] = Field(..., description="Secondary text content. For quote author, heading level (like 'h1'/'h2'/'h3'), button alignment/target. For 'flashcard', this is the back text of the card.")
+    items: Optional[List[str]] = Field(..., description="Choices or options array. For tables, this represents column headers. For 'quiz' and 'multi_select', this MUST be the array of 3 to 5 options/choices for the question in this block.")
+    answerIndex: Optional[int] = Field(..., description="Correct option index (0-based) for quiz.")
+    answerBool: Optional[bool] = Field(..., description="Correct answer for true/false.")
+    answerIndices: Optional[List[int]] = Field(..., description="Correct option indices (0-based) for multi_select.")
+    nestedItems: Optional[List[NestedItem]] = Field(..., description="Nested pairs (steps for process, tabs for tabs, topics for accordion, left/right items for matching).")
+    matrix: Optional[List[MatrixRow]] = Field(..., description="List of rows/columns. For table: each row has a list of string cells. For columns: each column has a list of paragraph text strings.")
+    imagePrompt: Optional[str] = Field(None, description="AI image generation prompt.")
+    unsplashQuery: Optional[str] = Field(None, description="Unsplash stock search query.")
 
 
 class GeneratedCanvasItem(BaseModel):
@@ -985,17 +974,49 @@ class GeneratedCanvasItem(BaseModel):
 class GeneratedSlide(BaseModel):
     type: str = Field("slide", description="Slide layout type. Use 'slide' for normal vertical block scrolling, or 'canvas' for coordinate-based infographic elements.")
     title: str = Field(..., description="Slide title.")
-    
-    elements: Optional[List[GeneratedContentBlock]] = Field(None, description="Blocks list (must be populated if type is 'slide').")
-    
-    canvasBg: Optional[str] = Field("#ffffff", description="Hex color for canvas background (only if type is 'canvas').")
-    canvasItems: Optional[List[GeneratedCanvasItem]] = Field(None, description="List of items on the canvas (must be populated if type is 'canvas').")
+    backgroundColor: str = Field("#ffffff", description="Hex color code for the slide background. Pick a beautiful, subtle, soft color (soft pastel or dark theme background) that matches the slide's topic and course theme.")
+    elements: List[GeneratedContentBlock] = Field(default=[], description="Blocks list (must be populated with 2 to 4 content blocks if type is 'slide', otherwise empty list).")
+    canvasBg: str = Field("#ffffff", description="Hex color for canvas background (only if type is 'canvas').")
+    canvasItems: List[GeneratedCanvasItem] = Field(default=[], description="List of items on the canvas (must be populated with infographic elements if type is 'canvas', otherwise empty list).")
 
 
 class GeneratedCourse(BaseModel):
     courseTitle: str = Field(..., description="The overall title of the course.")
     passingScore: int = Field(70, description="Passing score percentage (0-100).")
     slides: List[GeneratedSlide] = Field(..., description="List of slides.")
+
+
+class BlockOutline(BaseModel):
+    type: str = Field(
+        ...,
+        description="Block type: 'heading', 'text', 'image', 'button', 'quiz', 'true_false', 'fill_blanks', 'multi_select', 'matching', 'flashcard', 'quote', 'process', 'tabs', 'accordion', 'list', 'table', 'columns'"
+    )
+    focus: str = Field(
+        ...,
+        description="A short 1-sentence summary of the educational focus, concept, or question for this block."
+    )
+
+
+class CanvasItemOutline(BaseModel):
+    type: str = Field(..., description="Canvas element type: 'rect', 'circle', 'triangle', 'text', 'image'")
+    purpose: str = Field(..., description="A short description of the item's role in the infographic layout (e.g., 'Container for step 1 description', 'Step 1 number label', etc.)")
+    color: str = Field("#3b82f6", description="Hex color code.")
+
+
+class SlideOutline(BaseModel):
+    type: str = Field("slide", description="Slide layout type. Use 'slide' for normal vertical block scrolling, or 'canvas' for coordinate-based infographic elements.")
+    title: str = Field(..., description="Slide title.")
+    backgroundColor: str = Field("#ffffff", description="Hex color code for the slide background.")
+    elements: List[BlockOutline] = Field(default=[], description="List of block outlines (only if type is 'slide', otherwise empty list).")
+    canvasBg: str = Field("#ffffff", description="Hex color for canvas background (only if type is 'canvas').")
+    canvasItems: List[CanvasItemOutline] = Field(default=[], description="List of canvas item outlines (only if type is 'canvas', otherwise empty list).")
+
+
+class CourseOutline(BaseModel):
+    courseTitle: str = Field(..., description="The overall title of the course.")
+    passingScore: int = Field(70, description="Passing score percentage (0-100).")
+    slides: List[SlideOutline] = Field(..., description="List of slides.")
+
 
 
 class GenerateCourseRequest(BaseModel):
@@ -1063,10 +1084,131 @@ def _generate_imagen_base64(prompt: str) -> str | None:
     return None
 
 
+def normalize_block_dict(block: dict) -> dict:
+    """Pre-process block dict to handle field mapping variations and synonyms from Gemini."""
+    if not isinstance(block, dict):
+        return block
+        
+    # Standardize block type name
+    b_type = str(block.get("type", "")).lower().strip()
+    block["type"] = b_type
+    
+    # Ensure text and secondaryText are strings if present
+    if "text" in block and block["text"] is not None:
+        block["text"] = str(block["text"])
+    if "secondaryText" in block and block["secondaryText"] is not None:
+        block["secondaryText"] = str(block["secondaryText"])
+
+    # Handle items
+    if "items" in block and block["items"] is not None:
+        if isinstance(block["items"], (str, int, float, bool)):
+            block["items"] = [str(block["items"])]
+        elif isinstance(block["items"], list):
+            block["items"] = [str(x) for x in block["items"]]
+            
+    # Handle answerIndex
+    if "answerIndex" in block and block["answerIndex"] is not None:
+        try:
+            block["answerIndex"] = int(block["answerIndex"])
+        except (ValueError, TypeError):
+            block["answerIndex"] = 0
+            
+    # Handle answerBool
+    if "answerBool" in block and block["answerBool"] is not None:
+        if isinstance(block["answerBool"], str):
+            block["answerBool"] = block["answerBool"].lower().strip() in ("true", "1", "yes")
+        else:
+            block["answerBool"] = bool(block["answerBool"])
+            
+    # Handle answerIndices
+    if "answerIndices" in block and block["answerIndices"] is not None:
+        if isinstance(block["answerIndices"], (int, str)):
+            try:
+                block["answerIndices"] = [int(block["answerIndices"])]
+            except (ValueError, TypeError):
+                block["answerIndices"] = [0]
+        elif isinstance(block["answerIndices"], list):
+            normalized_indices = []
+            for x in block["answerIndices"]:
+                try:
+                    normalized_indices.append(int(x))
+                except (ValueError, TypeError):
+                    pass
+            block["answerIndices"] = normalized_indices
+
+    # Handle nestedItems synonym keys
+    if "nestedItems" in block and isinstance(block["nestedItems"], list):
+        normalized_nested = []
+        for item in block["nestedItems"]:
+            if isinstance(item, dict):
+                # Map various synonym fields to Pydantic:
+                text_val = item.get("text") or item.get("title") or item.get("left") or item.get("leftItem") or item.get("label") or item.get("name") or ""
+                sec_val = item.get("secondaryText") or item.get("content") or item.get("right") or item.get("rightItem") or item.get("value") or item.get("description") or ""
+                normalized_nested.append({
+                    "text": str(text_val),
+                    "secondaryText": str(sec_val)
+                })
+            else:
+                # Wrap primitive string/number as standard nestedItem dictionary
+                normalized_nested.append({
+                    "text": str(item),
+                    "secondaryText": ""
+                })
+        block["nestedItems"] = normalized_nested
+        
+    # Handle matrix synonym keys
+    if "matrix" in block and isinstance(block["matrix"], list):
+        normalized_matrix = []
+        for row in block["matrix"]:
+            if isinstance(row, dict):
+                cells_val = row.get("cells") or row.get("items") or []
+                if isinstance(cells_val, str):
+                    cells_val = [cells_val]
+                elif isinstance(cells_val, list):
+                    cells_val = [str(c) for c in cells_val]
+                normalized_matrix.append({
+                    "cells": cells_val,
+                    "items": cells_val
+                })
+            elif isinstance(row, list):
+                cells_val = [str(c) for c in row]
+                normalized_matrix.append({
+                    "cells": cells_val,
+                    "items": cells_val
+                })
+            else:
+                # Wrap primitive type (e.g. string) as standard matrix row cells
+                cells_val = [str(row)]
+                normalized_matrix.append({
+                    "cells": cells_val,
+                    "items": cells_val
+                })
+        block["matrix"] = normalized_matrix
+        
+    return block
+
+
 def map_content_block(b: GeneratedContentBlock, image_type: str) -> Dict[str, Any]:
     block_type = b.type.lower().replace("-", "_")
-    if block_type == "accordian":
-        block_type = "accordion"
+    
+    TYPE_SYNONYMS = {
+        "mcq": "quiz", "multiple_choice": "quiz",
+        "paragraph": "text", "body": "text", "description": "text",
+        "accordian": "accordion", "accordion_block": "accordion",
+        "step": "process", "steps": "process",
+        "tab": "tabs", "tabbed": "tabs",
+        "card": "flashcard", "flip_card": "flashcard",
+        "tf": "true_false", "truefalse": "true_false",
+        "fitb": "fill_blanks", "fill_blank": "fill_blanks",
+        "match": "matching", "pairs": "matching",
+        "h1": "heading", "h2": "heading", "h3": "heading",
+        "header": "heading", "title": "heading",
+        "grid": "table", "matrix": "table",
+        "col": "columns", "column": "columns",
+        "img": "image", "photo": "image",
+        "blockquote": "quote", "citation": "quote",
+    }
+    block_type = TYPE_SYNONYMS.get(block_type, block_type)
         
     mapped = {
         "id": generate_react_id("block"),
@@ -1075,10 +1217,10 @@ def map_content_block(b: GeneratedContentBlock, image_type: str) -> Dict[str, An
     
     if block_type in ("heading", "heading_1"):
         mapped["type"] = "heading"
-        mapped["content"] = b.content or "Heading"
-        mapped["headingLevel"] = b.headingLevel or "h1"
+        mapped["content"] = b.text or "Heading"
+        mapped["headingLevel"] = b.secondaryText or "h1"
     elif block_type == "text":
-        mapped["content"] = b.content or ""
+        mapped["content"] = b.text or ""
     elif block_type == "image":
         mapped["content"] = ""
         if image_type == "unsplash" and b.unsplashQuery:
@@ -1094,104 +1236,106 @@ def map_content_block(b: GeneratedContentBlock, image_type: str) -> Dict[str, An
                 mapped["content"] = b64
                 print("[AI Generator] AI Image generated successfully.")
     elif block_type == "button":
-        mapped["content"] = b.content or "Click Here"
-        mapped["targetSlideId"] = b.targetSlideId or ""
-        mapped["alignment"] = b.alignment or "center"
+        mapped["content"] = b.text or "Click Here"
+        mapped["targetSlideId"] = ""
+        mapped["alignment"] = b.secondaryText or "center"
     elif block_type == "quiz":
-        mapped["question"] = b.question or ""
-        mapped["options"] = b.options or ["Option 1", "Option 2", "Option 3"]
-        mapped["correctAnswer"] = b.correctAnswerIndex or 0
+        mapped["question"] = b.text or ""
+        mapped["options"] = b.items or ["Option 1", "Option 2", "Option 3"]
+        mapped["correctAnswer"] = b.answerIndex or 0
         mapped["marks"] = 10
         mapped["questionImage"] = None
     elif block_type == "true_false":
-        mapped["question"] = b.question or ""
-        mapped["correctAnswer"] = b.correctAnswerBool if b.correctAnswerBool is not None else True
+        mapped["question"] = b.text or ""
+        mapped["correctAnswer"] = b.answerBool if b.answerBool is not None else True
         mapped["marks"] = 10
     elif block_type == "fill_blanks":
-        mapped["question"] = b.question or "Fill in the blank ____"
-        answers = b.correctAnswersList or [""]
+        mapped["question"] = b.text or "Fill in the blank ____"
+        answers = b.items or [""]
         mapped["answers"] = answers
         mapped["answer"] = answers[0] if answers else ""
         mapped["caseSensitive"] = False
         mapped["marks"] = 10
     elif block_type == "multi_select":
-        mapped["question"] = b.question or ""
-        options = b.options or ["Option 1", "Option 2", "Option 3"]
+        mapped["question"] = b.text or ""
+        options = b.items or ["Option 1", "Option 2", "Option 3"]
         mapped["options"] = options
-        correct_indices = b.correctAnswerIndices or []
-        correct_answers = [options[i] for i in correct_indices if i < len(options)]
+        correct_indices = b.answerIndices or []
+        correct_answers = [str(i) for i in correct_indices if i < len(options)]
         mapped["correctAnswer"] = correct_answers
         mapped["marks"] = 10
     elif block_type == "matching":
-        mapped["question"] = b.question or ""
+        mapped["question"] = b.text or ""
         pairs = []
-        if b.matchingPairs:
-            for pair in b.matchingPairs:
+        if b.nestedItems:
+            for item in b.nestedItems:
                 pairs.append({
-                    "leftItem": pair.get("leftItem", ""),
-                    "rightItem": pair.get("rightItem", "")
+                    "leftItem": item.text,
+                    "rightItem": item.secondaryText
                 })
         else:
             pairs = [{"leftItem": "A", "rightItem": "B"}]
         mapped["pairs"] = pairs
         mapped["marks"] = 10
     elif block_type == "flashcard":
-        mapped["front"] = b.front or ""
-        mapped["back"] = b.back or ""
+        mapped["front"] = b.text or ""
+        mapped["back"] = b.secondaryText or ""
     elif block_type == "quote":
-        mapped["content"] = b.content or ""
-        mapped["author"] = b.author or ""
+        mapped["content"] = b.text or ""
+        mapped["author"] = b.secondaryText or ""
         mapped["layout"] = "below-left"
         mapped["bgOverlay"] = 0.45
     elif block_type == "process":
         steps = []
-        if b.steps:
-            for step in b.steps:
+        if b.nestedItems:
+            for item in b.nestedItems:
                 steps.append({
-                    "title": step.get("title", ""),
-                    "content": step.get("content", "")
+                    "title": item.text,
+                    "content": item.secondaryText
                 })
         mapped["steps"] = steps
     elif block_type == "tabs":
         tabs = []
-        if b.tabs:
-            for tab in b.tabs:
+        if b.nestedItems:
+            for item in b.nestedItems:
                 tabs.append({
-                    "title": tab.get("title", ""),
-                    "content": tab.get("content", ""),
+                    "title": item.text,
+                    "content": item.secondaryText,
                     "image": None
                 })
         mapped["tabs"] = tabs
     elif block_type == "accordion":
         topics = []
-        if b.topics:
-            for topic in b.topics:
-                items = []
-                for item in topic.get("items", []):
-                    items.append({
-                        "id": generate_react_id("accordionitem"),
-                        "type": item.get("type", "text"),
-                        "value": item.get("value", "")
-                    })
+        if b.nestedItems:
+            for item in b.nestedItems:
                 topics.append({
                     "id": generate_react_id("topic"),
-                    "title": topic.get("title", ""),
-                    "items": items
+                    "title": item.text,
+                    "items": [{
+                        "id": generate_react_id("accordionitem"),
+                        "type": "text",
+                        "value": item.secondaryText
+                    }]
                 })
         mapped["topics"] = topics
     elif block_type == "list":
         mapped["items"] = b.items or [""]
     elif block_type == "table":
-        mapped["headers"] = b.headers or ["Col 1", "Col 2"]
-        mapped["rows"] = b.rows or [["", ""]]
+        mapped["headers"] = b.items or ["Col 1", "Col 2"]
+        rows = []
+        if b.matrix:
+            for row in b.matrix:
+                rows.append(row.cells or row.items or [])
+        mapped["rows"] = rows or [["", ""]]
         mapped["tableColor"] = "#ffffff"
         mapped["headerColor"] = "#d5b4b4"
     elif block_type == "columns":
         columns = []
-        if b.columnsText:
-            for text_list in b.columnsText:
+        if b.matrix:
+            for col in b.matrix:
                 col_blocks = []
-                for text in text_list:
+                cells = col.cells or col.items or []
+                for text in cells:
                     col_blocks.append({
                         "id": generate_react_id("subblock"),
                         "type": "text",
@@ -1199,6 +1343,11 @@ def map_content_block(b: GeneratedContentBlock, image_type: str) -> Dict[str, An
                     })
                 columns.append(col_blocks)
         mapped["columns"] = columns
+    else:
+        # Unknown/unhandled block type — fallback to text block
+        mapped["type"] = "text"
+        mapped["content"] = b.text or b.secondaryText or ""
+        print(f"[AI Generator] Unknown block type '{b.type}' (resolved to '{block_type}') — fallback to text block", flush=True)
         
     return mapped
 
@@ -1207,10 +1356,10 @@ def map_canvas_item(item: GeneratedCanvasItem, image_type: str) -> Dict[str, Any
     mapped = {
         "id": generate_react_id("canvasitem"),
         "type": item.type,
-        "x": item.x,
-        "y": item.y,
-        "w": item.w,
-        "h": item.h,
+        "x": max(0.0, min(100.0, float(item.x))),
+        "y": max(0.0, min(100.0, float(item.y))),
+        "w": max(5.0, min(100.0, float(item.w))),
+        "h": max(5.0, min(100.0, float(item.h))),
         "color": item.color or "#111827",
         "rotation": 0,
         "animation": "none",
@@ -1272,6 +1421,19 @@ def pydantic_to_gemini_schema(model_class) -> Dict[str, Any]:
             del merged["$ref"]
             return resolve_and_clean(merged)
             
+        # Before cleaning, resolve anyOf (Pydantic v2 Optional pattern)
+        if "anyOf" in item:
+            for variant in item["anyOf"]:
+                resolved = resolve_and_clean(variant)
+                if isinstance(resolved, dict) and resolved.get("type") != "null":
+                    # Merge description from parent item if not in resolved
+                    if "description" in item and "description" not in resolved:
+                        resolved["description"] = item["description"]
+                    resolved["nullable"] = True
+                    return resolved
+            # Fallback if only null or empty
+            return {"type": "string", "nullable": True, "description": item.get("description", "")}
+            
         cleaned = {}
         # Only keep Gemini Schema supported keys
         allowed_keys = {"type", "description", "properties", "required", "items", "enum", "nullable"}
@@ -1290,6 +1452,72 @@ def pydantic_to_gemini_schema(model_class) -> Dict[str, Any]:
     return resolve_and_clean(raw)
 
 
+def repair_json_string(s: str) -> str:
+    """Attempt to repair a truncated or malformed JSON string by closing open braces, brackets, and quotes."""
+    s = s.strip()
+    if not s:
+        return "{}"
+        
+    # Remove trailing commas that might cause parse failure
+    s = re.sub(r',\s*$', '', s)
+    
+    in_string = False
+    escape = False
+    stack = []
+    
+    i = 0
+    clean_chars = []
+    
+    while i < len(s):
+        char = s[i]
+        
+        if escape:
+            clean_chars.append(char)
+            escape = False
+            i += 1
+            continue
+            
+        if char == '\\':
+            clean_chars.append(char)
+            escape = True
+            i += 1
+            continue
+            
+        if char == '"':
+            in_string = not in_string
+            clean_chars.append(char)
+            i += 1
+            continue
+            
+        if not in_string:
+            if char in ('{', '['):
+                stack.append(char)
+            elif char in ('}', ']'):
+                if stack:
+                    top = stack[-1]
+                    if (char == '}' and top == '{') or (char == ']' and top == '['):
+                        stack.pop()
+        clean_chars.append(char)
+        i += 1
+        
+    repaired = "".join(clean_chars)
+    
+    if in_string:
+        repaired += '"'
+        
+    while stack:
+        top = stack.pop()
+        if top == '{':
+            repaired += '}'
+        elif top == '[':
+            repaired += ']'
+            
+    # Remove trailing comma before closing brace or bracket
+    repaired = re.sub(r',\s*([}\]])', r'\1', repaired)
+    
+    return repaired
+
+
 @router.post("/ai/generate-course")
 async def generate_course(req: GenerateCourseRequest):
     try:
@@ -1298,38 +1526,162 @@ async def generate_course(req: GenerateCourseRequest):
         print(f"Slides count: {req.num_slides}", flush=True)
         print(f"ImageType selection: {req.image_type}", flush=True)
 
-        system_instruction = (
+        outline_system_instruction = (
             "You are CourseForge AI, an expert instructional designer. "
-            "Your task is to generate a comprehensive, highly engaging slide-based course "
-            "conforming strictly to the requested schema. "
+            "Your task is to generate a high-level course outline (schema/structure) for a slide-based course "
+            "conforming strictly to the requested CourseOutline schema.\n"
             "Design instructions:\n"
             "1. Structure the slides in a logical learning progression.\n"
-            "2. Mix block types for variety: use heading, text, lists, flashcards, accordions, quizzes, tables, and canvas slides.\n"
-            "3. Keep the content educational, accurate, and detailed. Do not leave text blocks empty.\n"
-            "4. Each slide of type 'slide' must contain a mix of 2 to 4 content blocks (e.g. a heading, followed by detailed text blocks, lists, quotes, or image blocks). Never generate slides containing only a heading block.\n"
-            "5. For canvas slides (type: 'canvas'), lay out elements on a 100x100 grid. Use 'text' items for captions/labels, 'rect' or 'circle' for visual frames/containers, and 'image' items for infographics. Ensure coordinates do not overlap awkwardly.\n"
-            "6. For any block of type 'image', provide either a detailed 'imagePrompt' (for AI generation) or a precise 'unsplashQuery' (for stock search) matching the topic.\n"
-            "7. Place a quiz, true_false, or matching assessment slide at the end of the course to verify understanding."
+            "2. Mix block types for variety across slides: use heading, text, flashcards, accordions, quizzes, tables, and canvas slides. DO NOT generate list blocks (type: 'list') under any circumstances.\n"
+            "3. Set a beautiful, tailored background color that is the exact same single relevant color across every single slide in the course. Make it preferable to use strong, visible colors instead of very light colors.\n"
+            "4. For canvas slides (type: 'canvas'), define the outline of elements (rect, circle, triangle, text, etc.) and their purpose. Do not generate 'image' items on canvas slides.\n"
+            "5. Place a quiz, true_false, or matching assessment slide at the end of the course to verify understanding."
         )
 
-        prompt_text = f"{system_instruction}\n\nUser Request: Generate a course with exactly {req.num_slides} slides about: {req.prompt}"
-
-        print("[AI Generator] Building/cleaning schema...", flush=True)
-        cleaned_schema = pydantic_to_gemini_schema(GeneratedCourse)
-
-        print("[AI Generator] Calling Gemini 2.5 Flash (this might take 5-15s)...", flush=True)
-        response = pro_model.generate_content(
-            prompt_text,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=cleaned_schema,
-                temperature=0.7,
-            ),
+        expansion_system_instruction = (
+            "You are CourseForge AI, an expert instructional designer. "
+            "Your task is to take a high-level CourseOutline structure and expand it into a fully populated, comprehensive slide-based course "
+            "conforming strictly to the requested GeneratedCourse schema.\n"
+            "Expansion instructions:\n"
+            "1. You must follow the provided slide titles, slide types, block types, and canvas items specified in the outline. Expand each item's focus/purpose into rich, educational content.\n"
+            "2. Keep the content educational, accurate, and detailed. Do not leave text blocks empty.\n"
+            "3. For normal slides (type: 'slide'), map elements as specified by the block type. Do not generate list blocks (type: 'list').\n"
+            "4. For canvas slides (type: 'canvas'), lay out elements on a 100x100 grid. Assign x, y coordinates and w, h sizes. Use 'text' items for captions/labels, and 'rect' or 'circle' for visual frames/containers. Do not generate 'image' items on canvas slides. For all canvas text and shape elements, implement only 1 matching font/stroke color that contrasts clearly with the slide's background color.\n"
+            "5. You MUST generate correct options and correct answers for all quiz, true_false, multi_select, matching, and fill_blanks blocks. For quiz and multi_select, always generate 3 to 5 options in the 'items' list and output the correct index/indices. Never leave them empty. For 'true_false' blocks, the question text MUST be a direct statement rather than a question.\n"
+            "6. For 'text' blocks, write at least 2-3 detailed sentences (40+ words) explaining the concept. Never generate single-sentence text blocks. Corporate L&D content must be substantive and professional.\n"
+            "7. For 'flashcard' blocks, you MUST populate BOTH fields: the 'text' field (front of the card - term, concept, or question) and the 'secondaryText' field (back of the card - definition, explanation, or answer). NEVER leave 'secondaryText' empty for flashcards.\n"
+            "8. For 'fill_blanks' blocks, the 'text' field should contain the sentence with ____ as the blank placeholder, and the 'items' field should contain the list of correct answers (one per blank).\n"
+            "9. For 'process', 'tabs', 'accordion', and 'matching' blocks, always generate at least 3 nestedItems entries. Each entry MUST have both 'text' and 'secondaryText' populated with meaningful content."
         )
 
-        print("[AI Generator] Response received. Raw JSON:", response.text, flush=True)
-        print("[AI Generator] Parsing JSON text...", flush=True)
-        raw_course = json.loads(response.text.strip())
+        # For debugging, log prompt settings
+        print(f"[AI Generator] Outline System Instruction:\n{outline_system_instruction}\n", flush=True)
+
+        print("[AI Generator] Building outline schema...", flush=True)
+        cleaned_outline_schema = pydantic_to_gemini_schema(CourseOutline)
+
+        outline_course = None
+        max_attempts = 2
+
+        # Pass 1: Generate Outline
+        for attempt in range(1, max_attempts + 1):
+            try:
+                current_temp = 0.2 if attempt == 1 else 0.0
+                print(f"[AI Generator Pass 1] Calling Gemini 3.5 Flash for Outline (Attempt {attempt}/{max_attempts}, temp={current_temp})...", flush=True)
+                
+                model_instance = genai.GenerativeModel(
+                    'gemini-3.5-flash',
+                    system_instruction=outline_system_instruction
+                )
+                
+                user_prompt_text = (
+                    f"Please generate a course outline with exactly {req.num_slides} slides. "
+                    f"The course topic/subject is: \"{req.prompt}\"."
+                )
+                
+                response = model_instance.generate_content(
+                    user_prompt_text,
+                    generation_config=genai.GenerationConfig(
+                        response_mime_type="application/json",
+                        response_schema=cleaned_outline_schema,
+                        temperature=current_temp,
+                    ),
+                )
+                
+                text_content = response.text.strip()
+                print(f"[AI Generator Pass 1] Response received (length: {len(text_content)} characters).", flush=True)
+                
+                if text_content.startswith("```json"):
+                    text_content = text_content[len("```json"):]
+                if text_content.endswith("```"):
+                    text_content = text_content[:-len("```")]
+                text_content = text_content.strip()
+                
+                try:
+                    outline_course = json.loads(text_content, strict=False)
+                except json.JSONDecodeError as je:
+                    print(f"[AI Generator Pass 1] JSON parse failed: {je}. Attempting auto-repair...", flush=True)
+                    repaired_text = repair_json_string(text_content)
+                    outline_course = json.loads(repaired_text, strict=False)
+                
+                if not outline_course or not isinstance(outline_course, dict) or "slides" not in outline_course:
+                    raise ValueError("Parsed JSON does not contain valid course outline slides data")
+                break
+            except Exception as e:
+                print(f"[AI Generator Pass 1] Attempt {attempt} failed: {str(e)}", flush=True)
+                if attempt == max_attempts:
+                    raise e
+
+        print(f"[AI Generator Pass 1] Outline parsed successfully: '{outline_course.get('courseTitle')}'", flush=True)
+
+        # Pass 2: Content Expansion
+        print("[AI Generator Pass 2] Building detailed course schema...", flush=True)
+        cleaned_course_schema = pydantic_to_gemini_schema(GeneratedCourse)
+
+        raw_course = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                current_temp = 0.2 if attempt == 1 else 0.0
+                print(f"[AI Generator Pass 2] Calling Gemini 3.5 Flash for Content Expansion (Attempt {attempt}/{max_attempts}, temp={current_temp})...", flush=True)
+                
+                model_instance = genai.GenerativeModel(
+                    'gemini-3.5-flash',
+                    system_instruction=expansion_system_instruction
+                )
+                
+                outline_str = json.dumps(outline_course, indent=2)
+                user_expansion_prompt = (
+                    f"We are generating a course on the topic: \"{req.prompt}\".\n"
+                    f"Here is the high-level course outline generated in Pass 1:\n"
+                    f"```json\n{outline_str}\n```\n\n"
+                    "Now, please expand this course outline into the final detailed course JSON conforming to the GeneratedCourse schema. "
+                    "For each slide in the outline, preserve its type, title, and background color, and fully expand all elements and canvas items "
+                    "with rich, professional educational content as outlined."
+                )
+
+                # Save the expansion prompt to scratch for debugging
+                try:
+                    os.makedirs("scratch", exist_ok=True)
+                    with open("scratch/last_gemini_prompt.txt", "w", encoding="utf-8") as f:
+                        f.write(f"SYSTEM:\n{expansion_system_instruction}\n\nUSER:\n{user_expansion_prompt}")
+                except Exception:
+                    pass
+                
+                response = model_instance.generate_content(
+                    user_expansion_prompt,
+                    generation_config=genai.GenerationConfig(
+                        response_mime_type="application/json",
+                        response_schema=cleaned_course_schema,
+                        temperature=current_temp,
+                        max_output_tokens=65536,
+                    ),
+                )
+                
+                text_content = response.text.strip()
+                print(f"[AI Generator Pass 2] Response received (length: {len(text_content)} characters).", flush=True)
+                
+                if text_content.startswith("```json"):
+                    text_content = text_content[len("```json"):]
+                if text_content.endswith("```"):
+                    text_content = text_content[:-len("```")]
+                text_content = text_content.strip()
+                
+                try:
+                    raw_course = json.loads(text_content, strict=False)
+                except json.JSONDecodeError as je:
+                    print(f"[AI Generator Pass 2] JSON parse failed: {je}. Attempting auto-repair...", flush=True)
+                    repaired_text = repair_json_string(text_content)
+                    raw_course = json.loads(repaired_text, strict=False)
+                
+                if not raw_course or not isinstance(raw_course, dict) or "slides" not in raw_course:
+                    raise ValueError("Parsed JSON does not contain valid course slides data")
+                break # Success!
+                
+            except Exception as e:
+                print(f"[AI Generator] Attempt {attempt} failed: {str(e)}", flush=True)
+                if attempt == max_attempts:
+                    print(f"--- GENERATE COURSE CRASH ---\nRaw response text was:\n{response.text if 'response' in locals() else 'N/A'}", flush=True)
+                    raise e
 
         print(f"[AI Generator] Course outline parsed: '{raw_course.get('courseTitle')}'", flush=True)
         print(f"[AI Generator] Mapping {len(raw_course.get('slides', []))} slides to CourseForge editor model...", flush=True)
@@ -1338,27 +1690,122 @@ async def generate_course(req: GenerateCourseRequest):
         for slide in raw_course.get("slides", []):
             slide_type = slide.get("type", "slide")
             slide_title = slide.get("title") or "Untitled Slide"
-            print(f"[AI Generator] Mapping slide: '{slide_title}' (Type: {slide_type})", flush=True)
+            slide_bg = slide.get("backgroundColor") or slide.get("canvasBg") or "#ffffff"
+            print(f"[AI Generator] Mapping slide: '{slide_title}' (Type: {slide_type}) with bg: '{slide_bg}'", flush=True)
             
             mapped_slide = {
                 "id": generate_react_id("slide"),
                 "title": slide_title,
-                "type": slide_type
+                "type": slide_type,
+                "background": {"type": "color", "value": slide_bg}
             }
 
             if slide_type == "canvas":
-                mapped_slide["canvasBg"] = slide.get("canvasBg") or "#ffffff"
-                mapped_slide["background"] = {"type": "color", "value": slide.get("canvasBg") or "#ffffff"}
-                mapped_slide["items"] = [
-                    map_canvas_item(GeneratedCanvasItem(**item), req.image_type)
-                    for item in slide.get("canvasItems") or []
-                ]
+                mapped_slide["canvasBg"] = slide_bg
+                canvas_items = []
+                for item in slide.get("canvasItems") or []:
+                    try:
+                        canvas_items.append(map_canvas_item(GeneratedCanvasItem(**item), req.image_type))
+                    except Exception as e:
+                        print(f"[AI Generator] Skipping malformed canvas item {item}. Error: {e}", flush=True)
+                mapped_slide["items"] = canvas_items
                 mapped_slide["elements"] = []
             else:
-                mapped_slide["elements"] = [
-                    map_content_block(GeneratedContentBlock(**block), req.image_type)
-                    for block in slide.get("elements") or []
-                ]
+                raw_blocks = []
+                for block in slide.get("elements") or []:
+                    try:
+                        normalized = normalize_block_dict(block)
+                        raw_blocks.append(GeneratedContentBlock(**normalized))
+                    except Exception as e:
+                        print(f"[AI Generator] Skipping malformed block {block}. Error: {e}", flush=True)
+                
+                # Merge fragmented quiz/multi_select blocks and prune empty ones
+                merged_blocks = []
+                idx = 0
+                while idx < len(raw_blocks):
+                    curr_b = raw_blocks[idx]
+                    
+                    # Fragmented block merging
+                    if curr_b.type in ("quiz", "multi_select") and curr_b.text and (not curr_b.items or len(curr_b.items) == 0):
+                        if idx + 1 < len(raw_blocks):
+                            next_b = raw_blocks[idx + 1]
+                            if next_b.type in (curr_b.type, "list") and next_b.items and len(next_b.items) > 0 and not next_b.text:
+                                # Merge options/answers into the current block!
+                                curr_b.items = next_b.items
+                                if next_b.type in ("quiz", "multi_select"):
+                                    if next_b.answerIndex is not None:
+                                        curr_b.answerIndex = next_b.answerIndex
+                                    if next_b.answerIndices:
+                                        curr_b.answerIndices = next_b.answerIndices
+                                print(f"[AI Generator] Post-process: merged consecutive fragmented quiz/multi_select block for question: '{curr_b.text}'", flush=True)
+                                merged_blocks.append(curr_b)
+                                idx += 2
+                                continue
+                                
+                    # Empty block pruning: skip if quiz block has no text and no options
+                    if curr_b.type in ("quiz", "multi_select") and not curr_b.text and (not curr_b.items or len(curr_b.items) == 0):
+                        print(f"[AI Generator] Post-process: skipped empty/malformed quiz block", flush=True)
+                        idx += 1
+                        continue
+                        
+                    merged_blocks.append(curr_b)
+                    idx += 1
+
+                # Dedup identical consecutive quiz/assessment questions
+                dedupped_blocks = []
+                seen_questions = set()
+                for block in merged_blocks:
+                    if block.type in ("quiz", "multi_select", "true_false") and block.text:
+                        norm_q = block.text.strip().lower()
+                        if norm_q in seen_questions:
+                            print(f"[AI Generator] Post-process: pruned duplicate assessment question: '{block.text}'", flush=True)
+                            continue
+                        seen_questions.add(norm_q)
+                    dedupped_blocks.append(block)
+
+                # Post-validation for assessments and nested blocks to guarantee schema safety
+                for block in dedupped_blocks:
+                    if block.type == "quiz":
+                        if not block.text:
+                            block.text = "Question not generated"
+                        if not block.items or len(block.items) < 2:
+                            block.items = ["Option A", "Option B", "Option C"]
+                        if block.answerIndex is None or block.answerIndex >= len(block.items) or block.answerIndex < 0:
+                            block.answerIndex = 0
+                    elif block.type == "multi_select":
+                        if not block.text:
+                            block.text = "Question not generated"
+                        if not block.items or len(block.items) < 2:
+                            block.items = ["Option A", "Option B", "Option C"]
+                        if not block.answerIndices:
+                            block.answerIndices = [0]
+                    elif block.type == "true_false":
+                        if not block.text:
+                            block.text = "Statement not generated"
+                        if block.answerBool is None:
+                            block.answerBool = True
+                    elif block.type == "flashcard":
+                        if not block.text:
+                            block.text = "Front not generated"
+                        if not block.secondaryText:
+                            block.secondaryText = "Back not generated"
+                    elif block.type in ("process", "tabs", "accordion", "matching"):
+                        if not block.nestedItems or len(block.nestedItems) == 0:
+                            block.nestedItems = [NestedItem(text="Item 1", secondaryText="Content for item 1")]
+                        else:
+                            for item in block.nestedItems:
+                                if not item.text:
+                                    item.text = "Item"
+                                if not item.secondaryText:
+                                    item.secondaryText = "Details"
+
+                mapped_elements = []
+                for block in dedupped_blocks:
+                    try:
+                        mapped_elements.append(map_content_block(block, req.image_type))
+                    except Exception as e:
+                        print(f"[AI Generator] Error mapping block of type '{block.type}': {e}", flush=True)
+                mapped_slide["elements"] = mapped_elements
 
             mapped_slides.append(mapped_slide)
 

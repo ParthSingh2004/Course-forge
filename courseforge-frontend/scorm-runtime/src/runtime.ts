@@ -1004,6 +1004,24 @@ class CourseForgeRuntime {
     document.body.appendChild(overlay);
   }
 
+  private getContrastColor(hex: string): string {
+    if (!hex || hex[0] !== '#') return '#ffffff';
+    let r = 0, g = 0, b = 0;
+    if (hex.length === 4) {
+      r = parseInt(hex[1] + hex[1], 16);
+      g = parseInt(hex[2] + hex[2], 16);
+      b = parseInt(hex[3] + hex[3], 16);
+    } else if (hex.length === 7) {
+      r = parseInt(hex.substring(1, 3), 16);
+      g = parseInt(hex.substring(3, 5), 16);
+      b = parseInt(hex.substring(5, 7), 16);
+    } else {
+      return '#ffffff';
+    }
+    const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+    return (yiq >= 128) ? '#111112' : '#ffffff';
+  }
+
   private renderSlide(index: number): void {
     const slide = this.course.slides[index];
     if (!slide) return;
@@ -1012,9 +1030,11 @@ class CourseForgeRuntime {
     if (!container) return;
 
     // Apply slide background
+    let bgVal = "#18181b";
     const bg = (slide as any).background;
     if (bg) {
       if (bg.type === "color" && bg.value) {
+        bgVal = bg.value;
         container.style.backgroundColor = bg.value;
         container.style.backgroundImage = "none";
       } else if (bg.type === "image" && bg.value) {
@@ -1027,6 +1047,8 @@ class CourseForgeRuntime {
       container.style.backgroundColor = "#18181b";
       container.style.backgroundImage = "none";
     }
+
+    container.style.color = this.getContrastColor(bgVal);
 
     // Handle slide background audio
     const bgAudio  = (slide as any).bgAudio;
@@ -2090,17 +2112,34 @@ class CourseForgeRuntime {
         const topics: any[] = (comp as any).topics || [];
         if (topics.length === 0) break;
 
+        const currentSlide = this.course.slides[this.state.currentSlide];
+        let bgVal = "#18181b";
+        if (currentSlide && (currentSlide as any).background) {
+          const bg = (currentSlide as any).background;
+          if (bg.type === "color" && bg.value) {
+            bgVal = bg.value;
+          }
+        }
+        const isDarkSlide = this.getContrastColor(bgVal) === "#ffffff";
+
+        const accBg = isDarkSlide ? "#202026" : "#ffffff";
+        const accBorder = isDarkSlide ? "#2d2d34" : "#ead0d0";
+        const accSumBg = isDarkSlide ? "#1e1e24" : "#fdf8f8";
+        const accColor = isDarkSlide ? "#fafafa" : "#1a0a0a";
+        const accBodyBorder = isDarkSlide ? "#2d2d34" : "#f3e4e4";
+        const accBodyText = isDarkSlide ? "#d4d4d8" : "#333333";
+
         const shell = document.createElement("div");
         shell.style.cssText = "display:flex;flex-direction:column;gap:0.75rem;";
 
         topics.forEach((topic, index) => {
           const itemWrap = document.createElement("div");
-          itemWrap.style.cssText = "border:1px solid #2d2d34;border-radius:10px;overflow:hidden;background:#202026;";
+          itemWrap.style.cssText = `border:1px solid ${accBorder};border-radius:10px;overflow:hidden;background:${accBg};`;
 
           const headerBtn = document.createElement("button");
           headerBtn.type = "button";
           headerBtn.setAttribute("aria-expanded", "false");
-          headerBtn.style.cssText = "width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border:none;background:#1e1e24;color:#fafafa;cursor:pointer;font:inherit;font-weight:700;font-size:0.95rem;text-align:left;";
+          headerBtn.style.cssText = `width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border:none;background:${accSumBg};color:${accColor};cursor:pointer;font:inherit;font-weight:700;font-size:0.95rem;text-align:left;`;
 
           const title = document.createElement("span");
           title.textContent = topic.title || `Topic ${index + 1}`;
@@ -2112,7 +2151,7 @@ class CourseForgeRuntime {
           headerBtn.appendChild(caret);
 
           const body = document.createElement("div");
-          body.style.cssText = "display:none;padding:16px;background:#202026;border-top:1px solid #2d2d34;";
+          body.style.cssText = `display:none;padding:16px;background:${accBg};border-top:1px solid ${accBodyBorder};`;
 
           const bodyInner = document.createElement("div");
           bodyInner.style.cssText = "display:flex;flex-direction:column;gap:12px;";
@@ -2139,7 +2178,7 @@ class CourseForgeRuntime {
             if (item.type === "text" && item.value) {
               const textEl = document.createElement("div");
               textEl.className = "cf-rt-text";
-              textEl.style.color = "#e4e4e7";
+              textEl.style.color = accBodyText;
               textEl.innerHTML = item.value;
               bodyInner.appendChild(textEl);
             }
@@ -3282,7 +3321,7 @@ class CourseForgeRuntime {
         ul.className = "cf-rt-list";
         ul.style.paddingLeft = "20px";
         ul.style.margin = "0";
-        ul.style.color = "#e4e4e7";
+        ul.style.color = "inherit";
 
         for (const item of comp.items) {
           const li = document.createElement("li");
@@ -3309,7 +3348,7 @@ class CourseForgeRuntime {
             const subEl = this.renderComponent(sub);
             if (sub.type === "text") {
               const textEl = subEl?.querySelector(".cf-rt-text") as HTMLElement | null;
-              if (textEl) textEl.style.color = "#e4e4e7";
+              if (textEl) textEl.style.color = "inherit";
             }
             if (subEl) colEl.appendChild(subEl);
           }
@@ -3324,21 +3363,23 @@ class CourseForgeRuntime {
         tableDiv.style.overflowX = "auto";
         tableDiv.style.marginBottom = "1rem";
 
-        const tableColor = (comp as any).tableColor || "#18181b";
+        const tableColor = (comp as any).tableColor || "#ffffff";
         const headerColor = (comp as any).headerColor || darkenColor(tableColor, 20);
+        const hTextColor = this.getContrastColor(headerColor);
+        const cellTextColor = this.getContrastColor(tableColor);
 
         let html = `<table style="width:100%; border-collapse:collapse; border:1px solid #3f3f46; font-size:14px;">`;
         html += `<thead><tr>`;
         for (const h of comp.headers || []) {
           // headers may be rich HTML from the editor
-          html += `<th style="border:1px solid #3f3f46; padding:10px; background:${headerColor}; font-weight:600; text-align:left;">${h}</th>`;
+          html += `<th style="border:1px solid #3f3f46; padding:10px; background:${headerColor}; color:${hTextColor}; font-weight:600; text-align:left;">${h}</th>`;
         }
         html += `</tr></thead><tbody>`;
         for (const row of comp.rows || []) {
           html += `<tr>`;
           for (const cell of row) {
             // cells may be rich HTML from the editor
-            html += `<td style="border:1px solid #3f3f46; padding:10px; background:${tableColor};">${cell}</td>`;
+            html += `<td style="border:1px solid #3f3f46; padding:10px; background:${tableColor}; color:${cellTextColor};">${cell}</td>`;
           }
           html += `</tr>`;
         }
@@ -3723,7 +3764,24 @@ class CourseForgeRuntime {
   private renderProcessHTML(comp: Extract<Component, { type: "process" }>): string {
     if (!comp.steps || comp.steps.length === 0) return `<p>No steps.</p>`;
 
-    let html = `<div class="cf-rt-process-block" id="proc-${comp.id}" data-step="0" style="background:#1a1a1e;border-radius:12px;padding:24px;border:1px solid #27272a;">`;
+    const currentSlide = this.course.slides[this.state.currentSlide];
+    let bgVal = "#18181b";
+    if (currentSlide && (currentSlide as any).background) {
+      const bg = (currentSlide as any).background;
+      if (bg.type === "color" && bg.value) {
+        bgVal = bg.value;
+      }
+    }
+    const isDarkSlide = this.getContrastColor(bgVal) === "#ffffff";
+
+    const procBg = isDarkSlide ? "#1a1a1e" : "#ffffff";
+    const procBorder = isDarkSlide ? "#27272a" : "#ead0d0";
+    const procInnerBg = isDarkSlide ? "#09090b" : "#fdf8f8";
+    const procTitleColor = isDarkSlide ? "#fafafa" : "#1a0a0a";
+    const procContentColor = isDarkSlide ? "#a1a1aa" : "#333333";
+    const procDotBg = isDarkSlide ? "#27272a" : "#ead0d0";
+
+    let html = `<div class="cf-rt-process-block" id="proc-${comp.id}" data-step="0" style="background:${procBg};border-radius:12px;padding:24px;border:1px solid ${procBorder};">`;
     html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">`;
     html += `<div style="font-weight:600;color:#c0392b;" id="proc-label-${comp.id}">Step 1 of ${comp.steps.length}</div>`;
     html += `<div>`;
@@ -3731,18 +3789,18 @@ class CourseForgeRuntime {
     html += `<button class="cf-rt-nav-btn cf-rt-nav-btn-primary" style="padding:6px 12px;font-size:12px;" id="proc-next-${comp.id}">Next</button>`;
     html += `</div></div>`;
 
-    html += `<div style="background:#09090b;padding:16px;border-radius:8px;min-height:120px;">`;
+    html += `<div style="background:${procInnerBg};padding:16px;border-radius:8px;min-height:120px;">`;
     comp.steps.forEach((step, i) => {
       html += `<div id="proc-step-${comp.id}-${i}" style="display:${i === 0 ? "block" : "none"};">`;
-      html += `<h3 style="margin-bottom:8px;color:#fafafa;font-size:18px;">${step.title || ""}</h3>`;
-      html += `<div style="color:#a1a1aa;line-height:1.6;">${step.content || ""}</div>`;
+      html += `<h3 style="margin-bottom:8px;color:${procTitleColor};font-size:18px;">${step.title || ""}</h3>`;
+      html += `<div style="color:${procContentColor};line-height:1.6;">${step.content || ""}</div>`;
       html += `</div>`;
     });
     html += `</div>`;
 
     html += `<div style="display:flex;justify-content:center;gap:6px;margin-top:16px;">`;
     for (let i = 0; i < comp.steps.length; i++) {
-      html += `<div id="proc-dot-${comp.id}-${i}" style="width:8px;height:8px;border-radius:4px;background:${i === 0 ? "#8b1a1a" : "#27272a"};transition:background 0.2s;"></div>`;
+      html += `<div id="proc-dot-${comp.id}-${i}" style="width:8px;height:8px;border-radius:4px;background:${i === 0 ? "#8b1a1a" : procDotBg};transition:background 0.2s;"></div>`;
     }
     html += `</div>`;
     html += `</div>`;

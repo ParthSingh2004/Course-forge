@@ -1202,27 +1202,50 @@ def _get_fallback_runtime_js() -> str:
   // ---------------------------------------------------------------------------
   // SLIDE RENDERER
   // ---------------------------------------------------------------------------
+  function getContrastColor(hex) {
+    if (!hex || hex[0] !== '#') return '#ffffff';
+    var r, g, b;
+    if (hex.length === 4) {
+      r = parseInt(hex[1] + hex[1], 16);
+      g = parseInt(hex[2] + hex[2], 16);
+      b = parseInt(hex[3] + hex[3], 16);
+    } else if (hex.length === 7) {
+      r = parseInt(hex.substring(1, 3), 16);
+      g = parseInt(hex.substring(3, 5), 16);
+      b = parseInt(hex.substring(5, 7), 16);
+    } else {
+      return '#ffffff';
+    }
+    var yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+    return (yiq >= 128) ? '#111112' : '#ffffff';
+  }
+
   function renderSlide(idx) {
     var slide = slides[idx];
     if (!slide) return;
     var container = document.getElementById('cf-slide-container');
     if (!container) return;
 
+    var bgVal = '#18181b';
     var bg = slide.background || null;
     if (bg) {
       if (bg.type === 'color' && bg.value) {
+        bgVal = bg.value;
         container.style.backgroundColor = bg.value;
         container.style.backgroundImage = 'none';
       } else if (bg.type === 'image' && bg.value) {
-        container.style.backgroundColor = '#ffffff';
+        container.style.backgroundColor = '#18181b';
         container.style.backgroundImage = 'url("' + bg.value + '")';
         container.style.backgroundSize = 'cover';
         container.style.backgroundPosition = 'center';
       }
     } else {
-      container.style.backgroundColor = '#ffffff';
+      container.style.backgroundColor = '#18181b';
       container.style.backgroundImage = 'none';
     }
+
+    container.style.color = getContrastColor(bgVal);
+    var isDarkSlide = getContrastColor(bgVal) === '#ffffff';
 
     var bgAudio = slide.bgAudio || null;
     var bgAudioSrc = bgAudio ? (bgAudio.src || bgAudio.url || '') : '';
@@ -2130,16 +2153,18 @@ def _get_fallback_runtime_js() -> str:
             return (usePound ? '#' : '') + (b | (g << 8) | (r << 16)).toString(16).padStart(6, '0');
           };
           var hColor = comp.headerColor || _darkenClr(tableColor, 20);
+          var hTextColor = getContrastColor(hColor);
+          var cellTextColor = getContrastColor(tableColor);
           var tableHtml = '<div style="overflow-x:auto;margin-bottom:1rem;"><table style="width:100%;border-collapse:collapse;border:1px solid #3f3f46;font-size:14px;"><thead><tr>';
           for (var thi = 0; thi < (comp.headers || []).length; thi++) {
-            tableHtml += '<th style="border:1px solid #3f3f46;padding:10px;background:' + hColor + ';font-weight:600;text-align:left;">' + comp.headers[thi] + '</th>';
+            tableHtml += '<th style="border:1px solid #3f3f46;padding:10px;background:' + hColor + ';color:' + hTextColor + ';font-weight:600;text-align:left;">' + comp.headers[thi] + '</th>';
           }
           tableHtml += '</tr></thead><tbody>';
           for (var tri = 0; tri < (comp.rows || []).length; tri++) {
             tableHtml += '<tr>';
             var row = comp.rows[tri] || [];
             for (var tdi = 0; tdi < row.length; tdi++) {
-              tableHtml += '<td style="border:1px solid #3f3f46;padding:10px;background:' + tableColor + ';">' + row[tdi] + '</td>';
+              tableHtml += '<td style="border:1px solid #3f3f46;padding:10px;background:' + tableColor + ';color:' + cellTextColor + ';">' + row[tdi] + '</td>';
             }
             tableHtml += '</tr>';
           }
@@ -2367,7 +2392,7 @@ def _get_fallback_runtime_js() -> str:
         } else if (comp.type === 'flashcard') {
           el.innerHTML = '<div class="cf-rt-flashcard-scene" onclick="this.classList.toggle(\'flipped\')"><div class="cf-rt-flashcard-inner"><div class="cf-rt-flashcard-face cf-rt-flashcard-front" style="background:' + (comp.frontBackground || 'linear-gradient(145deg, #1a0a0a 0%, #3d1010 60%, #6b1a1a 100%)') + ';border:1px solid ' + (comp.frontBorder || '#4d2020') + ';box-shadow:0 8px 32px ' + (comp.frontShadow || 'rgba(139,26,26,0.25)') + ';"><div class="cf-rt-flashcard-label" style="color:' + (comp.frontBadgeColor || 'rgba(255,255,255,0.68)') + ';">FRONT</div><div class="cf-rt-flashcard-text">' + (comp.front||'') + '</div><div class="cf-rt-flashcard-hint" style="color:rgba(255,255,255,0.78);">Click to flip</div></div><div class="cf-rt-flashcard-face cf-rt-flashcard-back" style="background:' + (comp.backBackground || 'linear-gradient(145deg, #fffaf9 0%, #fff0ee 100%)') + ';border:2px solid ' + (comp.backBorder || '#e8c8c8') + ';box-shadow:0 8px 32px ' + (comp.backShadow || 'rgba(139,26,26,0.12)') + ';"><div class="cf-rt-flashcard-label" style="color:' + (comp.backBadgeColor || '#c4a0a0') + ';">BACK</div><div class="cf-rt-flashcard-text" style="color:' + (comp.backTextColor || '#1a0a0a') + ';">' + (comp.back||'') + '</div><div class="cf-rt-flashcard-hint" style="color:' + (comp.backTextColor || '#8b1a1a') + ';">Click to flip back</div></div></div></div>';
         } else if (comp.type === 'list') {
-          var listHtml = '<ul class="cf-rt-list" style="padding-left:20px;margin:0;color:#111111;">';
+          var listHtml = '<ul class="cf-rt-list" style="padding-left:20px;margin:0;color:inherit;">';
           for (var ii = 0; ii < (comp.items||[]).length; ii++) {
             listHtml += '<li style="margin-bottom:8px;line-height:1.75;">' + comp.items[ii] + '</li>';
           }
@@ -2425,16 +2450,26 @@ def _get_fallback_runtime_js() -> str:
         } else if (comp.type === 'process') {
           var steps = comp.steps || [];
           var procHtml = '<div style="font-size:10px;font-weight:700;letter-spacing:0.15em;color:#c0392b;margin-bottom:12px;">PROCESS</div>';
+          var procBg = isDarkSlide ? '#1b1b1f' : '#fdf8f8';
+          var procBorder = isDarkSlide ? '#2d2d34' : '#ead0d0';
+          var procTitleColor = isDarkSlide ? '#fafafa' : '#1a0a0a';
+          var procContentColor = isDarkSlide ? '#d4d4d8' : '#333333';
           for (var pi = 0; pi < steps.length; pi++) {
-            procHtml += '<div style="padding:12px 16px;border:1px solid #27272a;border-radius:10px;margin-bottom:8px;background:#09090b;">';
-            procHtml += '<div style="font-size:14px;font-weight:600;color:#fafafa;margin-bottom:4px;">Step ' + (pi+1) + ': ' + (steps[pi].title||'') + '</div>';
-            if (steps[pi].content) procHtml += '<div style="font-size:13px;color:#a1a1aa;line-height:1.6;">' + steps[pi].content + '</div>';
+            procHtml += '<div style="padding:12px 16px;border:1px solid ' + procBorder + ';border-radius:10px;margin-bottom:8px;background:' + procBg + ';">';
+            procHtml += '<div style="font-size:14px;font-weight:600;color:' + procTitleColor + ';margin-bottom:4px;">Step ' + (pi+1) + ': ' + (steps[pi].title||'') + '</div>';
+            if (steps[pi].content) procHtml += '<div style="font-size:13px;color:' + procContentColor + ';line-height:1.6;">' + steps[pi].content + '</div>';
             procHtml += '</div>';
           }
           el.innerHTML = procHtml;
         } else if (comp.type === 'accordion') {
           var topics = comp.topics || [];
           var accordionHtml = '<div style="display:flex;flex-direction:column;gap:12px;">';
+          var accBg = isDarkSlide ? '#1b1b1f' : '#ffffff';
+          var accBorder = isDarkSlide ? '#2d2d34' : '#ead0d0';
+          var accSumBg = isDarkSlide ? '#202026' : '#fdf8f8';
+          var accColor = isDarkSlide ? '#fafafa' : '#1a0a0a';
+          var accBodyBorder = isDarkSlide ? '#2d2d34' : '#f3e4e4';
+          var accBodyText = isDarkSlide ? '#d4d4d8' : '#333333';
           for (var ati = 0; ati < topics.length; ati++) {
             var topic = topics[ati] || {};
             var topicTitle = topic.title || ('Topic ' + (ati + 1));
@@ -2443,7 +2478,7 @@ def _get_fallback_runtime_js() -> str:
             for (var aii = 0; aii < topicItems.length; aii++) {
               var topicItem = topicItems[aii] || {};
               if (topicItem.type === 'text' && topicItem.value) {
-                bodyHtml += '<div class="cf-rt-text" style="margin-bottom:12px;color:#333333;">' + topicItem.value + '</div>';
+                bodyHtml += '<div class="cf-rt-text" style="margin-bottom:12px;color:inherit;">' + topicItem.value + '</div>';
               } else if (topicItem.type === 'image' && topicItem.src) {
                 bodyHtml += '<div style="text-align:center;margin-bottom:12px;">';
                 bodyHtml += '<img src="' + topicItem.src + '" alt="' + (topicItem.alt || '') + '" style="width:100%;max-height:320px;object-fit:contain;border-radius:8px;background:#fafafa;display:block;" />';
@@ -2451,13 +2486,49 @@ def _get_fallback_runtime_js() -> str:
                 bodyHtml += '</div>';
               }
             }
-            accordionHtml += '<details style="border:1px solid #ead0d0;border-radius:10px;background:#ffffff;overflow:hidden;">';
-            accordionHtml += '<summary style="cursor:pointer;list-style:none;padding:14px 16px;background:#fdf8f8;font-weight:700;color:#1a0a0a;">' + topicTitle + '</summary>';
-            accordionHtml += '<div style="padding:16px;border-top:1px solid #f3e4e4;">' + bodyHtml + '</div>';
+            accordionHtml += '<details style="border:1px solid ' + accBorder + ';border-radius:10px;background:' + accBg + ';overflow:hidden;">';
+            accordionHtml += '<summary style="cursor:pointer;list-style:none;padding:14px 16px;background:' + accSumBg + ';font-weight:700;color:' + accColor + ';">' + topicTitle + '</summary>';
+            accordionHtml += '<div style="padding:16px;border-top:1px solid ' + accBodyBorder + ';color:' + accBodyText + ';">' + bodyHtml + '</div>';
             accordionHtml += '</details>';
           }
           accordionHtml += '</div>';
           el.innerHTML = accordionHtml;
+        } else if (comp.type === 'tabs') {
+          var tabs = comp.tabs || [];
+          if (tabs.length > 0) {
+            var tabsId = comp.id;
+            var tabsBorder = isDarkSlide ? '#2d2d34' : '#ead0d0';
+            var tabsBg = isDarkSlide ? '#1b1b1f' : '#ffffff';
+            var activeTabBg = isDarkSlide ? '#2a0a0a' : '#ffebeb';
+            var activeTabBorder = isDarkSlide ? '1.5px solid #ef4444' : '1.5px solid #c0392b';
+            var tabBtnColor = isDarkSlide ? '#fafafa' : '#1a0a0a';
+            var tabsTextClr = isDarkSlide ? '#d4d4d8' : '#333333';
+            
+            var tabButtonsHtml = '<div style="display:flex;gap:8px;border-bottom:2px solid ' + tabsBorder + ';padding-bottom:8px;margin-bottom:12px;overflow-x:auto;">';
+            var panelsHtml = '<div style="position:relative;">';
+            
+            for (var ti = 0; ti < tabs.length; ti++) {
+              var tab = tabs[ti];
+              var isActive = ti === 0;
+              var btnBg = isActive ? activeTabBg : 'transparent';
+              var btnBorder = isActive ? activeTabBorder : '1px solid transparent';
+              var btnWeight = isActive ? '700' : '500';
+              
+              tabButtonsHtml += '<button id="tab-btn-' + tabsId + '-' + ti + '" data-theme="' + (isDarkSlide ? 'dark' : 'light') + '" style="padding:8px 16px;border-radius:6px;border:' + btnBorder + ';background:' + btnBg + ';color:' + tabBtnColor + ';font-weight:' + btnWeight + ';font-family:inherit;font-size:13px;cursor:pointer;white-space:nowrap;" onclick="window.__cfSwitchTab(\'' + tabsId + '\',' + ti + ',' + tabs.length + ')">' + (tab.title || ('Tab ' + (ti + 1))) + '</button>';
+              
+              var imgHtml = '';
+              if (tab.image) {
+                imgHtml = '<div style="margin-bottom:12px;text-align:center;"><img src="' + tab.image + '" style="max-width:100%;max-height:300px;object-fit:contain;border-radius:8px;" /></div>';
+              }
+              
+              var panelDisplay = isActive ? 'block' : 'none';
+              panelsHtml += '<div id="tab-panel-' + tabsId + '-' + ti + '" style="display:' + panelDisplay + ';font-size:14px;color:' + tabsTextClr + ';line-height:1.6;">' + imgHtml + '<div>' + (tab.content || '') + '</div></div>';
+            }
+            tabButtonsHtml += '</div>';
+            panelsHtml += '</div>';
+            
+            el.innerHTML = '<div style="border:1px solid ' + tabsBorder + ';border-radius:10px;padding:16px;background:' + tabsBg + ';">' + tabButtonsHtml + panelsHtml + '</div>';
+          }
         } else if (comp.type === 'button') {
           var alignment = String(comp.alignment || 'center').toLowerCase();
           el.style.display = 'flex';
@@ -2527,7 +2598,7 @@ def _get_fallback_runtime_js() -> str:
             for (var sbi = 0; sbi < subBlocks.length; sbi++) {
               var sb = subBlocks[sbi];
               if (sb.type === 'text') {
-                colsHtml += '<div class="cf-rt-text" style="margin-bottom:10px;color:#111111;">' + (sb.content || '') + '</div>';
+                colsHtml += '<div class="cf-rt-text" style="margin-bottom:10px;color:inherit;">' + (sb.content || '') + '</div>';
               } else if (sb.type === 'image' && sb.src) {
                 colsHtml += '<div style="text-align:center;margin-bottom:10px;">';
                 colsHtml += '<img src="' + sb.src + '" alt="' + (sb.alt || '') + '" style="width:100%;border-radius:8px;display:block;" />';
@@ -2612,6 +2683,30 @@ def _get_fallback_runtime_js() -> str:
     checkCompletion();
   };
  
+  // ---------------------------------------------------------------------------
+  // TABS SWITCHING
+  // ---------------------------------------------------------------------------
+  window.__cfSwitchTab = function(blockId, tabIdx, totalTabs) {
+    for (var i = 0; i < totalTabs; i++) {
+      var btn = document.getElementById('tab-btn-' + blockId + '-' + i);
+      var panel = document.getElementById('tab-panel-' + blockId + '-' + i);
+      if (btn && panel) {
+        if (i === tabIdx) {
+          var isDark = btn.getAttribute('data-theme') === 'dark';
+          btn.style.background = isDark ? '#2a0a0a' : '#ffebeb';
+          btn.style.border = isDark ? '1.5px solid #ef4444' : '1.5px solid #c0392b';
+          btn.style.fontWeight = '700';
+          panel.style.display = 'block';
+        } else {
+          btn.style.background = 'transparent';
+          btn.style.border = '1px solid transparent';
+          btn.style.fontWeight = '500';
+          panel.style.display = 'none';
+        }
+      }
+    }
+  };
+
   // ---------------------------------------------------------------------------
   // FILL-IN-THE-BLANK SUBMISSION
   // Disables input only on correct; keeps it live for retry on wrong.
@@ -3001,19 +3096,19 @@ body {
  
 /* Slide title */
 .cf-rt-slide-title {
-  font-size: 28px; font-weight: 700; color: #ffffff;
+  font-size: 28px; font-weight: 700; color: inherit;
   margin-bottom: 24px; line-height: 1.3;
   border-bottom: 1px solid #2d2d34; padding-bottom: 16px;
 }
  
 /* Components */
 .cf-rt-component { margin-bottom: 20px; }
-.cf-rt-heading { color: #ffffff; margin: 0 0 12px; }
+.cf-rt-heading { color: inherit; margin: 0 0 12px; }
 h1.cf-rt-heading { font-size: 3rem; font-weight: 800; line-height: 1.1; }
 h2.cf-rt-heading { font-size: 1.875rem; font-weight: 700; line-height: 1.2; }
 h3.cf-rt-heading { font-size: 1.125rem; font-weight: 600; line-height: 1.3; }
 h4.cf-rt-heading, h5.cf-rt-heading, h6.cf-rt-heading { font-size: 1rem; font-weight: 600; line-height: 1.35; }
-.cf-rt-text { font-size: 15px; line-height: 1.75; color: #e4e4e7; }
+.cf-rt-text { font-size: 15px; line-height: 1.75; color: inherit; }
 .cf-rt-text ul, .cf-rt-text ol { padding-left: 24px; margin-top: 8px; margin-bottom: 8px; }
 .cf-rt-text ul { list-style-type: disc; }
 .cf-rt-text ol { list-style-type: decimal; }
@@ -3192,11 +3287,14 @@ h4.cf-rt-heading, h5.cf-rt-heading, h6.cf-rt-heading { font-size: 1rem; font-wei
 }
 /* Sidebar wrapper — positions the toggle tab relative to the panel */
 .cf-rt-sidebar-wrapper {
-  position: relative;
+  position: sticky;
+  top: 0;
+  height: calc(100vh - 74px);
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
 }
+
 
 /* Toggle tab — pill button on the left edge of the wrapper */
 .cf-rt-sidebar-toggle {

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Sparkles, X, Sliders, Image, BookOpen, Layers, CheckCircle2 } from 'lucide-react';
 
 const STATUS_MESSAGES = [
-    "Gemini 2.5 Pro is brainstorming the course structure...",
+    "Gemini 3.5 Flash is brainstorming the course structure...",
     "Outlining slide flow and pedagogical objectives...",
     "Drafting detailed educational text and headings...",
     "Creating interactive checks (quizzes, matching, fill-in-blanks)...",
@@ -218,7 +218,7 @@ export default function AICourseGeneratorModal({ isOpen, onClose, onGenerate }) 
                                     AI Course Generator
                                 </h3>
                                 <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '2px 0 0 0', fontWeight: 500 }}>
-                                    Powered by Gemini 2.5 Pro & Imagen 4.0
+                                    Powered by Gemini 3.5 Flash & Imagen 4.0
                                 </p>
                             </div>
                         </div>
