@@ -509,10 +509,12 @@ function Dashboard({ onCreateNew, onOpenCourse, onOpenAIGenerator }) {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
+            {/* 
             <button type="button" onClick={onOpenAIGenerator} className="dash-btn-primary" style={{ background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', border: 'none', boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)' }}>
               <Sparkles size={14} style={{ marginRight: 4 }} />
               Generate with AI
             </button>
+            */}
             <button type="button" onClick={onCreateNew} className="dash-btn-primary">
               <Plus size={14} />
               Create New Course

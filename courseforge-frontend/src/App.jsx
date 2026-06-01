@@ -1283,7 +1283,7 @@ function App() {
               {isPreviewLoading ? 'Building…' : 'Preview'}
             </button>
 
-            {/* AI Course Generate */}
+            {/* AI Course Generate
             <button
               onClick={() => setIsAIGeneratorOpen(true)}
               className="cf-btn cf-btn-ai"
@@ -1293,6 +1293,7 @@ function App() {
               <Sparkles style={{ width: 13, height: 13, color: '#ffffff' }} />
               AI Course
             </button>
+            */}
 
             {/* AI Generate */}
             <button
