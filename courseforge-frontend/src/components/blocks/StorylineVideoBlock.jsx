@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileUp, Trash2, Plus, Play, Pause, Move, Settings, X, RefreshCw, Eye } from 'lucide-react';
+import { FileUp, Trash2, Plus, Play, Pause, Move, Settings, X, RefreshCw, Eye, User } from 'lucide-react';
 import MandatorySelect from '../ui/MandatorySelect';
 
 export default function StorylineVideoBlock({ block, onUpdate, readOnly, slides = [] }) {
@@ -53,19 +53,25 @@ export default function StorylineVideoBlock({ block, onUpdate, readOnly, slides 
 
     // Overlay CRUD
     const addOverlay = (type) => {
+        const triggerAt = Math.round(currentTime * 10) / 10;
+        const defaultEnd = Math.min(Math.round((triggerAt + 5) * 10) / 10, duration || triggerAt + 5);
         const newOverlay = {
             id: Date.now().toString(),
-            type, // 'button' | 'flashcard' | 'dialogue'
+            type, // 'button' | 'flashcard' | 'dialogue' | 'avatar'
             x: 50.0,
-            y: 50.0,
-            startTime: Math.round(currentTime * 10) / 10,
-            text: type === 'button' ? 'Click Me' : type === 'flashcard' ? 'Question?' : 'Prompt question:',
+            y: type === 'avatar' ? 80.0 : 50.0,
+            startTime: triggerAt,
+            endTime: defaultEnd,
+            text: type === 'button' ? 'Click Me' : type === 'flashcard' ? 'Question?' : type === 'avatar' ? 'Hello! I\'m here to guide you through this section.' : 'Prompt question:',
             color: '#8b1a1a',
             textColor: '#ffffff',
-            action: 'resume', // 'resume' | 'next' | 'slide' | 'error'
+            action: 'resume',
             targetSlideId: '',
             errorMsg: 'Incorrect! Let\'s watch again.',
             flashcardBackText: 'Answer details go here.',
+            avatarSrc: '',
+            avatarName: type === 'avatar' ? 'Instructor' : '',
+            side: 'left',
             dialogueOptions: type === 'dialogue' ? [
                 { text: 'Correct Answer', action: 'resume', targetSlideId: '', errorMsg: '' },
                 { text: 'Incorrect Answer', action: 'error', targetSlideId: '', errorMsg: 'Oops! Let\'s watch again.' }
@@ -219,9 +225,10 @@ export default function StorylineVideoBlock({ block, onUpdate, readOnly, slides 
                                     zIndex: 5 
                                 }}>
                                     {overlays.map((ov) => {
-                                        // Visual activation window check (active within 1.5 seconds of trigger, or if currently selected)
-                                        const isVisible = selectedOverlayId === ov.id || 
-                                            (currentTime >= ov.startTime && currentTime <= ov.startTime + 2.5);
+                                        // Show within the authored [startTime, endTime] window, or always if selected
+                                        const ovEnd = ov.endTime != null ? ov.endTime : ov.startTime + 5;
+                                        const isVisible = selectedOverlayId === ov.id ||
+                                            (currentTime >= ov.startTime && currentTime <= ovEnd);
 
                                         if (!isVisible) return null;
 
@@ -305,6 +312,49 @@ export default function StorylineVideoBlock({ block, onUpdate, readOnly, slides 
                                                         <div style={{ fontSize: '0.72rem', fontWeight: 500, opacity: 0.9, color: '#1a0a0a' }}>{ov.text || 'Prompt...'}</div>
                                                     </div>
                                                 )}
+
+                                                {ov.type === 'avatar' && (
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'flex-end',
+                                                        gap: 8,
+                                                        flexDirection: ov.side === 'right' ? 'row-reverse' : 'row',
+                                                        filter: isSelected ? 'drop-shadow(0 0 8px #38bdf8)' : 'none',
+                                                    }}>
+                                                        {/* Avatar circle */}
+                                                        <div style={{
+                                                            width: 48, height: 48, borderRadius: '50%',
+                                                            border: isSelected ? '2px dashed #38bdf8' : '2.5px solid #8b1a1a',
+                                                            overflow: 'hidden', flexShrink: 0,
+                                                            background: '#1a0a0a',
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                            boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+                                                        }}>
+                                                            {ov.avatarSrc
+                                                                ? <img src={ov.avatarSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                                : <User size={22} color="#8b1a1a" />}
+                                                        </div>
+                                                        {/* Speech bubble */}
+                                                        <div style={{
+                                                            background: '#fff',
+                                                            border: '1px solid #ead0d0',
+                                                            borderRadius: 10,
+                                                            borderBottomLeftRadius: ov.side === 'right' ? 10 : 0,
+                                                            borderBottomRightRadius: ov.side === 'right' ? 0 : 10,
+                                                            padding: '6px 10px',
+                                                            fontSize: '0.63rem',
+                                                            fontWeight: 500,
+                                                            color: '#1a0a0a',
+                                                            maxWidth: 130,
+                                                            wordBreak: 'break-word',
+                                                            lineHeight: 1.4,
+                                                            boxShadow: '0 4px 12px rgba(0,0,0,0.18)'
+                                                        }}>
+                                                            {ov.avatarName && <div style={{ fontSize: '0.55rem', fontWeight: 700, color: '#8b1a1a', marginBottom: 2 }}>{ov.avatarName}</div>}
+                                                            {ov.text || 'Hello!'}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })}
@@ -373,12 +423,15 @@ export default function StorylineVideoBlock({ block, onUpdate, readOnly, slides 
                                         }} />
                                         
                                         {overlays.map((ov) => {
-                                            const pct = duration ? (ov.startTime / duration) * 100 : 0;
+                                            const startPct = duration ? (ov.startTime / duration) * 100 : 0;
+                                            const ovEnd = ov.endTime != null ? ov.endTime : ov.startTime + 5;
+                                            const endPct = duration ? Math.min((ovEnd / duration) * 100, 100) : startPct;
+                                            const widthPct = Math.max(endPct - startPct, 0.5);
                                             const isSel = ov.id === selectedOverlayId;
                                             return (
                                                 <div
                                                     key={ov.id}
-                                                    title={`Overlay at ${formatTime(ov.startTime)}`}
+                                                    title={`Overlay: ${formatTime(ov.startTime)} → ${formatTime(ovEnd)}`}
                                                     onClick={() => {
                                                         if (videoRef.current) {
                                                             videoRef.current.currentTime = ov.startTime;
@@ -388,16 +441,19 @@ export default function StorylineVideoBlock({ block, onUpdate, readOnly, slides 
                                                     }}
                                                     style={{
                                                         position: 'absolute',
-                                                        left: `${pct}%`,
-                                                        width: 8,
+                                                        left: `${startPct}%`,
+                                                        width: `${widthPct}%`,
                                                         height: 8,
-                                                        borderRadius: '50%',
-                                                        background: isSel ? '#38bdf8' : '#e11d48',
-                                                        border: '1px solid #fff',
+                                                        borderRadius: 4,
+                                                        background: isSel
+                                                            ? 'linear-gradient(90deg,#38bdf8,#7dd3fc)'
+                                                            : 'linear-gradient(90deg,#e11d48,#fb7185)',
+                                                        border: isSel ? '1px solid #bae6fd' : '1px solid rgba(255,255,255,0.35)',
                                                         top: 10,
-                                                        transform: 'translateX(-50%)',
                                                         cursor: 'pointer',
-                                                        zIndex: 20
+                                                        zIndex: 20,
+                                                        boxShadow: isSel ? '0 0 6px #38bdf8' : 'none',
+                                                        transition: 'background 0.15s, box-shadow 0.15s'
                                                     }}
                                                 />
                                             );
@@ -424,6 +480,12 @@ export default function StorylineVideoBlock({ block, onUpdate, readOnly, slides 
                                         style={{ background: '#1c1c1f', border: '1px solid #2d2d30', color: '#fff', fontSize: '0.72rem', padding: '0.35rem 0.65rem', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                                     >
                                         <Plus size={12} /> Add Prompt Dialogue
+                                    </button>
+                                    <button 
+                                        onClick={() => addOverlay('avatar')}
+                                        style={{ background: '#1c1c1f', border: '1px solid #4a3040', color: '#e879a0', fontSize: '0.72rem', padding: '0.35rem 0.65rem', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                                    >
+                                        <User size={12} /> Add Avatar
                                     </button>
                                 </div>
                             </div>
@@ -460,7 +522,7 @@ export default function StorylineVideoBlock({ block, onUpdate, readOnly, slides 
                                     {/* Start Time slider */}
                                     <div>
                                         <label style={{ display: 'block', fontSize: '0.72rem', color: '#a1a1aa', fontWeight: 600, marginBottom: '0.35rem' }}>
-                                            Trigger Timestamp: <span style={{ color: '#fff', fontFamily: 'monospace' }}>{selectedOverlay.startTime}s</span>
+                                            Trigger Start: <span style={{ color: '#fff', fontFamily: 'monospace' }}>{formatTime(selectedOverlay.startTime)}</span>
                                         </label>
                                         <input
                                             type="range"
@@ -468,23 +530,50 @@ export default function StorylineVideoBlock({ block, onUpdate, readOnly, slides 
                                             max={duration || 100}
                                             step={0.1}
                                             value={selectedOverlay.startTime}
-                                            onChange={(e) => updateOverlay(selectedOverlay.id, { startTime: parseFloat(e.target.value) })}
+                                            onChange={(e) => {
+                                                const newStart = parseFloat(e.target.value);
+                                                const currentEnd = selectedOverlay.endTime != null ? selectedOverlay.endTime : selectedOverlay.startTime + 5;
+                                                // Keep endTime at least 0.5s after startTime
+                                                const newEnd = Math.max(currentEnd, newStart + 0.5);
+                                                updateOverlay(selectedOverlay.id, { startTime: newStart, endTime: Math.min(newEnd, duration || newEnd) });
+                                            }}
                                             style={{ width: '100%', accentColor: '#ef4444' }}
                                         />
                                     </div>
 
-                                    {/* Text field */}
+                                    {/* End Time slider */}
                                     <div>
                                         <label style={{ display: 'block', fontSize: '0.72rem', color: '#a1a1aa', fontWeight: 600, marginBottom: '0.35rem' }}>
-                                            {selectedOverlay.type === 'button' ? 'Button Label' : selectedOverlay.type === 'flashcard' ? 'Question (Front)' : 'Dialogue Prompt Question'}
+                                            Trigger End: <span style={{ color: '#38bdf8', fontFamily: 'monospace' }}>{formatTime(selectedOverlay.endTime != null ? selectedOverlay.endTime : selectedOverlay.startTime + 5)}</span>
+                                            <span style={{ color: '#4b5563', fontWeight: 400, marginLeft: '0.4rem' }}>
+                                                ({((selectedOverlay.endTime ?? selectedOverlay.startTime + 5) - selectedOverlay.startTime).toFixed(1)}s visible)
+                                            </span>
                                         </label>
                                         <input
-                                            type="text"
-                                            value={selectedOverlay.text || ''}
-                                            onChange={(e) => updateOverlay(selectedOverlay.id, { text: e.target.value })}
-                                            style={{ width: '100%', background: '#1c1c1f', border: '1px solid #2d2d30', color: '#fff', borderRadius: 4, padding: '0.4rem 0.5rem', fontSize: '0.78rem', outline: 'none' }}
+                                            type="range"
+                                            min={selectedOverlay.startTime + 0.5}
+                                            max={duration || 100}
+                                            step={0.1}
+                                            value={selectedOverlay.endTime != null ? selectedOverlay.endTime : selectedOverlay.startTime + 5}
+                                            onChange={(e) => updateOverlay(selectedOverlay.id, { endTime: parseFloat(e.target.value) })}
+                                            style={{ width: '100%', accentColor: '#38bdf8' }}
                                         />
                                     </div>
+
+                                    {/* Text field — hidden for avatar (uses dedicated speech text field below) */}
+                                    {selectedOverlay.type !== 'avatar' && (
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: '0.72rem', color: '#a1a1aa', fontWeight: 600, marginBottom: '0.35rem' }}>
+                                                {selectedOverlay.type === 'button' ? 'Button Label' : selectedOverlay.type === 'flashcard' ? 'Question (Front)' : 'Dialogue Prompt Question'}
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={selectedOverlay.text || ''}
+                                                onChange={(e) => updateOverlay(selectedOverlay.id, { text: e.target.value })}
+                                                style={{ width: '100%', background: '#1c1c1f', border: '1px solid #2d2d30', color: '#fff', borderRadius: 4, padding: '0.4rem 0.5rem', fontSize: '0.78rem', outline: 'none' }}
+                                            />
+                                        </div>
+                                    )}
 
                                     {/* TYPE-SPECIFIC CONTROLS */}
                                     {selectedOverlay.type === 'button' && (
@@ -574,6 +663,125 @@ export default function StorylineVideoBlock({ block, onUpdate, readOnly, slides 
                                                 rows={3}
                                                 style={{ width: '100%', background: '#1c1c1f', border: '1px solid #2d2d30', color: '#fff', borderRadius: 4, padding: '0.4rem 0.5rem', fontSize: '0.78rem', outline: 'none', resize: 'none' }}
                                             />
+                                        </div>
+                                    )}
+
+                                    {/* ── Avatar Controls ── */}
+                                    {selectedOverlay.type === 'avatar' && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+
+                                            {/* Photo upload */}
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', color: '#a1a1aa', fontWeight: 600, marginBottom: '0.45rem' }}>Character Photo</label>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                    <div style={{
+                                                        width: 60, height: 60, borderRadius: '50%',
+                                                        border: '2px solid #8b1a1a',
+                                                        overflow: 'hidden', flexShrink: 0,
+                                                        background: '#1a0a0a',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                    }}>
+                                                        {selectedOverlay.avatarSrc
+                                                            ? <img src={selectedOverlay.avatarSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                            : <User size={26} color="#8b1a1a" />}
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                                        <label style={{
+                                                            background: '#1c1c1f', border: '1px dashed #555',
+                                                            borderRadius: 6, padding: '5px 12px',
+                                                            cursor: 'pointer', color: '#a1a1aa',
+                                                            fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 5
+                                                        }}>
+                                                            <FileUp size={11} /> Upload Photo
+                                                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => {
+                                                                const file = e.target.files?.[0];
+                                                                if (!file) return;
+                                                                const reader = new FileReader();
+                                                                reader.onloadend = () => updateOverlay(selectedOverlay.id, { avatarSrc: reader.result });
+                                                                reader.readAsDataURL(file);
+                                                                e.target.value = null;
+                                                            }} />
+                                                        </label>
+                                                        {selectedOverlay.avatarSrc && (
+                                                            <button onClick={() => updateOverlay(selectedOverlay.id, { avatarSrc: '' })}
+                                                                style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '0.68rem', cursor: 'pointer', textAlign: 'left', padding: 0 }}>
+                                                                ✕ Remove photo
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Character name */}
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', color: '#a1a1aa', fontWeight: 600, marginBottom: '0.35rem' }}>Character Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={selectedOverlay.avatarName || ''}
+                                                    onChange={(e) => updateOverlay(selectedOverlay.id, { avatarName: e.target.value })}
+                                                    placeholder="e.g. Dr. Smith"
+                                                    style={{ width: '100%', background: '#1c1c1f', border: '1px solid #2d2d30', color: '#fff', borderRadius: 4, padding: '0.4rem 0.5rem', fontSize: '0.78rem', outline: 'none' }}
+                                                />
+                                            </div>
+
+                                            {/* Speech text */}
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', color: '#a1a1aa', fontWeight: 600, marginBottom: '0.35rem' }}>Speech / Dialogue</label>
+                                                <textarea
+                                                    value={selectedOverlay.text || ''}
+                                                    onChange={(e) => updateOverlay(selectedOverlay.id, { text: e.target.value })}
+                                                    rows={3}
+                                                    placeholder="What does the character say?"
+                                                    style={{ width: '100%', background: '#1c1c1f', border: '1px solid #2d2d30', color: '#fff', borderRadius: 4, padding: '0.4rem 0.5rem', fontSize: '0.78rem', outline: 'none', resize: 'none' }}
+                                                />
+                                            </div>
+
+                                            {/* Side toggle */}
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', color: '#a1a1aa', fontWeight: 600, marginBottom: '0.35rem' }}>Character Position</label>
+                                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                    {['left', 'right'].map(s => (
+                                                        <button key={s}
+                                                            onClick={() => updateOverlay(selectedOverlay.id, { side: s })}
+                                                            style={{
+                                                                flex: 1, padding: '0.4rem',
+                                                                borderRadius: 5, fontSize: '0.75rem', fontWeight: 600,
+                                                                cursor: 'pointer', border: '1px solid',
+                                                                background: (selectedOverlay.side || 'left') === s ? '#8b1a1a' : '#1c1c1f',
+                                                                color: (selectedOverlay.side || 'left') === s ? '#fff' : '#a1a1aa',
+                                                                borderColor: (selectedOverlay.side || 'left') === s ? '#8b1a1a' : '#2d2d30',
+                                                            }}>
+                                                            {s === 'left' ? '◀ Left' : 'Right ▶'}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* After Continue action */}
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', color: '#a1a1aa', fontWeight: 600, marginBottom: '0.35rem' }}>After Continue</label>
+                                                <select
+                                                    value={selectedOverlay.action || 'resume'}
+                                                    onChange={(e) => updateOverlay(selectedOverlay.id, { action: e.target.value })}
+                                                    style={{ width: '100%', background: '#1c1c1f', border: '1px solid #2d2d30', color: '#fff', borderRadius: 4, padding: '0.4rem 0.5rem', fontSize: '0.78rem', outline: 'none' }}
+                                                >
+                                                    <option value="resume">Resume Video</option>
+                                                    <option value="next">Go to Next Slide</option>
+                                                    <option value="slide">Jump to Specific Slide</option>
+                                                </select>
+                                                {selectedOverlay.action === 'slide' && (
+                                                    <select
+                                                        value={selectedOverlay.targetSlideId || ''}
+                                                        onChange={(e) => updateOverlay(selectedOverlay.id, { targetSlideId: e.target.value })}
+                                                        style={{ width: '100%', marginTop: '0.35rem', background: '#1c1c1f', border: '1px solid #2d2d30', color: '#fff', borderRadius: 4, padding: '0.4rem 0.5rem', fontSize: '0.78rem', outline: 'none' }}
+                                                    >
+                                                        <option value="">Choose Target Slide...</option>
+                                                        {slides.map((s, idx) => (
+                                                            <option key={s.id} value={s.id}>Slide {idx + 1}: {s.title || 'Untitled'}</option>
+                                                        ))}
+                                                    </select>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
 

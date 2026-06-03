@@ -1283,7 +1283,7 @@ function App() {
               {isPreviewLoading ? 'Building…' : 'Preview'}
             </button>
 
-            {/* AI Course Generate
+            {/* AI Course Generate */}
             <button
               onClick={() => setIsAIGeneratorOpen(true)}
               className="cf-btn cf-btn-ai"
@@ -1293,7 +1293,6 @@ function App() {
               <Sparkles style={{ width: 13, height: 13, color: '#ffffff' }} />
               AI Course
             </button>
-            */}
 
             {/* AI Generate */}
             <button
@@ -2701,7 +2700,7 @@ function App() {
               srcDoc={previewHtml || ''}
               title="SCORM Preview"
               style={{ flex: 1, border: 'none', background: '#18181b', display: 'block', width: '100%' }}
-              sandbox="allow-scripts allow-forms"
+              sandbox="allow-scripts allow-forms allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"
             />
           </div>
         </div>

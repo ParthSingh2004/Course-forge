@@ -290,6 +290,7 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
                 "x": float(overlay.get("x", 0)),
                 "y": float(overlay.get("y", 0)),
                 "startTime": float(overlay.get("startTime", 0)),
+                "endTime": float(overlay.get("endTime", overlay.get("startTime", 0) + 5)),
                 "text": str(overlay.get("text", "")),
                 "color": overlay.get("color"),
                 "textColor": overlay.get("textColor"),
@@ -297,6 +298,9 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
                 "action": str(overlay.get("action", "resume")),
                 "targetSlideId": str(overlay.get("targetSlideId", "")),
                 "errorMsg": str(overlay.get("errorMsg", "")),
+                "avatarSrc": str(overlay.get("avatarSrc", "")),
+                "avatarName": str(overlay.get("avatarName", "")),
+                "side": str(overlay.get("side", "left")),
                 "dialogueOptions": diag_opts
             })
         comp = {
@@ -1686,25 +1690,13 @@ def _get_fallback_runtime_js() -> str:
           var canvasWrap = document.createElement('div');
           canvasWrap.style.position = 'relative';
           canvasWrap.style.width = '100%';
-          canvasWrap.style.minHeight = '420px';
+          /* Match the author view 16:10 ratio — this is the key constraint that
+             makes % positions identical between authoring and preview/export */
           canvasWrap.style.aspectRatio = '16 / 10';
           canvasWrap.style.overflow = 'hidden';
           canvasWrap.style.borderRadius = '12px';
           canvasWrap.style.background = comp.canvasBg || '#ffffff';
           canvasWrap.style.boxShadow = 'inset 0 0 0 1px rgba(17,24,39,0.06)';
-
-          var resizeObserver = new ResizeObserver(function(entries) {
-            if (!canvasWrap.isConnected) {
-              resizeObserver.disconnect();
-              return;
-            }
-            for (var i = 0; i < entries.length; i++) {
-              var width = entries[i].contentRect.width || canvasWrap.clientWidth;
-              var ratio = width / 1000;
-              canvasWrap.style.setProperty('--canvas-scale', String(ratio));
-            }
-          });
-          resizeObserver.observe(canvasWrap);
 
           var canvasItems = Array.isArray(comp.items) ? comp.items.slice() : [];
           canvasItems.sort(function(a, b) {
@@ -1718,12 +1710,17 @@ def _get_fallback_runtime_js() -> str:
             itemEl.style.left = (canvasItem.x || 0) + '%';
             itemEl.style.top = (canvasItem.y || 0) + '%';
             itemEl.style.width = (canvasItem.w || 20) + '%';
-            itemEl.style.height = (canvasItem.h || 20) + '%';
+            itemEl.style.height = canvasItem.type === 'text' ? 'auto' : (canvasItem.h || 20) + '%';
             itemEl.style.zIndex = String(canvasItem.zIndex || 0);
             itemEl.style.boxSizing = 'border-box';
             itemEl.style.pointerEvents = 'none';
             itemEl.style.transform = 'rotate(' + (canvasItem.rotation || 0) + 'deg)';
             itemEl.style.transformOrigin = '50% 50%';
+            /* Text items use flex-column so the grip spacer stacks above the text */
+            if (canvasItem.type === 'text') {
+              itemEl.style.display = 'flex';
+              itemEl.style.flexDirection = 'column';
+            }
 
             if (canvasItem.type === 'rect' || canvasItem.type === 'circle') {
               var shape = document.createElement('div');
@@ -1752,26 +1749,48 @@ def _get_fallback_runtime_js() -> str:
             } else if (canvasItem.type === 'text') {
               itemEl.style.height = 'auto';
 
+              /* 18px spacer matches the drag-grip bar in the author view so
+                 the stored y% position renders the text at the same visual
+                 location in both authoring and preview/export */
+              var gripSpacer = document.createElement('div');
+              gripSpacer.style.height = '18px';
+              gripSpacer.style.flexShrink = '0';
+              gripSpacer.style.background = 'transparent';
+              itemEl.appendChild(gripSpacer);
+
               var textEl = document.createElement('div');
               textEl.style.width = '100%';
               textEl.style.height = 'auto';
               textEl.style.color = canvasItem.color || '#111827';
-              textEl.style.fontSize = 'calc(var(--canvas-scale, 1) * ' + (canvasItem.fontSize || 16) + 'px)';
+              /* Use fixed px (no --canvas-scale) to match the author view
+                 which renders font sizes as fixed pixel values */
+              textEl.style.fontSize = (canvasItem.fontSize || 16) + 'px';
               textEl.style.fontFamily = canvasItem.fontFamily || 'inherit';
               textEl.style.fontWeight = canvasItem.fontWeight || 'normal';
               textEl.style.fontStyle = canvasItem.fontStyle || 'normal';
               textEl.style.textDecoration = canvasItem.textDecoration || 'none';
               textEl.style.textAlign = canvasItem.textAlign || 'left';
               textEl.style.lineHeight = String(canvasItem.lineHeight || 1.5);
-              textEl.style.letterSpacing = 'calc(var(--canvas-scale, 1) * ' + (canvasItem.letterSpacing || 0) + 'px)';
+              textEl.style.letterSpacing = (canvasItem.letterSpacing || 0) + 'px';
               textEl.style.whiteSpace = 'pre-wrap';
               textEl.style.wordBreak = 'break-word';
               textEl.style.background = 'transparent';
               textEl.style.border = 'none';
-              textEl.style.padding = '0';
+              textEl.style.padding = '4px 6px';
               textEl.style.margin = '0';
               textEl.textContent = canvasItem.text || '';
               itemEl.appendChild(textEl);
+            } else if (canvasItem.type === 'image') {
+              var imgEl = document.createElement('img');
+              imgEl.src = canvasItem.src || '';
+              imgEl.alt = '';
+              imgEl.style.width = '100%';
+              imgEl.style.height = '100%';
+              imgEl.style.objectFit = 'contain';
+              imgEl.style.display = 'block';
+              imgEl.style.userSelect = 'none';
+              imgEl.style.pointerEvents = 'none';
+              itemEl.appendChild(imgEl);
             }
 
             canvasWrap.appendChild(itemEl);
@@ -2385,7 +2404,7 @@ def _get_fallback_runtime_js() -> str:
           }
         } else if (comp.type === 'video') {
           if (comp.embedType === 'youtube' || comp.embedType === 'vimeo') {
-            el.innerHTML = '<div class="cf-rt-video-wrap"><iframe class="cf-rt-video-embed" src="' + comp.src + '" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe></div>';
+            el.innerHTML = '<div class="cf-rt-video-wrap"><iframe class="cf-rt-video-embed" src="' + comp.src + '" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"></iframe></div>';
           } else {
             el.innerHTML = '<video class="cf-rt-video" src="' + comp.src + '" controls></video>';
           }

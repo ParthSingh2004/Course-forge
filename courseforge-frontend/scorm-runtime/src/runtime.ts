@@ -245,7 +245,7 @@ class CourseForgeRuntime {
       for (const layer of slide.layers) {
         for (const comp of layer.components) {
           if (
-            (comp.type === "quiz" || comp.type === "video" || comp.type === "audio" || comp.type === "interactive-video") &&
+            (comp.type === "quiz" || comp.type === "video" || comp.type === "audio" || comp.type === "interactive-video" || comp.type === "storyline-video") &&
             (comp as any).mandatory
           ) {
             this.mandatoryIds.add(comp.id);
@@ -1795,7 +1795,9 @@ class CourseForgeRuntime {
             text.style.height = "auto";
             text.style.color = item.color || "#111827";
             text.style.fontSize = `calc(var(--canvas-scale, 1) * ${item.fontSize || 16}px)`;
-            text.style.fontFamily = item.fontFamily || "inherit";
+            text.style.fontFamily = (!item.fontFamily || item.fontFamily === "inherit")
+              ? "'DM Sans', 'Roboto', sans-serif"
+              : item.fontFamily;
             text.style.fontWeight = item.fontWeight || "normal";
             text.style.fontStyle = item.fontStyle || "normal";
             text.style.textDecoration = item.textDecoration || "none";
@@ -2636,9 +2638,10 @@ class CourseForgeRuntime {
           }
 
           const hit = overlays.find((ov: any) => {
-            return !resolvedOverlays.has(ov.id) && 
-                   currentTime >= ov.startTime && 
-                   currentTime <= ov.startTime + 0.8;
+            const ovEnd = (ov.endTime != null) ? ov.endTime : ov.startTime + 5;
+            return !resolvedOverlays.has(ov.id) &&
+                   currentTime >= ov.startTime &&
+                   currentTime <= ovEnd;
           });
 
           if (hit) {
@@ -2776,6 +2779,66 @@ class CourseForgeRuntime {
               el.appendChild(card);
             }
 
+            else if (hit.type === "avatar") {
+              const side = (hit as any).side || "left";
+              const card = document.createElement("div");
+              card.style.cssText = `display:flex;align-items:flex-end;gap:12px;flex-direction:${side === "right" ? "row-reverse" : "row"};max-width:480px;`;
+
+              // ── Avatar column: photo + name badge
+              const avatarCol = document.createElement("div");
+              avatarCol.style.cssText = "flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;";
+
+              const avatarCircle = document.createElement("div");
+              avatarCircle.style.cssText = "width:72px;height:72px;border-radius:50%;overflow:hidden;border:3px solid #8b1a1a;background:#1a0a0a;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.45);";
+              if ((hit as any).avatarSrc) {
+                const img = document.createElement("img");
+                img.src = (hit as any).avatarSrc;
+                img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+                avatarCircle.appendChild(img);
+              } else {
+                avatarCircle.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#8b1a1a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+              }
+              avatarCol.appendChild(avatarCircle);
+
+              if ((hit as any).avatarName) {
+                const nameBadge = document.createElement("div");
+                nameBadge.style.cssText = "font-size:0.68rem;font-weight:700;color:#fff;background:#8b1a1a;padding:2px 10px;border-radius:20px;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis;text-align:center;letter-spacing:0.02em;";
+                nameBadge.textContent = (hit as any).avatarName;
+                avatarCol.appendChild(nameBadge);
+              }
+
+              // ── Speech bubble
+              const bubble = document.createElement("div");
+              const isRight = side === "right";
+              bubble.style.cssText = `background:#ffffff;border:1.5px solid #ead0d0;border-radius:16px;border-bottom-${isRight ? "right" : "left"}-radius:0;padding:14px 16px;max-width:300px;box-shadow:0 8px 28px rgba(0,0,0,0.22);display:flex;flex-direction:column;gap:12px;`;
+
+              const speechText = document.createElement("div");
+              speechText.style.cssText = "font-size:0.92rem;font-weight:500;color:#1a0a0a;line-height:1.55;";
+              speechText.textContent = hit.text || "";
+              bubble.appendChild(speechText);
+
+              const continueBtn = document.createElement("button");
+              continueBtn.type = "button";
+              continueBtn.style.cssText = `padding:8px 20px;font-size:0.82rem;font-weight:700;font-family:inherit;border-radius:8px;background:#8b1a1a;color:#fff;border:none;cursor:pointer;align-self:${isRight ? "flex-start" : "flex-end"};transition:opacity 0.15s;`;
+              continueBtn.textContent = "Continue";
+              continueBtn.onmouseover = () => { continueBtn.style.opacity = "0.85"; };
+              continueBtn.onmouseout  = () => { continueBtn.style.opacity = "1"; };
+              continueBtn.onclick = () => {
+                if (hit.action === "next") {
+                  this.nextSlide();
+                } else if (hit.action === "slide") {
+                  this.goToSlide(hit.targetSlideId);
+                } else {
+                  resumePlayback();
+                }
+              };
+              bubble.appendChild(continueBtn);
+
+              card.appendChild(avatarCol);
+              card.appendChild(bubble);
+              el.appendChild(card);
+            }
+
             overlayContainer.appendChild(el);
           }
         });
@@ -2811,7 +2874,7 @@ class CourseForgeRuntime {
           iframe.src = this.getEmbeddableVideoSrc(comp.src, comp.embedType);
           iframe.allowFullscreen = true;
           iframe.className = "cf-rt-video-embed";
-          iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture");
+          iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen");
           iframeWrap.appendChild(iframe);
           wrapper.appendChild(iframeWrap);
 
@@ -3930,7 +3993,7 @@ class CourseForgeRuntime {
 
         finishBtn!.disabled = true;
         this.renderFeedback("Course finished successfully.", "correct");
-      }, { once: true });
+      });
 
       nextBtn.parentElement.appendChild(finishBtn);
     }

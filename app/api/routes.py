@@ -966,7 +966,10 @@ class GeneratedCanvasItem(BaseModel):
     h: float = Field(..., description="Height as percentage (5 to 100).")
     color: str = Field("#3b82f6", description="Hex color code for shape or text color.")
     text: Optional[str] = Field(None, description="Text content (only for type='text').")
-    fontSize: Optional[int] = Field(16, description="Font size in pixels (only for type='text').")
+    fontSize: Optional[int] = Field(16, description="Font size in pixels (only for type='text'). Use 28-36 for titles/headings, 14-18 for body text, 10-12 for small labels.")
+    fontWeight: Optional[str] = Field("normal", description="Font weight (only for type='text'). Use 'bold' or '700' for headings/titles, 'normal' or '400' for body text.")
+    textAlign: Optional[str] = Field("left", description="Text alignment (only for type='text'). Use 'center' for titles/headings, 'left' for body text.")
+    zIndex: Optional[int] = Field(None, description="Stacking order. Higher values render on top. Shapes/backgrounds should use 1-5, text labels should use 10-20.")
     imagePrompt: Optional[str] = Field(None, description="Image generation prompt (only for type='image').")
     unsplashQuery: Optional[str] = Field(None, description="Unsplash search query (only for type='image').")
 
@@ -1352,14 +1355,23 @@ def map_content_block(b: GeneratedContentBlock, image_type: str) -> Dict[str, An
     return mapped
 
 
-def map_canvas_item(item: GeneratedCanvasItem, image_type: str) -> Dict[str, Any]:
+def map_canvas_item(item: GeneratedCanvasItem, image_type: str, index: int = 0) -> Dict[str, Any]:
+    # Auto-assign zIndex: AI value takes priority, otherwise shapes get low z, text gets high z
+    if item.zIndex is not None:
+        z = item.zIndex
+    elif item.type == "text":
+        z = 10 + index
+    else:
+        z = 1 + index
+
     mapped = {
         "id": generate_react_id("canvasitem"),
         "type": item.type,
-        "x": max(0.0, min(100.0, float(item.x))),
-        "y": max(0.0, min(100.0, float(item.y))),
-        "w": max(5.0, min(100.0, float(item.w))),
-        "h": max(5.0, min(100.0, float(item.h))),
+        "x": max(0.0, min(95.0, float(item.x))),
+        "y": max(0.0, min(95.0, float(item.y))),
+        "w": max(5.0, min(float(item.w), 100.0 - max(0.0, float(item.x)))),
+        "h": max(5.0, min(float(item.h), 100.0 - max(0.0, float(item.y)))),
+        "zIndex": z,
         "color": item.color or "#111827",
         "rotation": 0,
         "animation": "none",
@@ -1367,13 +1379,19 @@ def map_canvas_item(item: GeneratedCanvasItem, image_type: str) -> Dict[str, Any
     }
     
     if item.type == "text":
+        font_size = item.fontSize or 16
+        # Auto-bold large text (headings) when AI didn't explicitly set fontWeight
+        ai_weight = item.fontWeight or "normal"
+        if ai_weight == "normal" and font_size >= 24:
+            ai_weight = "bold"
+        
         mapped["text"] = item.text or "Text"
-        mapped["fontSize"] = item.fontSize or 16
+        mapped["fontSize"] = font_size
         mapped["fontFamily"] = "inherit"
-        mapped["fontWeight"] = "normal"
+        mapped["fontWeight"] = ai_weight
         mapped["fontStyle"] = "normal"
         mapped["textDecoration"] = "none"
-        mapped["textAlign"] = "left"
+        mapped["textAlign"] = item.textAlign or "left"
         mapped["lineHeight"] = 1.5
         mapped["letterSpacing"] = 0
         mapped["boxBg"] = "#ffffff"
@@ -1546,7 +1564,35 @@ async def generate_course(req: GenerateCourseRequest):
             "1. You must follow the provided slide titles, slide types, block types, and canvas items specified in the outline. Expand each item's focus/purpose into rich, educational content.\n"
             "2. Keep the content educational, accurate, and detailed. Do not leave text blocks empty.\n"
             "3. For normal slides (type: 'slide'), map elements as specified by the block type. Do not generate list blocks (type: 'list').\n"
-            "4. For canvas slides (type: 'canvas'), lay out elements on a 100x100 grid. Assign x, y coordinates and w, h sizes. Use 'text' items for captions/labels, and 'rect' or 'circle' for visual frames/containers. Do not generate 'image' items on canvas slides. For all canvas text and shape elements, implement only 1 matching font/stroke color that contrasts clearly with the slide's background color.\n"
+            "\n"
+            "=== CANVAS LAYOUT RULES (CRITICAL — follow precisely for type: 'canvas') ===\n"
+            "4a. Canvas coordinates use a PERCENTAGE system (0-100 for both x/y and w/h). All elements are positioned ABSOLUTELY within this space.\n"
+            "4b. PREVENT OVERFLOW: Every element MUST satisfy: x + w <= 95 and y + h <= 95. Never place elements that would extend beyond the canvas edges.\n"
+            "4c. PREVENT OVERLAP: Use a ROW-BASED layout. Divide the canvas vertically into clear rows with at least 5% gap between rows. "
+            "Example row positions: Row 1 at y=2, Row 2 at y=28, Row 3 at y=54, Row 4 at y=78. "
+            "Within each row, elements can be placed side-by-side with at least 2% gap between them.\n"
+            "4d. FONT SIZE RULES for text items: Title/heading text: fontSize 28-36, w should be 50-90. Body/description text: fontSize 14-18, w should be 40-85. Small labels/captions: fontSize 10-12.\n"
+            "4e. TEXT WIDTH RULE: Wider text content needs a wider w value. A single word label can use w=15-25. A sentence needs w=40-70. Multiple sentences need w=60-90.\n"
+            "4f. VISUAL HIERARCHY with fontWeight: Use fontWeight 'bold' for headings/titles, 'normal' for body text. Use textAlign 'center' for titles/headings placed at the top.\n"
+            "4g. Z-INDEX STACKING: Background shapes (rect, circle, triangle) should use zIndex 1-5. Text labels that sit ON TOP of shapes should use zIndex 10-20. This ensures text is always readable above shapes.\n"
+            "4h. COLOR CONTRAST: All text and shape colors MUST contrast clearly against the canvas background (canvasBg). Use a single consistent accent color for shapes and a readable color for text.\n"
+            "4i. Do NOT generate 'image' items on canvas slides.\n"
+            "\n"
+            "EXAMPLE of a well-laid-out canvas slide with canvasBg '#1a1a2e':\n"
+            "[\n"
+            "  {\"type\":\"text\",\"x\":5,\"y\":3,\"w\":90,\"h\":12,\"color\":\"#e0e0ff\",\"text\":\"Key Concepts Overview\",\"fontSize\":32,\"fontWeight\":\"bold\",\"textAlign\":\"center\",\"zIndex\":15},\n"
+            "  {\"type\":\"rect\",\"x\":3,\"y\":22,\"w\":28,\"h\":30,\"color\":\"#3b82f6\",\"zIndex\":1},\n"
+            "  {\"type\":\"text\",\"x\":5,\"y\":24,\"w\":24,\"h\":8,\"color\":\"#ffffff\",\"text\":\"Step 1: Identify\",\"fontSize\":18,\"fontWeight\":\"bold\",\"textAlign\":\"center\",\"zIndex\":12},\n"
+            "  {\"type\":\"text\",\"x\":5,\"y\":34,\"w\":24,\"h\":16,\"color\":\"#d0d0ff\",\"text\":\"Recognize the key indicators early.\",\"fontSize\":14,\"fontWeight\":\"normal\",\"textAlign\":\"left\",\"zIndex\":12},\n"
+            "  {\"type\":\"rect\",\"x\":36,\"y\":22,\"w\":28,\"h\":30,\"color\":\"#8b5cf6\",\"zIndex\":1},\n"
+            "  {\"type\":\"text\",\"x\":38,\"y\":24,\"w\":24,\"h\":8,\"color\":\"#ffffff\",\"text\":\"Step 2: Assess\",\"fontSize\":18,\"fontWeight\":\"bold\",\"textAlign\":\"center\",\"zIndex\":12},\n"
+            "  {\"type\":\"text\",\"x\":38,\"y\":34,\"w\":24,\"h\":16,\"color\":\"#d0d0ff\",\"text\":\"Evaluate and determine next steps.\",\"fontSize\":14,\"fontWeight\":\"normal\",\"textAlign\":\"left\",\"zIndex\":12},\n"
+            "  {\"type\":\"rect\",\"x\":69,\"y\":22,\"w\":28,\"h\":30,\"color\":\"#06b6d4\",\"zIndex\":1},\n"
+            "  {\"type\":\"text\",\"x\":71,\"y\":24,\"w\":24,\"h\":8,\"color\":\"#ffffff\",\"text\":\"Step 3: Act\",\"fontSize\":18,\"fontWeight\":\"bold\",\"textAlign\":\"center\",\"zIndex\":12},\n"
+            "  {\"type\":\"text\",\"x\":71,\"y\":34,\"w\":24,\"h\":16,\"color\":\"#d0d0ff\",\"text\":\"Execute the plan with confidence.\",\"fontSize\":14,\"fontWeight\":\"normal\",\"textAlign\":\"left\",\"zIndex\":12}\n"
+            "]\n"
+            "=== END CANVAS LAYOUT RULES ===\n"
+            "\n"
             "5. You MUST generate correct options and correct answers for all quiz, true_false, multi_select, matching, and fill_blanks blocks. For quiz and multi_select, always generate 3 to 5 options in the 'items' list and output the correct index/indices. Never leave them empty. For 'true_false' blocks, the question text MUST be a direct statement rather than a question.\n"
             "6. For 'text' blocks, write at least 2-3 detailed sentences (40+ words) explaining the concept. Never generate single-sentence text blocks. Corporate L&D content must be substantive and professional.\n"
             "7. For 'flashcard' blocks, you MUST populate BOTH fields: the 'text' field (front of the card - term, concept, or question) and the 'secondaryText' field (back of the card - definition, explanation, or answer). NEVER leave 'secondaryText' empty for flashcards.\n"
@@ -1703,9 +1749,9 @@ async def generate_course(req: GenerateCourseRequest):
             if slide_type == "canvas":
                 mapped_slide["canvasBg"] = slide_bg
                 canvas_items = []
-                for item in slide.get("canvasItems") or []:
+                for idx, item in enumerate(slide.get("canvasItems") or []):
                     try:
-                        canvas_items.append(map_canvas_item(GeneratedCanvasItem(**item), req.image_type))
+                        canvas_items.append(map_canvas_item(GeneratedCanvasItem(**item), req.image_type, index=idx))
                     except Exception as e:
                         print(f"[AI Generator] Skipping malformed canvas item {item}. Error: {e}", flush=True)
                 mapped_slide["items"] = canvas_items

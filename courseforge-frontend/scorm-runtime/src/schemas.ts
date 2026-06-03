@@ -319,6 +319,16 @@ export const ComponentSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...BaseComponentProps,
+    type: z.literal("tabs"),
+    id: z.string(),
+    tabs: z.array(z.object({
+      title: z.string().optional(),
+      image: z.string().optional(),
+      content: z.string().optional()
+    })).default([]),
+  }),
+  z.object({
+    ...BaseComponentProps,
     type: z.literal("table"),
     id: z.string(),
     headers: z.array(z.string()),

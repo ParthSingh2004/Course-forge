@@ -639,23 +639,31 @@ const CanvasBlock = forwardRef(({ block, onUpdate, isSlide = false, selectedId: 
             )}
 
             {/* ── Body ──────────────────────────────────────────────────────── */}
-            <div style={{ display: 'flex', flex: isSlide ? 1 : 'none', height: isSlide ? '100%' : 520 }}>
+            <div style={{ display: 'flex', flex: isSlide ? 1 : 'none', height: isSlide ? '100%' : 520, minHeight: 0 }}>
 
                 {/* Canvas column */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: isSlide ? 'auto' : 'hidden', minHeight: 0 }}>
 
-                    {/* Canvas */}
-                    <div
-                        ref={canvasRef}
-                        onMouseDown={handleCanvasMouseDown}
-                        style={{
-                            flex: 1,
-                            position: 'relative',
-                            background: canvasBg,
-                            overflow: 'hidden',
-                            cursor: 'default',
-                        }}
-                    >
+                    {/* Canvas — slide mode uses 16:10 aspect ratio so % positions match preview/export */}
+                    <div style={{
+                        flex: isSlide ? 'none' : 1,
+                        width: '100%',
+                        height: isSlide ? undefined : '100%',
+                        /* In slide mode, enforce 16:10 so coordinates match export exactly */
+                        aspectRatio: isSlide ? '16 / 10' : undefined,
+                        position: 'relative',
+                    }}>
+                        <div
+                            ref={canvasRef}
+                            onMouseDown={handleCanvasMouseDown}
+                            style={{
+                                position: 'absolute',
+                                inset: 0,
+                                background: canvasBg,
+                                overflow: 'hidden',
+                                cursor: 'default',
+                            }}
+                        >
                         {/* Subtle dot grid overlay (pointer-dead) */}
                         <div
                             data-grid="true"
@@ -694,6 +702,7 @@ const CanvasBlock = forwardRef(({ block, onUpdate, isSlide = false, selectedId: 
                                 </div>
                             </div>
                         )}
+                        </div>
                     </div>
 
                     {/* Toolbar */}

@@ -149,6 +149,7 @@ function CropModal({ src, onConfirm, onCancel }) {
                             src={src}
                             onLoad={onImageLoad}
                             alt="Crop preview"
+                            crossOrigin="anonymous"
                             style={{ maxWidth: '70vw', maxHeight: 'calc(80vh - 200px)', display: 'block' }}
                         />
                     </ReactCrop>
@@ -164,7 +165,7 @@ function CropModal({ src, onConfirm, onCancel }) {
                             borderRadius: 6, cursor: 'pointer', fontSize: '0.875rem',
                         }}
                     >
-                        Skip crop
+                        Cancel
                     </button>
                     <button
                         onClick={handleConfirm}
@@ -216,8 +217,6 @@ export default function ImageBlock({ block, onUpdate }) {
     };
 
     const handleCropCancel = () => {
-        // "Skip crop" — commit the original uncropped image
-        if (cropSrc) onUpdate(block.id, { image: cropSrc });
         setCropSrc(null);
     };
 
@@ -227,7 +226,7 @@ export default function ImageBlock({ block, onUpdate }) {
     const handleUpload = (e) => {
         if (e.target.files?.[0]) {
             const reader = new FileReader();
-            reader.onloadend = () => openCrop(reader.result);
+            reader.onloadend = () => onUpdate(block.id, { image: reader.result });
             reader.readAsDataURL(e.target.files[0]);
         }
     };
@@ -259,7 +258,7 @@ export default function ImageBlock({ block, onUpdate }) {
             const data = await res.json();
             if (data.dataUri) {
                 setIsSearching(false);
-                openCrop(data.dataUri);
+                onUpdate(block.id, { image: data.dataUri });
             }
         } catch (err) {
             console.error(err);
@@ -283,7 +282,7 @@ export default function ImageBlock({ block, onUpdate }) {
             const data = await res.json();
             if (data.localUrl) {
                 setIsAiMode(false);
-                openCrop(buildBackendAssetUrl(data.localUrl));
+                onUpdate(block.id, { image: buildBackendAssetUrl(data.localUrl) });
             }
         } catch (err) {
             console.error(err);
