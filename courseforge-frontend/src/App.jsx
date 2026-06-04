@@ -854,6 +854,7 @@ function App() {
   };
 
   const handleExportScorm = async () => {
+    setIsExportMenuOpen(false);
     if (!validateCourseForExport()) return;
     setIsExporting(true);
     setExportProgress(0);
@@ -915,6 +916,7 @@ function App() {
   };
 
   const handleExportScorm2004 = async () => {
+    setIsExportMenuOpen(false);
     if (!validateCourseForExport()) return;
     setIsExporting(true);
     setExportProgress(0);
@@ -975,7 +977,70 @@ function App() {
     }
   };
 
+  const handleExportOffline = async () => {
+    setIsExportMenuOpen(false);
+    if (!validateCourseForExport()) return;
+    setIsExporting(true);
+    setExportProgress(0);
+    setExportLabel('Preparing executable data…');
+    try {
+      setExportProgress(10);
+      await new Promise(r => setTimeout(r, 200));
+
+      setExportLabel('Uploading to server…');
+      setExportProgress(25);
+      const body = JSON.stringify({ title: courseTitle, blocks: slides, policy: { passingScore }, theme: null });
+
+      let pct = 25;
+      const ticker = setInterval(() => {
+        pct = Math.min(pct + 3, 85);
+        setExportProgress(pct);
+      }, 400);
+
+      setExportLabel('Generating executable file…');
+      exportAbortController.current = new AbortController();
+      const response = await fetch(buildApiUrl('/api/export/scorm-offline'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: exportAbortController.current.signal
+      });
+      clearInterval(ticker);
+
+      if (!response.ok) throw new Error("Export failed");
+
+      setExportLabel('Downloading HTML…');
+      setExportProgress(90);
+      const blob = await response.blob();
+
+      setExportProgress(95);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${courseTitle.replace(/\s+/g, '_')}_executable.html`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      setExportLabel('Done!');
+      setExportProgress(100);
+      await new Promise(r => setTimeout(r, 1200));
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.log('Offline export cancelled by user.');
+      } else {
+        alert("Failed to export standalone executable package.");
+      }
+    } finally {
+      setIsExporting(false);
+      setExportProgress(0);
+      setExportLabel('');
+    }
+  };
+
   const handleExportXapi = async () => {
+    setIsExportMenuOpen(false);
     if (!validateCourseForExport()) return;
     setIsExporting(true);
     setExportProgress(0);
@@ -1340,6 +1405,15 @@ function App() {
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
                     <Download style={{ width: 13, height: 13 }} /> Export as SCORM 2004
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsExportMenuOpen(false); handleExportOffline(); }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', background: 'transparent', color: '#8b1a1a', border: 'none', borderRadius: 4, padding: '8px 10px', cursor: 'pointer', fontFamily: 'Roboto', fontWeight: 600, fontSize: '0.8rem', transition: 'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#fff5f5'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <Download style={{ width: 13, height: 13 }} /> Export as executable file
                   </button>
                   <button
                     type="button"

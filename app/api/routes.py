@@ -1937,6 +1937,36 @@ async def export_scorm(course: CourseData):
     )
 
 
+@router.post("/export/scorm-offline")
+async def export_scorm_offline(course: CourseData):
+    from fastapi.responses import HTMLResponse
+
+    # Convert authoring blocks → Slide/Layer/Component model + triggers
+    course_def = build_course_definition(course.title, course.blocks, theme=course.theme, policy={
+        "passingScore": course.policy.passingScore,
+        "maxAttempts":  course.policy.maxAttempts,
+        "lockOnPass":   course.policy.lockOnPass,
+        "lockOnExhaust": course.policy.lockOnExhaust,
+    })
+
+    # Generate inlined runtime HTML with the offline SCORM shim
+    html = generate_runtime_html(
+        course.title,
+        course_def,
+        inline_assets=True,  # Ensure all JS, CSS, and course data are inlined
+        offline_shim=True,   # Injects the SCORM API offline shim
+    )
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{course.title}_executable.html"'
+    }
+
+    return HTMLResponse(
+        content=html,
+        headers=headers
+    )
+
+
 @router.post("/export/scorm-2004")
 async def export_scorm_2004(course: CourseData):
     buffer = io.BytesIO()

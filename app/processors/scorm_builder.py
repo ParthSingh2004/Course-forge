@@ -2939,6 +2939,7 @@ def generate_runtime_html(
     runtime_js_path: str = "runtime.js",
     course_data_js_path: str = "course-data.js",
     extra_script_paths: List[str] | None = None,
+    offline_shim: bool = False,
 ) -> str:
     """Generate the complete runtime HTML page."""
     safe_title = html_module.escape(title)
@@ -2958,10 +2959,31 @@ def generate_runtime_html(
         course_data_markup = f'<script src="{html_module.escape(course_data_js_path)}" defer></script>'
         runtime_markup = f'<script src="{html_module.escape(runtime_js_path)}" defer></script>'
 
+    shim_markup = ""
+    offline_indicator_markup = ""
+    if offline_shim:
+        from app.processors.scorm_shim import get_scorm_shim_js
+        shim_js = get_scorm_shim_js(course_id=title)
+        shim_markup = f"\n<script>\n{shim_js}\n</script>\n"
+        offline_indicator_markup = """
+  <!-- Offline Progress Indicator Bar -->
+  <div id="cf-offline-indicator" class="cf-offline-indicator-bar" style="display: none;">
+    <div class="cf-offline-status">
+      <span class="cf-offline-status-label">Offline Preview Mode</span>
+      <span class="cf-offline-badge" id="cf-offline-completion-badge">NOT ATTEMPTED</span>
+      <span class="cf-offline-score" id="cf-offline-score-display" style="display: none;"></span>
+    </div>
+    <div class="cf-offline-actions">
+      <span class="cf-offline-saved-pulse" id="cf-offline-saved-indicator">Saved locally</span>
+      <button onclick="window.CF_SCORM_RESET()" class="cf-offline-reset-btn">Reset Progress</button>
+    </div>
+  </div>
+"""
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+{shim_markup}<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{safe_title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -3055,6 +3077,7 @@ def generate_runtime_html(
  
   <!-- Runtime Bundle -->
   {runtime_markup}
+  {offline_indicator_markup}
 </body>
 </html>"""
  
@@ -3557,6 +3580,85 @@ h4.cf-rt-heading, h5.cf-rt-heading, h6.cf-rt-heading { font-size: 1rem; font-wei
   .cf-rt-columns-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Offline Indicator Bar CSS */
+.cf-offline-indicator-bar {
+  position: fixed;
+  bottom: 58px;
+  left: 0; right: 0;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 24px;
+  background: #1c1917;
+  border-top: 1px solid #2e2a24;
+  z-index: 45;
+  font-size: 13px;
+  color: #d6d3d1;
+  font-family: inherit;
+}
+.cf-offline-status {
+  display: flex; align-items: center; gap: 10px;
+}
+.cf-offline-status-label {
+  font-weight: 600;
+  color: #f5f5f4;
+}
+.cf-offline-badge {
+  background: #2e2a24;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #a8a29e;
+}
+.cf-offline-badge.passed {
+  background: #064e3b; color: #34d399;
+}
+.cf-offline-badge.failed {
+  background: #7f1d1d; color: #f87171;
+}
+.cf-offline-badge.incomplete {
+  background: #78350f; color: #fbbf24;
+}
+.cf-offline-score {
+  font-weight: 500;
+}
+.cf-offline-actions {
+  display: flex; align-items: center; gap: 16px;
+}
+.cf-offline-saved-pulse {
+  opacity: 0;
+  font-size: 12px;
+  transition: opacity 0.1s;
+}
+.cf-offline-saved-pulse.pulse {
+  animation: cf-pulse-saved 1s ease-in-out;
+  color: #34d399;
+  opacity: 1;
+}
+@keyframes cf-pulse-saved {
+  0% { transform: scale(1); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+.cf-offline-reset-btn {
+  background: transparent;
+  border: 1px solid #44403c;
+  color: #a8a29e;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.cf-offline-reset-btn:hover {
+  background: #2e2a24;
+  color: #f5f5f4;
+  border-color: #78716c;
 }
 """
  
