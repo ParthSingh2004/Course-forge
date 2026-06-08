@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Sparkles, Download, Type, Heading1, Image as ImageIcon, MousePointerClick, ListChecks, Trash2, GripVertical, FileUp, Globe, BookOpen, ChevronRight, CreditCard, Video, RotateCcw, Play, List, Quote, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify, ShieldCheck, ToggleLeft, PenLine, Mic, FileText, Table, Save, CheckCircle, Eye, X, ChevronDown, Copy, Plus, RefreshCw, Square, Circle, Triangle, Lock } from 'lucide-react';
 
 
@@ -215,6 +215,9 @@ function App() {
   const [slides, setSlides] = useState(initialState.slides);
   const [activeSlideId, setActiveSlideId] = useState(null);
   const [selectedCanvasItemId, setSelectedCanvasItemId] = useState(null);
+  const [basicShapesOpen, setBasicShapesOpen] = useState(true);
+  const [extendedShapesOpen, setExtendedShapesOpen] = useState(false);
+  const [transformOpen, setTransformOpen] = useState(false);
   const canvasBlockRef = useRef(null);
 
   useEffect(() => {
@@ -229,6 +232,7 @@ function App() {
   const [hasUnsaved, setHasUnsaved] = useState(false);
   const [saveToast, setSaveToast] = useState(false);
   const toastTimerRef = useRef(null);
+  const handleSaveRef = useRef(null);
 
   const prevSavedRef = useRef({
     courseTitle: initialState.courseTitle,
@@ -236,11 +240,12 @@ function App() {
     slides: initialState.slides,
   });
 
+  // Track unsaved changes by reference (no JSON.stringify)
   useEffect(() => {
     const isDifferent =
       courseTitle !== prevSavedRef.current.courseTitle ||
       passingScore !== prevSavedRef.current.passingScore ||
-      JSON.stringify(slides) !== JSON.stringify(prevSavedRef.current.slides);
+      slides !== prevSavedRef.current.slides;
     setHasUnsaved(isDifferent);
   }, [courseTitle, passingScore, slides]);
 
@@ -265,16 +270,20 @@ function App() {
     }
   };
 
+  // Keep ref in sync so the stable keydown listener always calls the latest handleSave
+  useEffect(() => { handleSaveRef.current = handleSave; });
+
+  // Register the keydown listener once — reads latest handleSave via ref
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        handleSave();
+        handleSaveRef.current();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [courseTitle, passingScore, slides]);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -289,14 +298,14 @@ function App() {
   useEffect(() => {
     if (currentView !== 'editor' || !selectedCourseId) return;
 
-    const payload = { courseTitle, passingScore, slides };
     const isDifferent =
-      payload.courseTitle !== prevSavedRef.current.courseTitle ||
-      payload.passingScore !== prevSavedRef.current.passingScore ||
-      JSON.stringify(payload.slides) !== JSON.stringify(prevSavedRef.current.slides);
+      courseTitle !== prevSavedRef.current.courseTitle ||
+      passingScore !== prevSavedRef.current.passingScore ||
+      slides !== prevSavedRef.current.slides;
 
     if (!isDifferent) return;
 
+    const payload = { courseTitle, passingScore, slides };
     const autosaveTimer = setTimeout(async () => {
       try {
         await saveCourseToBrowser(selectedCourseId, payload);
@@ -305,7 +314,7 @@ function App() {
       } catch {
         setHasUnsaved(true);
       }
-    }, 1200);
+    }, 2000);
 
     return () => clearTimeout(autosaveTimer);
   }, [courseTitle, currentView, passingScore, selectedCourseId, slides]);
@@ -574,21 +583,21 @@ function App() {
     setTimeout(() => setNewBlockIds(prev => { const n = new Set(prev); n.delete(newBlock.id); return n; }), 400);
   };
 
-  const updateBlock = (id, updatedData) => {
+  const updateBlock = useCallback((id, updatedData) => {
     setSlides(prev => prev.map(s => {
       if (s.id !== activeSlideId) return s;
       return { ...s, elements: s.elements.map(b => b.id === id ? { ...b, ...updatedData } : b) };
     }));
-  };
+  }, [activeSlideId]);
 
-  const deleteBlock = (id) => {
+  const deleteBlock = useCallback((id) => {
     setSlides(prev => prev.map(s => {
       if (s.id !== activeSlideId) return s;
       return { ...s, elements: s.elements.filter(b => b.id !== id) };
     }));
-  };
+  }, [activeSlideId]);
 
-  const duplicateBlock = (id) => {
+  const duplicateBlock = useCallback((id) => {
     setSlides(prev => prev.map(s => {
       if (s.id !== activeSlideId) return s;
       const idx = s.elements.findIndex(b => b.id === id);
@@ -603,7 +612,7 @@ function App() {
       }, 0);
       return { ...s, elements: nextElements };
     }));
-  };
+  }, [activeSlideId]);
 
   const handleDragStart = (e, index) => { setDraggedIdx(index); e.dataTransfer.effectAllowed = "move"; };
   const handleDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; };
@@ -1518,43 +1527,106 @@ function App() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {/* Add to Canvas Section */}
                     <span className="cf-sidebar-label" style={{ marginTop: 0 }}>Add Elements</span>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
-                      <button
-                        onClick={() => canvasBlockRef.current?.addItem('rect')}
-                        className="cf-sidebar-btn"
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600 }}
-                      >
-                        <Square style={{ width: 14, height: 14, color: '#8b1a1a' }} /> Rectangle
-                      </button>
-                      <button
-                        onClick={() => canvasBlockRef.current?.addItem('circle')}
-                        className="cf-sidebar-btn"
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600 }}
-                      >
-                        <Circle style={{ width: 14, height: 14, color: '#8b1a1a' }} /> Circle
-                      </button>
-                      <button
-                        onClick={() => canvasBlockRef.current?.addItem('triangle')}
-                        className="cf-sidebar-btn"
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600 }}
-                      >
-                        <Triangle style={{ width: 14, height: 14, color: '#8b1a1a' }} /> Triangle
-                      </button>
-                      <button
-                        onClick={() => canvasBlockRef.current?.addItem('text')}
-                        className="cf-sidebar-btn"
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600 }}
-                      >
-                        <Type style={{ width: 14, height: 14, color: '#8b1a1a' }} /> Text Box
-                      </button>
-                      <button
-                        onClick={() => canvasBlockRef.current?.triggerImageUpload()}
-                        className="cf-sidebar-btn"
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600, gridColumn: 'span 2', justifyContent: 'center' }}
-                      >
-                        <ImageIcon style={{ width: 14, height: 14, color: '#8b1a1a' }} /> Add Image
-                      </button>
+                    {/* Basic shapes */}
+                    <div 
+                      onClick={() => setBasicShapesOpen(!basicShapesOpen)} 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between', 
+                        cursor: 'pointer', 
+                        padding: '6px 8px', 
+                        borderRadius: '6px', 
+                        background: '#fcf8f8', 
+                        marginBottom: '4px',
+                        userSelect: 'none',
+                        transition: 'background-color 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fff1f2'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fcf8f8'}
+                    >
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#8b6060', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Basic</span>
+                      {basicShapesOpen ? (
+                        <ChevronDown style={{ width: 12, height: 12, color: '#8b6060' }} />
+                      ) : (
+                        <ChevronRight style={{ width: 12, height: 12, color: '#8b6060' }} />
+                      )}
                     </div>
+                    {basicShapesOpen && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+                        {[
+                          { type: 'rect',     label: 'Rectangle',  icon: '▭' },
+                          { type: 'circle',   label: 'Circle',     icon: '●' },
+                          { type: 'triangle', label: 'Triangle',   icon: '▲' },
+                          { type: 'text',     label: 'Text Box',   icon: '𝐓' },
+                        ].map(({ type, label, icon }) => (
+                          <button
+                            key={type}
+                            onClick={() => canvasBlockRef.current?.addItem(type)}
+                            className="cf-sidebar-btn"
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600 }}
+                          >
+                            <span style={{ fontSize: '1rem', lineHeight: 1 }}>{icon}</span> {label}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => canvasBlockRef.current?.triggerImageUpload()}
+                          className="cf-sidebar-btn"
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600, gridColumn: 'span 2', justifyContent: 'center' }}
+                        >
+                          <ImageIcon style={{ width: 14, height: 14, color: '#8b1a1a' }} /> Add Image
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Extended shapes */}
+                    <div 
+                      onClick={() => setExtendedShapesOpen(!extendedShapesOpen)} 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between', 
+                        cursor: 'pointer', 
+                        padding: '6px 8px', 
+                        borderRadius: '6px', 
+                        background: '#fcf8f8', 
+                        marginBottom: '4px',
+                        userSelect: 'none',
+                        transition: 'background-color 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fff1f2'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fcf8f8'}
+                    >
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#8b6060', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Extended</span>
+                      {extendedShapesOpen ? (
+                        <ChevronDown style={{ width: 12, height: 12, color: '#8b6060' }} />
+                      ) : (
+                        <ChevronRight style={{ width: 12, height: 12, color: '#8b6060' }} />
+                      )}
+                    </div>
+                    {extendedShapesOpen && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+                        {[
+                          { type: 'diamond',       label: 'Diamond',  icon: '◆' },
+                          { type: 'hexagon',       label: 'Hexagon',  icon: '⬡' },
+                          { type: 'pentagon',      label: 'Pentagon', icon: '⬠' },
+                          { type: 'star',          label: 'Star',     icon: '★' },
+                          { type: 'arrow-right',   label: 'Arrow →',  icon: '➜' },
+                          { type: 'arrow-up',      label: 'Arrow ↑',  icon: '⬆' },
+                          { type: 'speech-bubble', label: 'Speech',   icon: '💬' },
+                          { type: 'banner',        label: 'Banner',   icon: '⬭' },
+                        ].map(({ type, label, icon }) => (
+                          <button
+                            key={type}
+                            onClick={() => canvasBlockRef.current?.addItem(type)}
+                            className="cf-sidebar-btn"
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #ead0d0', background: '#fff', borderRadius: 8, padding: '0.5rem', cursor: 'pointer', fontFamily: 'Roboto', fontSize: '0.75rem', fontWeight: 600 }}
+                          >
+                            <span style={{ fontSize: '1rem', lineHeight: 1 }}>{icon}</span> {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
 
                     <div className="cf-sidebar-divider" style={{ margin: '8px 0' }} />
 
@@ -1586,7 +1658,13 @@ function App() {
                       const selectedItem = activeSlide.items?.find(i => i.id === selectedCanvasItemId);
                       if (!selectedItem) return <div style={{ fontSize: '0.72rem', color: '#8b6060', fontStyle: 'italic', textAlign: 'center', padding: '10px 0' }}>Select an element to edit properties.</div>;
                       
-                      const typeLabel = { rect: 'Rectangle', circle: 'Circle', triangle: 'Triangle', text: 'Text Box', image: 'Image' }[selectedItem.type];
+                      const typeLabel = {
+                        rect: 'Rectangle', circle: 'Circle', triangle: 'Triangle',
+                        text: 'Text Box', image: 'Image',
+                        'arrow-right': 'Arrow →', 'arrow-up': 'Arrow ↑',
+                        star: 'Star', hexagon: 'Hexagon', diamond: 'Diamond',
+                        pentagon: 'Pentagon', 'speech-bubble': 'Speech Bubble', banner: 'Banner',
+                      }[selectedItem.type] || selectedItem.type;
 
                       return (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '0 8px' }}>
@@ -1622,6 +1700,67 @@ function App() {
                                     style={{
                                       width: 18, height: 18, borderRadius: 4, background: c, cursor: 'pointer',
                                       border: c === selectedItem.color ? '2px solid #8b1a1a' : '1px solid #ead0d0',
+                                      boxSizing: 'border-box',
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ── Border / Stroke (shapes & image only) ───────── */}
+                          {selectedItem.type !== 'text' && (
+                            <div>
+                              <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 6, textTransform: 'uppercase' }}>
+                                Border
+                              </span>
+
+                              {/* Color row */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                <input
+                                  type="color"
+                                  value={selectedItem.strokeColor || '#111827'}
+                                  onChange={e => canvasBlockRef.current?.patchItem?.(selectedItem.id, { strokeColor: e.target.value })}
+                                  style={{ width: 32, height: 32, border: '1px solid #ead0d0', borderRadius: 6, cursor: 'pointer', padding: 2, flexShrink: 0 }}
+                                  title="Border color"
+                                />
+                                <span style={{ color: '#8b6060', fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums', flex: 1 }}>
+                                  {selectedItem.strokeColor || '#111827'}
+                                </span>
+                                {(selectedItem.strokeWidth || 0) > 0 && (
+                                  <button
+                                    onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { strokeWidth: 0 })}
+                                    title="Remove border"
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b08080', fontSize: '0.75rem', padding: '2px 4px', lineHeight: 1, flexShrink: 0 }}
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Thickness row */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <input
+                                  type="range" min={0} max={16} step={1}
+                                  value={selectedItem.strokeWidth || 0}
+                                  onChange={e => canvasBlockRef.current?.patchItem?.(selectedItem.id, { strokeWidth: Number(e.target.value) })}
+                                  style={{ flex: 1, accentColor: '#8b1a1a' }}
+                                />
+                                <span style={{ fontSize: '0.68rem', color: '#8b6060', fontVariantNumeric: 'tabular-nums', minWidth: 28, textAlign: 'right' }}>
+                                  {selectedItem.strokeWidth || 0}px
+                                </span>
+                              </div>
+
+                              {/* Quick color swatches for border */}
+                              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
+                                {['#111827', '#ffffff', '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'].map(c => (
+                                  <div
+                                    key={c}
+                                    onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { strokeColor: c })}
+                                    title={c}
+                                    style={{
+                                      width: 18, height: 18, borderRadius: 4, background: c, cursor: 'pointer',
+                                      border: c === (selectedItem.strokeColor || '#111827') ? '2px solid #8b1a1a' : '1px solid #ead0d0',
                                       boxSizing: 'border-box',
                                     }}
                                   />
@@ -1743,70 +1882,93 @@ function App() {
                             </div>
                           )}
 
+                          {/* Transform: Position, Size & Rotation — collapsible */}
                           <div>
-                            <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 6, textTransform: 'uppercase' }}>
-                              Position &amp; Size
-                            </span>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                              <div>
-                                <span style={{ color: '#b08080', fontSize: '0.58rem', display: 'block', marginBottom: 2 }}>X</span>
-                                <div style={{ background: '#fff5f5', border: '1px solid #ead0d0', borderRadius: 5, padding: '4px 6px', color: '#8b6060', fontSize: '0.7rem', textAlign: 'center' }}>
-                                  {selectedItem.x.toFixed(1)}%
-                                </div>
-                              </div>
-                              <div>
-                                <span style={{ color: '#b08080', fontSize: '0.58rem', display: 'block', marginBottom: 2 }}>Y</span>
-                                <div style={{ background: '#fff5f5', border: '1px solid #ead0d0', borderRadius: 5, padding: '4px 6px', color: '#8b6060', fontSize: '0.7rem', textAlign: 'center' }}>
-                                  {selectedItem.y.toFixed(1)}%
-                                </div>
-                              </div>
-                              <div>
-                                <span style={{ color: '#b08080', fontSize: '0.58rem', display: 'block', marginBottom: 2 }}>W</span>
-                                <input
-                                  type="number" min="5" max="100" step="0.5"
-                                  value={parseFloat(selectedItem.w.toFixed(1))}
-                                  onChange={e => {
-                                    const v = parseFloat(e.target.value);
-                                    if (!isNaN(v)) canvasBlockRef.current?.patchItem?.(selectedItem.id, { w: Math.min(Math.max(v, 5), 100 - selectedItem.x) });
-                                  }}
-                                  style={{ width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '4px 6px', color: '#8b1a1a', fontSize: '0.7rem', textAlign: 'center', outline: 'none' }}
-                                />
-                              </div>
-                              <div>
-                                <span style={{ color: '#b08080', fontSize: '0.58rem', display: 'block', marginBottom: 2 }}>H</span>
-                                <input
-                                  type="number" min="5" max="100" step="0.5"
-                                  value={parseFloat(selectedItem.h.toFixed(1))}
-                                  onChange={e => {
-                                    const v = parseFloat(e.target.value);
-                                    if (!isNaN(v)) canvasBlockRef.current?.patchItem?.(selectedItem.id, { h: Math.min(Math.max(v, 5), 100 - selectedItem.y) });
-                                  }}
-                                  style={{ width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '4px 6px', color: '#8b1a1a', fontSize: '0.7rem', textAlign: 'center', outline: 'none' }}
-                                />
-                              </div>
+                            <div
+                              onClick={() => setTransformOpen(o => !o)}
+                              style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                cursor: 'pointer', padding: '6px 8px', borderRadius: '6px',
+                                background: '#fcf8f8', userSelect: 'none', transition: 'background-color 0.15s ease',
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fff1f2'}
+                              onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fcf8f8'}
+                            >
+                              <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#8b6060', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                Position, Size &amp; Rotation
+                              </span>
+                              {transformOpen
+                                ? <ChevronDown style={{ width: 12, height: 12, color: '#8b6060' }} />
+                                : <ChevronRight style={{ width: 12, height: 12, color: '#8b6060' }} />
+                              }
                             </div>
-                          </div>
 
-                          <div>
-                            <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: '#8b6060', marginBottom: 6, textTransform: 'uppercase' }}>
-                              Rotation — {selectedItem.rotation || 0}°
-                            </span>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button
-                                onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { rotation: ((selectedItem.rotation || 0) + 90) % 360 })}
-                                style={{ flex: 1, background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '6px 4px', cursor: 'pointer', color: '#8b1a1a', fontSize: '0.68rem', fontWeight: 600 }}
-                              >
-                                ↻ Rotate 90°
-                              </button>
-                              {(selectedItem.rotation || 0) !== 0 && (
-                                <button
-                                  onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { rotation: 0 })}
-                                  style={{ background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '6px 8px', cursor: 'pointer', color: '#8b6060', fontSize: '0.68rem', fontWeight: 600 }}
-                                >
-                                  Reset
-                                </button>
-                              )}
-                            </div>
+                            {transformOpen && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8, padding: '0 2px' }}>
+                                {/* X / Y / W / H grid */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                                  <div>
+                                    <span style={{ color: '#b08080', fontSize: '0.58rem', display: 'block', marginBottom: 2 }}>X</span>
+                                    <div style={{ background: '#fff5f5', border: '1px solid #ead0d0', borderRadius: 5, padding: '4px 6px', color: '#8b6060', fontSize: '0.7rem', textAlign: 'center' }}>
+                                      {selectedItem.x.toFixed(1)}%
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <span style={{ color: '#b08080', fontSize: '0.58rem', display: 'block', marginBottom: 2 }}>Y</span>
+                                    <div style={{ background: '#fff5f5', border: '1px solid #ead0d0', borderRadius: 5, padding: '4px 6px', color: '#8b6060', fontSize: '0.7rem', textAlign: 'center' }}>
+                                      {selectedItem.y.toFixed(1)}%
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <span style={{ color: '#b08080', fontSize: '0.58rem', display: 'block', marginBottom: 2 }}>W</span>
+                                    <input
+                                      type="number" min="5" max="100" step="0.5"
+                                      value={parseFloat(selectedItem.w.toFixed(1))}
+                                      onChange={e => {
+                                        const v = parseFloat(e.target.value);
+                                        if (!isNaN(v)) canvasBlockRef.current?.patchItem?.(selectedItem.id, { w: Math.min(Math.max(v, 5), 100 - selectedItem.x) });
+                                      }}
+                                      style={{ width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '4px 6px', color: '#8b1a1a', fontSize: '0.7rem', textAlign: 'center', outline: 'none' }}
+                                    />
+                                  </div>
+                                  <div>
+                                    <span style={{ color: '#b08080', fontSize: '0.58rem', display: 'block', marginBottom: 2 }}>H</span>
+                                    <input
+                                      type="number" min="5" max="100" step="0.5"
+                                      value={parseFloat(selectedItem.h.toFixed(1))}
+                                      onChange={e => {
+                                        const v = parseFloat(e.target.value);
+                                        if (!isNaN(v)) canvasBlockRef.current?.patchItem?.(selectedItem.id, { h: Math.min(Math.max(v, 5), 100 - selectedItem.y) });
+                                      }}
+                                      style={{ width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '4px 6px', color: '#8b1a1a', fontSize: '0.7rem', textAlign: 'center', outline: 'none' }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Rotation row */}
+                                <div>
+                                  <span style={{ display: 'block', fontSize: '0.58rem', color: '#b08080', marginBottom: 4, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.06em' }}>
+                                    Rotation — {selectedItem.rotation || 0}°
+                                  </span>
+                                  <div style={{ display: 'flex', gap: 6 }}>
+                                    <button
+                                      onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { rotation: ((selectedItem.rotation || 0) + 90) % 360 })}
+                                      style={{ flex: 1, background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '6px 4px', cursor: 'pointer', color: '#8b1a1a', fontSize: '0.68rem', fontWeight: 600 }}
+                                    >
+                                      ↻ Rotate 90°
+                                    </button>
+                                    {(selectedItem.rotation || 0) !== 0 && (
+                                      <button
+                                        onClick={() => canvasBlockRef.current?.patchItem?.(selectedItem.id, { rotation: 0 })}
+                                        style={{ background: '#fff', border: '1px solid #ead0d0', borderRadius: 5, padding: '6px 8px', cursor: 'pointer', color: '#8b6060', fontSize: '0.68rem', fontWeight: 600 }}
+                                      >
+                                        Reset
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
 
                           <div>
@@ -1870,15 +2032,24 @@ function App() {
                             </div>
                           </div>
 
-                          <button
-                            onClick={() => {
-                              canvasBlockRef.current?.deleteItem?.(selectedItem.id);
-                              setSelectedCanvasItemId(null);
-                            }}
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '1px solid #fca5a5', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', color: '#dc2626', fontSize: '0.75rem', fontWeight: 600, transition: 'all 0.15s', marginTop: '10px' }}
-                          >
-                            <Trash2 style={{ width: 14, height: 14 }} /> Delete Element
-                          </button>
+                          <div style={{ display: 'flex', gap: 6, marginTop: '10px' }}>
+                            <button
+                              onClick={() => canvasBlockRef.current?.duplicateItem?.(selectedItem.id)}
+                              title="Duplicate element (Ctrl+D)"
+                              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, padding: '8px 8px', cursor: 'pointer', color: '#374151', fontSize: '0.72rem', fontWeight: 600, transition: 'all 0.15s' }}
+                            >
+                              <Copy style={{ width: 13, height: 13 }} /> Duplicate
+                            </button>
+                            <button
+                              onClick={() => {
+                                canvasBlockRef.current?.deleteItem?.(selectedItem.id);
+                                setSelectedCanvasItemId(null);
+                              }}
+                              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: '#fff', border: '1px solid #fca5a5', borderRadius: 6, padding: '8px 8px', cursor: 'pointer', color: '#dc2626', fontSize: '0.72rem', fontWeight: 600, transition: 'all 0.15s' }}
+                            >
+                              <Trash2 style={{ width: 13, height: 13 }} /> Delete
+                            </button>
+                          </div>
                         </div>
                       );
                     })() : (

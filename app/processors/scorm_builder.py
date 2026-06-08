@@ -388,12 +388,18 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
         if not isinstance(raw_items, list):
             raw_items = []
 
+        VALID_CANVAS_TYPES = {
+            "rect", "circle", "triangle", "text", "image",
+            "diamond", "hexagon", "pentagon", "star",
+            "arrow-right", "arrow-up", "speech-bubble", "banner",
+        }
+
         serialized_items = []
         for raw_item in raw_items:
             if not isinstance(raw_item, dict):
                 continue
             item_type = str(raw_item.get("type") or "").strip().lower()
-            if item_type not in {"rect", "circle", "triangle", "text", "image"}:
+            if item_type not in VALID_CANVAS_TYPES:
                 continue
 
             item = {
@@ -408,6 +414,9 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
                 "color": str(raw_item.get("color") or ("#111827" if item_type == "text" else DEFAULT_FLASHCARD_COLOR)),
                 "animation": str(raw_item.get("animation") or "none"),
                 "animationDelay": _safe_float(raw_item.get("animationDelay"), 0),
+                # Border/stroke — present on all shape types
+                "strokeColor": str(raw_item.get("strokeColor") or "#111827"),
+                "strokeWidth": _clamp(_safe_float(raw_item.get("strokeWidth"), 0), 0, 32),
             }
 
             if item_type == "text":
@@ -421,6 +430,10 @@ def _block_to_component_raw(block: Dict[str, Any], idx: int) -> Dict[str, Any]:
                     "textAlign": str(raw_item.get("textAlign") or "left"),
                     "lineHeight": _clamp(_safe_float(raw_item.get("lineHeight"), 1.5), 0.8, 3),
                     "letterSpacing": _safe_float(raw_item.get("letterSpacing"), 0),
+                    # Text box background
+                    "boxBg": str(raw_item.get("boxBg") or "#ffffff"),
+                    "boxBgOpacity": _clamp(_safe_float(raw_item.get("boxBgOpacity"), 0), 0, 100),
+                    "boxBorderRadius": _clamp(_safe_float(raw_item.get("boxBorderRadius"), 4), 0, 64),
                 })
 
             if item_type == "image":
@@ -1690,13 +1703,24 @@ def _get_fallback_runtime_js() -> str:
           var canvasWrap = document.createElement('div');
           canvasWrap.style.position = 'relative';
           canvasWrap.style.width = '100%';
-          /* Match the author view 16:10 ratio — this is the key constraint that
-             makes % positions identical between authoring and preview/export */
+          /* Match the author view 16:10 ratio */
           canvasWrap.style.aspectRatio = '16 / 10';
           canvasWrap.style.overflow = 'hidden';
           canvasWrap.style.borderRadius = '12px';
           canvasWrap.style.background = comp.canvasBg || '#ffffff';
           canvasWrap.style.boxShadow = 'inset 0 0 0 1px rgba(17,24,39,0.06)';
+
+          /* Extended shape SVG paths (viewBox 0 0 100 100) */
+          var SHAPE_PATHS = {
+            'arrow-right':   { type: 'path',    d: 'M10,30 L65,30 L65,15 L90,50 L65,85 L65,70 L10,70 Z' },
+            'arrow-up':      { type: 'path',    d: 'M30,90 L30,45 L15,45 L50,10 L85,45 L70,45 L70,90 Z' },
+            'star':          { type: 'polygon', points: '50,5 61,35 95,35 68,57 79,91 50,70 21,91 32,57 5,35 39,35' },
+            'hexagon':       { type: 'polygon', points: '50,2 93,26 93,74 50,98 7,74 7,26' },
+            'diamond':       { type: 'polygon', points: '50,2 98,50 50,98 2,50' },
+            'pentagon':      { type: 'polygon', points: '50,3 97,36 79,95 21,95 3,36' },
+            'speech-bubble': { type: 'path',    d: 'M10,10 Q10,2 18,2 L82,2 Q90,2 90,10 L90,62 Q90,70 82,70 L38,70 L20,88 L24,70 L18,70 Q10,70 10,62 Z' },
+            'banner':        { type: 'path',    d: 'M5,20 L95,20 Q98,50 95,80 L5,80 Q2,50 5,20 Z' },
+          };
 
           var canvasItems = Array.isArray(comp.items) ? comp.items.slice() : [];
           canvasItems.sort(function(a, b) {
@@ -1716,11 +1740,6 @@ def _get_fallback_runtime_js() -> str:
             itemEl.style.pointerEvents = 'none';
             itemEl.style.transform = 'rotate(' + (canvasItem.rotation || 0) + 'deg)';
             itemEl.style.transformOrigin = '50% 50%';
-            /* Text items use flex-column so the grip spacer stacks above the text */
-            if (canvasItem.type === 'text') {
-              itemEl.style.display = 'flex';
-              itemEl.style.flexDirection = 'column';
-            }
 
             if (canvasItem.type === 'rect' || canvasItem.type === 'circle') {
               var shape = document.createElement('div');
@@ -1729,41 +1748,79 @@ def _get_fallback_runtime_js() -> str:
               shape.style.background = canvasItem.color || '#3b82f6';
               shape.style.borderRadius = canvasItem.type === 'circle' ? '50%' : '4px';
               shape.style.boxShadow = '0 4px 10px rgba(17, 24, 39, 0.15), 0 1px 4px rgba(17, 24, 39, 0.08)';
-              shape.style.border = '1px solid rgba(17, 24, 39, 0.08)';
+              if ((canvasItem.strokeWidth || 0) > 0) {
+                shape.style.border = canvasItem.strokeWidth + 'px solid ' + (canvasItem.strokeColor || '#111827');
+              } else {
+                shape.style.border = '1px solid rgba(17, 24, 39, 0.08)';
+              }
               shape.style.boxSizing = 'border-box';
               itemEl.appendChild(shape);
-            } else if (canvasItem.type === 'triangle') {
+
+            } else if (canvasItem.type === 'triangle' || SHAPE_PATHS[canvasItem.type]) {
+              /* Generic SVG renderer for triangle + all extended shapes */
+              var shapeDef = canvasItem.type === 'triangle'
+                ? { type: 'polygon', points: '50,0 100,100 0,100' }
+                : SHAPE_PATHS[canvasItem.type];
+
               var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
               svg.setAttribute('viewBox', '0 0 100 100');
               svg.setAttribute('preserveAspectRatio', 'none');
               svg.setAttribute('width', '100%');
               svg.setAttribute('height', '100%');
               svg.style.display = 'block';
-              svg.style.filter = 'drop-shadow(0px 4px 6px rgba(17,24,39,0.15)) drop-shadow(0px 1px 3px rgba(17,24,39,0.08))';
+              svg.style.filter = 'drop-shadow(0px 4px 6px rgba(17,24,39,0.12))';
 
-              var polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-              polygon.setAttribute('points', '50,0 100,100 0,100');
-              polygon.setAttribute('fill', canvasItem.color || '#3b82f6');
-              svg.appendChild(polygon);
+              var hasStroke = (canvasItem.strokeWidth || 0) > 0;
+              var strokeColor = canvasItem.strokeColor || '#111827';
+              var strokeWidth = String(canvasItem.strokeWidth || 0);
+
+              if (shapeDef.type === 'polygon') {
+                var polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                polygon.setAttribute('points', shapeDef.points);
+                polygon.setAttribute('fill', canvasItem.color || '#3b82f6');
+                if (hasStroke) {
+                  polygon.setAttribute('stroke', strokeColor);
+                  polygon.setAttribute('stroke-width', strokeWidth);
+                  polygon.setAttribute('vector-effect', 'non-scaling-stroke');
+                } else {
+                  polygon.setAttribute('stroke', 'none');
+                }
+                svg.appendChild(polygon);
+              } else {
+                var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', shapeDef.d);
+                path.setAttribute('fill', canvasItem.color || '#3b82f6');
+                if (hasStroke) {
+                  path.setAttribute('stroke', strokeColor);
+                  path.setAttribute('stroke-width', strokeWidth);
+                  path.setAttribute('vector-effect', 'non-scaling-stroke');
+                } else {
+                  path.setAttribute('stroke', 'none');
+                }
+                svg.appendChild(path);
+              }
               itemEl.appendChild(svg);
+
             } else if (canvasItem.type === 'text') {
               itemEl.style.height = 'auto';
+              itemEl.style.paddingTop = '22px';
 
-              /* 18px spacer matches the drag-grip bar in the author view so
-                 the stored y% position renders the text at the same visual
-                 location in both authoring and preview/export */
-              var gripSpacer = document.createElement('div');
-              gripSpacer.style.height = '18px';
-              gripSpacer.style.flexShrink = '0';
-              gripSpacer.style.background = 'transparent';
-              itemEl.appendChild(gripSpacer);
+              /* Text box background */
+              var boxOpacity = canvasItem.boxBgOpacity || 0;
+              if (boxOpacity > 0 && canvasItem.boxBg) {
+                var hex = (canvasItem.boxBg || '#ffffff').replace('#', '');
+                var rr = parseInt(hex.substring(0, 2), 16);
+                var gg = parseInt(hex.substring(2, 4), 16);
+                var bb = parseInt(hex.substring(4, 6), 16);
+                var alpha = boxOpacity / 100;
+                itemEl.style.background = 'rgba(' + rr + ',' + gg + ',' + bb + ',' + alpha + ')';
+                itemEl.style.borderRadius = (canvasItem.boxBorderRadius || 4) + 'px';
+              }
 
               var textEl = document.createElement('div');
               textEl.style.width = '100%';
               textEl.style.height = 'auto';
               textEl.style.color = canvasItem.color || '#111827';
-              /* Use fixed px (no --canvas-scale) to match the author view
-                 which renders font sizes as fixed pixel values */
               textEl.style.fontSize = (canvasItem.fontSize || 16) + 'px';
               textEl.style.fontFamily = canvasItem.fontFamily || 'inherit';
               textEl.style.fontWeight = canvasItem.fontWeight || 'normal';
@@ -1776,10 +1833,11 @@ def _get_fallback_runtime_js() -> str:
               textEl.style.wordBreak = 'break-word';
               textEl.style.background = 'transparent';
               textEl.style.border = 'none';
-              textEl.style.padding = '4px 6px';
+              textEl.style.padding = '0 6px';
               textEl.style.margin = '0';
               textEl.textContent = canvasItem.text || '';
               itemEl.appendChild(textEl);
+
             } else if (canvasItem.type === 'image') {
               var imgEl = document.createElement('img');
               imgEl.src = canvasItem.src || '';
@@ -1790,6 +1848,10 @@ def _get_fallback_runtime_js() -> str:
               imgEl.style.display = 'block';
               imgEl.style.userSelect = 'none';
               imgEl.style.pointerEvents = 'none';
+              if ((canvasItem.strokeWidth || 0) > 0) {
+                imgEl.style.border = canvasItem.strokeWidth + 'px solid ' + (canvasItem.strokeColor || '#111827');
+                imgEl.style.boxSizing = 'border-box';
+              }
               itemEl.appendChild(imgEl);
             }
 

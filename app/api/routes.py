@@ -959,12 +959,14 @@ class GeneratedContentBlock(BaseModel):
 
 
 class GeneratedCanvasItem(BaseModel):
-    type: str = Field(..., description="Canvas element type: 'rect', 'circle', 'triangle', 'text', 'image'")
+    type: str = Field(..., description="Canvas element type: 'rect', 'circle', 'triangle', 'text', 'image', 'diamond', 'hexagon', 'pentagon', 'star', 'arrow-right', 'arrow-up', 'speech-bubble', 'banner'")
     x: float = Field(..., description="X coordinate as percentage (0 to 100) relative to the slide canvas.")
     y: float = Field(..., description="Y coordinate as percentage (0 to 100) relative to the slide canvas.")
     w: float = Field(..., description="Width as percentage (5 to 100).")
     h: float = Field(..., description="Height as percentage (5 to 100).")
-    color: str = Field("#3b82f6", description="Hex color code for shape or text color.")
+    color: str = Field("#3b82f6", description="Hex color code for shape fill or text color.")
+    strokeColor: Optional[str] = Field(None, description="Hex color for the shape border/stroke. Omit or set null for no border.")
+    strokeWidth: Optional[int] = Field(0, description="Border thickness in pixels (0 = no border, 1-8 = typical border). Only applies to non-text shapes.")
     text: Optional[str] = Field(None, description="Text content (only for type='text').")
     fontSize: Optional[int] = Field(16, description="Font size in pixels (only for type='text'). Use 28-36 for titles/headings, 14-18 for body text, 10-12 for small labels.")
     fontWeight: Optional[str] = Field("normal", description="Font weight (only for type='text'). Use 'bold' or '700' for headings/titles, 'normal' or '400' for body text.")
@@ -1001,7 +1003,7 @@ class BlockOutline(BaseModel):
 
 
 class CanvasItemOutline(BaseModel):
-    type: str = Field(..., description="Canvas element type: 'rect', 'circle', 'triangle', 'text', 'image'")
+    type: str = Field(..., description="Canvas element type: 'rect', 'circle', 'triangle', 'text', 'image', 'diamond', 'hexagon', 'pentagon', 'star', 'arrow-right', 'arrow-up', 'speech-bubble', 'banner'")
     purpose: str = Field(..., description="A short description of the item's role in the infographic layout (e.g., 'Container for step 1 description', 'Step 1 number label', etc.)")
     color: str = Field("#3b82f6", description="Hex color code.")
 
@@ -1376,6 +1378,8 @@ def map_canvas_item(item: GeneratedCanvasItem, image_type: str, index: int = 0) 
         "rotation": 0,
         "animation": "none",
         "animationDelay": 0,
+        "strokeColor": item.strokeColor or "#111827",
+        "strokeWidth": item.strokeWidth or 0,
     }
     
     if item.type == "text":
@@ -1396,6 +1400,7 @@ def map_canvas_item(item: GeneratedCanvasItem, image_type: str, index: int = 0) 
         mapped["letterSpacing"] = 0
         mapped["boxBg"] = "#ffffff"
         mapped["boxBgOpacity"] = 0
+        mapped["boxBorderRadius"] = 4
     elif item.type == "image":
         mapped["src"] = ""
         if image_type == "unsplash" and item.unsplashQuery:

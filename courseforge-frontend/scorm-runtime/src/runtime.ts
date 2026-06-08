@@ -1718,6 +1718,18 @@ class CourseForgeRuntime {
       }
 
       case "canvas": {
+        // ── Extended shape SVG paths (viewBox 0 0 100 100) ────────────────────
+        const SHAPE_PATHS: Record<string, { type: "polygon" | "path"; d?: string; points?: string }> = {
+          "arrow-right": { type: "path", d: "M10,30 L65,30 L65,15 L90,50 L65,85 L65,70 L10,70 Z" },
+          "arrow-up":    { type: "path", d: "M30,90 L30,45 L15,45 L50,10 L85,45 L70,45 L70,90 Z" },
+          "star":        { type: "polygon", points: "50,5 61,35 95,35 68,57 79,91 50,70 21,91 32,57 5,35 39,35" },
+          "hexagon":     { type: "polygon", points: "50,2 93,26 93,74 50,98 7,74 7,26" },
+          "diamond":     { type: "polygon", points: "50,2 98,50 50,98 2,50" },
+          "pentagon":    { type: "polygon", points: "50,3 97,36 79,95 21,95 3,36" },
+          "speech-bubble": { type: "path", d: "M10,10 Q10,2 18,2 L82,2 Q90,2 90,10 L90,62 Q90,70 82,70 L38,70 L20,88 L24,70 L18,70 Q10,70 10,62 Z" },
+          "banner":      { type: "path", d: "M5,20 L95,20 Q98,50 95,80 L5,80 Q2,50 5,20 Z" },
+        };
+
         const canvasWrap = document.createElement("div");
         canvasWrap.style.position = "relative";
         canvasWrap.style.width = "100%";
@@ -1762,33 +1774,74 @@ class CourseForgeRuntime {
             shape.style.background = item.color || "#3b82f6";
             shape.style.borderRadius = item.type === "circle" ? "50%" : "4px";
             shape.style.boxShadow = "0 4px 10px rgba(17, 24, 39, 0.15), 0 1px 4px rgba(17, 24, 39, 0.08)";
-            shape.style.border = "1px solid rgba(17, 24, 39, 0.08)";
+            shape.style.border = (item.strokeWidth || 0) > 0
+              ? `${item.strokeWidth}px solid ${item.strokeColor || "#111827"}`
+              : "1px solid rgba(17, 24, 39, 0.08)";
             shape.style.boxSizing = "border-box";
             itemEl.appendChild(shape);
-          } else if (item.type === "triangle") {
+
+          } else if (item.type === "triangle" || SHAPE_PATHS[item.type]) {
+            // Generic SVG shape renderer for triangle + all extended shapes
+            const shapeDef = item.type === "triangle"
+              ? { type: "polygon", points: "50,0 100,100 0,100" }
+              : SHAPE_PATHS[item.type];
+
             const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
             svg.setAttribute("viewBox", "0 0 100 100");
             svg.setAttribute("preserveAspectRatio", "none");
             svg.setAttribute("width", "100%");
             svg.setAttribute("height", "100%");
             svg.style.display = "block";
-            svg.style.filter = "drop-shadow(0px 4px 6px rgba(17,24,39,0.15)) drop-shadow(0px 1px 3px rgba(17,24,39,0.08))";
+            svg.style.filter = "drop-shadow(0px 4px 6px rgba(17,24,39,0.12))";
 
-            const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-            polygon.setAttribute("points", "50,0 100,100 0,100");
-            polygon.setAttribute("fill", item.color || "#3b82f6");
-            svg.appendChild(polygon);
+            const strokeAttrs = (item.strokeWidth || 0) > 0
+              ? { stroke: item.strokeColor || "#111827", "stroke-width": String(item.strokeWidth), "vector-effect": "non-scaling-stroke" }
+              : { stroke: "none" };
+
+            if (shapeDef.type === "polygon") {
+              const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+              polygon.setAttribute("points", shapeDef.points!);
+              polygon.setAttribute("fill", item.color || "#3b82f6");
+              Object.entries(strokeAttrs).forEach(([k, v]) => polygon.setAttribute(k, v));
+              svg.appendChild(polygon);
+            } else {
+              const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+              path.setAttribute("d", shapeDef.d!);
+              path.setAttribute("fill", item.color || "#3b82f6");
+              Object.entries(strokeAttrs).forEach(([k, v]) => path.setAttribute(k, v));
+              svg.appendChild(path);
+            }
             itemEl.appendChild(svg);
+
           } else if (item.type === "image") {
             const img = document.createElement("img");
             img.style.width = "100%";
             img.style.height = "100%";
             img.style.objectFit = "contain";
+            img.style.display = "block";
+            if ((item.strokeWidth || 0) > 0) {
+              img.style.border = `${item.strokeWidth}px solid ${item.strokeColor || "#111827"}`;
+              img.style.boxSizing = "border-box";
+            }
             img.src = item.src || "";
             img.alt = "Canvas element";
             itemEl.appendChild(img);
+
           } else if (item.type === "text") {
             itemEl.style.height = "auto";
+            // Mirror authoring view: 18px grip bar offset + 4px textarea top padding = 22px
+            itemEl.style.paddingTop = "22px";
+
+            // Text box background
+            if ((item.boxBgOpacity || 0) > 0 && item.boxBg) {
+              const hex = item.boxBg.replace("#", "");
+              const r = parseInt(hex.substring(0, 2), 16);
+              const g = parseInt(hex.substring(2, 4), 16);
+              const b = parseInt(hex.substring(4, 6), 16);
+              const alpha = (item.boxBgOpacity || 0) / 100;
+              itemEl.style.background = `rgba(${r},${g},${b},${alpha})`;
+              itemEl.style.borderRadius = `${item.boxBorderRadius ?? 4}px`;
+            }
 
             const text = document.createElement("div");
             text.style.width = "100%";
@@ -1808,11 +1861,13 @@ class CourseForgeRuntime {
             text.style.wordBreak = "break-word";
             text.style.background = "transparent";
             text.style.border = "none";
-            text.style.padding = "0";
+            // Match the 4px 6px textarea padding from the authoring view
+            text.style.padding = "0 6px";
             text.style.margin = "0";
             text.textContent = item.text || "";
             itemEl.appendChild(text);
           }
+
           const animEl = itemEl.firstElementChild as HTMLElement;
           if (animEl) {
             this.applyComponentAnimation(animEl, item.animation || "none", item.animationDelay || 0);
@@ -1824,6 +1879,7 @@ class CourseForgeRuntime {
         wrapper.appendChild(canvasWrap);
         break;
       }
+
 
       case "scenario": {
         type ScenarioScene = Extract<Component, { type: "scenario" }>["slides"][number];
